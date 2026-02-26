@@ -43,7 +43,62 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ inventory, articles
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile View: Cards */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {filteredInventory.map(inv => {
+            const article = articles.find(a => a.id === inv.articleId)!;
+            const status = inv.availableStock > 20 ? 'In Stock' : inv.availableStock > 0 ? 'Low Stock' : 'Out of Stock';
+            const statusColor = inv.availableStock > 20 ? 'bg-emerald-50 text-emerald-600' : inv.availableStock > 0 ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600';
+
+            return (
+              <div key={inv.articleId} className="p-4 space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex gap-4">
+                    <img src={article.imageUrl} alt="" className="w-14 h-14 rounded-xl object-cover border border-slate-100 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-900 truncate">{article.name}</p>
+                      <p className="text-xs text-slate-500 font-mono tracking-tight">{article.sku}</p>
+                      <div className="mt-1">
+                        <span className={`text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-full ${statusColor}`}>
+                          {status}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                    <ChevronDown size={20} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="p-2 bg-slate-50 rounded-lg text-center">
+                    <p className="text-[9px] text-slate-400 uppercase font-black mb-0.5">Actual</p>
+                    <p className="font-bold text-slate-700 text-sm">{inv.actualStock}</p>
+                  </div>
+                  <div className="p-2 bg-slate-50 rounded-lg text-center">
+                    <p className="text-[9px] text-slate-400 uppercase font-black mb-0.5">Reserved</p>
+                    <p className="font-bold text-slate-600 text-sm">{inv.reservedStock}</p>
+                  </div>
+                  <div className="p-2 bg-indigo-50/50 rounded-lg text-center border border-indigo-50">
+                    <p className="text-[9px] text-indigo-400 uppercase font-black mb-0.5">Available</p>
+                    <p className={`font-black text-sm ${inv.availableStock < 10 ? 'text-red-600' : 'text-indigo-600'}`}>{inv.availableStock}</p>
+                  </div>
+                </div>
+                
+                <div className="pt-2 border-t border-slate-50 flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                  <span>Total Pairs</span>
+                  <span className="text-slate-900">{inv.availableStock * 24} Pairs</span>
+                </div>
+              </div>
+            );
+          })}
+          {filteredInventory.length === 0 && (
+            <div className="p-8 text-center text-slate-400 italic">No inventory available.</div>
+          )}
+        </div>
+
+        {/* Desktop View: Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
@@ -52,7 +107,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ inventory, articles
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Reserved</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Available</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -93,8 +148,8 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ inventory, articles
                         {status}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
-                      <button className="text-indigo-600 hover:text-indigo-800 font-medium text-sm flex items-center gap-1 transition-colors">
+                    <td className="px-6 py-4 text-right">
+                      <button className="text-indigo-600 hover:text-indigo-800 font-medium text-sm inline-flex items-center gap-1 transition-colors">
                         Manage <ChevronDown size={14} />
                       </button>
                     </td>

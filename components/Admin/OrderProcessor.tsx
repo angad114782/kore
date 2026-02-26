@@ -19,7 +19,65 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ orders, articles, updat
             <Download size={16} /> Export CSV
           </button>
         </div>
-        <div className="overflow-x-auto">
+        {/* Mobile View: Cards */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {orders.map(order => (
+            <div key={order.id} className="p-4 space-y-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-bold text-slate-900 text-lg">{order.id}</p>
+                  <p className="text-[10px] text-slate-500 font-medium">{order.date}</p>
+                </div>
+                <StatusBadge status={order.status} />
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-xl space-y-2">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500">Distributor</span>
+                  <span className="font-bold text-slate-900">{order.distributorName}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500">Total Pairs</span>
+                  <span className="font-bold text-slate-900">{order.totalPairs} Pairs</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500">Volume</span>
+                  <span className="font-bold text-indigo-600">{order.totalCartons} Cartons</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex-1 flex gap-2">
+                  {order.status === OrderStatus.BOOKED && (
+                    <button 
+                      onClick={() => updateStatus(order.id, OrderStatus.READY_FOR_DISPATCH)}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-100"
+                    >
+                      <Package size={18} /> Ready
+                    </button>
+                  )}
+                  {order.status === OrderStatus.READY_FOR_DISPATCH && (
+                    <button 
+                      onClick={() => updateStatus(order.id, OrderStatus.DISPATCHED)}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-100"
+                    >
+                      <Truck size={18} /> Dispatch
+                    </button>
+                  )}
+                </div>
+                <button className="p-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-colors shadow-sm">
+                  <Eye size={20} />
+                </button>
+              </div>
+            </div>
+          ))}
+          {orders.length === 0 && (
+            <div className="p-12 text-center text-slate-400 italic">No orders found.</div>
+          )}
+        </div>
+
+        {/* Desktop View: Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-white">
               <tr>
@@ -27,7 +85,7 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ orders, articles, updat
                 <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Distributor</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-center">Volume</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Actions</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -49,7 +107,7 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ orders, articles, updat
                     <StatusBadge status={order.status} />
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-end gap-3">
                       {order.status === OrderStatus.BOOKED && (
                         <button 
                           onClick={() => updateStatus(order.id, OrderStatus.READY_FOR_DISPATCH)}

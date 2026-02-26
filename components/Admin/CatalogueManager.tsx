@@ -121,7 +121,65 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile View: Cards */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {filteredArticles.map(article => (
+            <div key={article.id} className="p-4 space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex gap-4">
+                  <img 
+                    src={article.imageUrl || 'https://picsum.photos/seed/kore/200/200'} 
+                    alt="" 
+                    className="w-16 h-16 rounded-xl object-cover border border-slate-100" 
+                  />
+                  <div>
+                    <p className="font-bold text-slate-900 line-clamp-1">{article.name}</p>
+                    <p className="text-[10px] text-slate-400 font-mono tracking-widest">{article.sku}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                        article.category === AssortmentType.MEN ? 'bg-indigo-50 text-indigo-600' :
+                        article.category === AssortmentType.WOMEN ? 'bg-pink-50 text-pink-600' : 'bg-amber-50 text-amber-600'
+                      }`}>
+                        {article.category}
+                      </span>
+                      <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[9px] font-black uppercase tracking-wider">
+                        {ASSORTMENTS.find(as => as.id === article.assortmentId)?.name || 'Standard'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button 
+                    onClick={() => handleOpenModal(article)}
+                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                  >
+                    <Edit2 size={18} />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      if (window.confirm(`Delete ${article.name}? This will remove it from shop and inventory.`)) {
+                        deleteArticle(article.id);
+                      }
+                    }}
+                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t border-slate-50">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Price per Pair</span>
+                <span className="text-lg font-black text-slate-900">₹{article.pricePerPair.toLocaleString()}</span>
+              </div>
+            </div>
+          ))}
+          {filteredArticles.length === 0 && (
+            <div className="p-8 text-center text-slate-400 italic">No articles matching your search.</div>
+          )}
+        </div>
+
+        {/* Desktop View: Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
@@ -196,9 +254,9 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
 
       {/* Article Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="bg-indigo-600 p-6 flex justify-between items-center text-white">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-100 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col">
+            <div className="bg-indigo-600 p-6 flex justify-between items-center text-white shrink-0">
                <h3 className="text-xl font-bold flex items-center gap-2">
                  {editingArticle ? <Edit2 size={20} /> : <Plus size={20} />}
                  {editingArticle ? 'Edit Article' : 'Add New Article'}
@@ -208,11 +266,11 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                </button>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-8">
+            <form onSubmit={handleSubmit} className="p-6 md:p-8 overflow-y-auto">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                    <label className=" text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
                       <Tag size={12} /> Article Name
                     </label>
                     <input 
@@ -225,7 +283,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                    <label className=" text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
                       <Hash size={12} /> Unique SKU
                     </label>
                     <input 
@@ -267,7 +325,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                    <label className=" text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
                       <ShoppingBag size={12} /> Price per Pair (INR)
                     </label>
                     <input 
@@ -281,7 +339,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                     <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-wider">Note: Cartons will be calculated at 24x this price.</p>
                   </div>
                   <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                    <label className=" text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
                       <ImageIcon size={12} /> Product Image URL
                     </label>
                     <input 
@@ -317,7 +375,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                 </button>
                 <button 
                   type="submit"
-                  className="flex-[2] bg-indigo-600 text-white py-4 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100"
+                  className="flex-2 bg-indigo-600 text-white py-4 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100"
                 >
                   {editingArticle ? 'Save Changes' : 'Create Article'}
                 </button>
