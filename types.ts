@@ -1,7 +1,6 @@
-
 export enum UserRole {
-  ADMIN = 'ADMIN',
-  DISTRIBUTOR = 'DISTRIBUTOR'
+  ADMIN = "ADMIN",
+  DISTRIBUTOR = "DISTRIBUTOR",
 }
 
 export interface User {
@@ -14,14 +13,26 @@ export interface User {
 }
 
 export enum AssortmentType {
-  WOMEN = 'WOMEN',
-  MEN = 'MEN',
-  KIDS = 'KIDS'
+  WOMEN = "WOMEN",
+  MEN = "MEN",
+  KIDS = "KIDS",
 }
 
 export interface SizeBreakup {
   size: string;
   pairs: number;
+}
+
+export interface Variant {
+  id: string;
+  itemName: string;
+  sku: string;
+  color: string;
+  sizeRange: string;
+  costPrice: number;
+  sellingPrice: number;
+  mrp: number;
+  sizeQuantities: Record<string, number>;
 }
 
 export interface Assortment {
@@ -40,18 +51,20 @@ export interface Article {
   assortmentId: string;
   pricePerPair: number;
   imageUrl: string;
-  
+  images?: string[]; // additional image urls
+
   // New optional fields for Product Master
   mrp?: number;
   soleColor?: string;
   productCategory?: string; // e.g. Footwear
   brand?: string;
-  status?: 'AVAILABLE' | 'WISHLIST';
+  status?: "AVAILABLE" | "WISHLIST";
   expectedDate?: string;
   manufacturer?: string;
   unit?: string;
   selectedSizes?: string[];
   selectedColors?: string[];
+  variants?: Variant[];
 }
 
 export interface Inventory {
@@ -62,11 +75,11 @@ export interface Inventory {
 }
 
 export enum OrderStatus {
-  BOOKED = 'BOOKED',
-  PENDING = 'PENDING',
-  READY_FOR_DISPATCH = 'READY_FOR_DISPATCH',
-  DISPATCHED = 'DISPATCHED',
-  DELIVERED = 'DELIVERED'
+  BOOKED = "BOOKED",
+  PENDING = "PENDING",
+  READY_FOR_DISPATCH = "READY_FOR_DISPATCH",
+  DISPATCHED = "DISPATCHED",
+  DELIVERED = "DELIVERED",
 }
 
 export interface OrderItem {
@@ -91,7 +104,14 @@ export interface Order {
 export interface MovementRecord {
   id: string;
   articleId: string;
-  type: 'INWARD' | 'PRODUCTION' | 'PURCHASE' | 'RETURN' | 'OUTWARD' | 'SAMPLE' | 'ECOMMERCE';
+  type:
+    | "INWARD"
+    | "PRODUCTION"
+    | "PURCHASE"
+    | "RETURN"
+    | "OUTWARD"
+    | "SAMPLE"
+    | "ECOMMERCE";
   cartonCount: number;
   date: string;
   note: string;
