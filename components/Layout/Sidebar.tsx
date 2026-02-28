@@ -176,6 +176,17 @@ const Sidebar: React.FC<SidebarProps> = ({
               isCollapsed={isCollapsed}
             />
 
+            {/* ✅ Master Tab (below Dashboard) */}
+            {user.role === UserRole.ADMIN && (
+              <NavItem
+                icon={<Database size={20} />}
+                label="Master"
+                active={activeTab === "master"}
+                onClick={() => go("master")}
+                isCollapsed={isCollapsed}
+              />
+            )}
+
             {/* Admin menus only */}
             {user.role === UserRole.ADMIN ? (
               <>

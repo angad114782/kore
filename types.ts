@@ -36,10 +36,22 @@ export interface Article {
   id: string;
   sku: string;
   name: string;
-  category: AssortmentType;
+  category: AssortmentType; // Gender/Type (Men, Women, Kids)
   assortmentId: string;
   pricePerPair: number;
   imageUrl: string;
+  
+  // New optional fields for Product Master
+  mrp?: number;
+  soleColor?: string;
+  productCategory?: string; // e.g. Footwear
+  brand?: string;
+  status?: 'AVAILABLE' | 'WISHLIST';
+  expectedDate?: string;
+  manufacturer?: string;
+  unit?: string;
+  selectedSizes?: string[];
+  selectedColors?: string[];
 }
 
 export interface Inventory {

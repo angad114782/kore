@@ -24,6 +24,7 @@ import Cart from "./components/Distributor/Cart";
 import Auth from "./components/Auth";
 import POPage from "./components/Admin/POPage";
 import GRN from "./components/Admin/GRN";
+import ProductMaster from "./components/Admin/ProductMaster";
 
 // ✅ NEW: Sidebar component (create this file separately)
 import Sidebar from "./components/Layout/Sidebar";
@@ -312,6 +313,10 @@ const App: React.FC = () => {
               goToCart={() => setActiveTab("cart")}
             />
           ))}
+
+        {activeTab === "master" && user.role === UserRole.ADMIN && (
+          <ProductMaster addArticle={addArticle} />
+        )}
 
         {activeTab === "catalogue" && user.role === UserRole.ADMIN && (
           <CatalogueManager

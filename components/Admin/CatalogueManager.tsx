@@ -240,8 +240,8 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
 
     const payload: Article = {
       id: editingArticle ? editingArticle.id : `art-${Date.now()}`,
-      name: capFirst(formData.name.trim()),
       sku: editingArticle?.sku || `CAT-${Date.now().toString().slice(-6)}`,
+      name: capFirst(formData.name.trim()),
       category: formData.category,
       pricePerPair: editingArticle?.pricePerPair ?? 0,
       imageUrl: editingArticle?.imageUrl ?? "",
