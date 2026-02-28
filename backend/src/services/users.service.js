@@ -1,10 +1,14 @@
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
+const mongoose = require("mongoose");
 
 const ALLOWED_ROLES = ["admin", "staff"]; // 👈 superadmin API se create nahi hoga
 const SALT_ROUNDS = 10;
 
-const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+const normalizeEmail = (email) =>
+  String(email || "")
+    .trim()
+    .toLowerCase();
 
 const sanitizeUser = (userDoc) => {
   if (!userDoc) return null;
@@ -83,7 +87,9 @@ exports.listUsers = async ({
     ];
   }
 
-  const cleanRole = String(role || "").trim().toLowerCase();
+  const cleanRole = String(role || "")
+    .trim()
+    .toLowerCase();
   if (cleanRole) q.role = cleanRole;
 
   // ✅ Never list passwords anyway (model select:false already)
@@ -117,38 +123,170 @@ exports.getUserById = async (id) => {
   return user;
 };
 
-exports.updateUserRole = async (id, role) => {
-  const cleanRole = String(role || "").trim().toLowerCase();
+exports.updateUserRole = async (actorUserId, targetUserId, role) => {
+  if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+    const err = new Error("Invalid user ID");
+    err.status = 400;
+    throw err;
+  }
 
-  // ✅ superadmin role change disabled via API
+  const cleanRole = String(role || "")
+    .trim()
+    .toLowerCase();
+
   if (!ALLOWED_ROLES.includes(cleanRole)) {
     const err = new Error(`Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}`);
     err.status = 400;
     throw err;
   }
 
-  const user = await User.findByIdAndUpdate(
-    id,
+  // ✅ Fetch target user first for protection checks
+  const target = await User.findById(targetUserId).lean();
+  if (!target) {
+    const err = new Error("User not found");
+    err.status = 404;
+    throw err;
+  }
+
+  // ✅ Block changes on superadmin
+  if (target.role === "superadmin") {
+    const err = new Error("Cannot change superadmin role");
+    err.status = 403;
+    throw err;
+  }
+
+  // ✅ Block self role change (safety)
+  if (String(actorUserId) === String(targetUserId)) {
+    const err = new Error("You cannot change your own role");
+    err.status = 403;
+    throw err;
+  }
+
+  const updated = await User.findByIdAndUpdate(
+    targetUserId,
     { role: cleanRole },
-    { new: true, runValidators: true }
+    { new: true, runValidators: true },
   );
 
-  if (!user) {
-    const err = new Error("User not found");
-    err.status = 404;
-    throw err;
-  }
-
-  return sanitizeUser(user);
+  return sanitizeUser(updated);
 };
 
-exports.deleteUser = async (id) => {
-  // ✅ Hard delete (later soft delete can be added)
-  const user = await User.findByIdAndDelete(id);
+exports.deleteUser = async (actorUserId, targetUserId) => {
+  if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+    const err = new Error("Invalid user ID");
+    err.status = 400;
+    throw err;
+  }
+
+  const target = await User.findById(targetUserId).lean();
+  if (!target) {
+    const err = new Error("User not found");
+    err.status = 404;
+    throw err;
+  }
+
+  // ✅ Block deleting superadmin
+  if (target.role === "superadmin") {
+    const err = new Error("Cannot delete superadmin");
+    err.status = 403;
+    throw err;
+  }
+
+  // ✅ Block self delete (safety)
+  if (String(actorUserId) === String(targetUserId)) {
+    const err = new Error("You cannot delete your own account");
+    err.status = 403;
+    throw err;
+  }
+
+  await User.findByIdAndDelete(targetUserId);
+  return true;
+};
+exports.getMe = async (userId) => {
+  const user = await User.findById(userId).lean();
   if (!user) {
     const err = new Error("User not found");
     err.status = 404;
     throw err;
   }
+  return user;
+};
+
+exports.updateMe = async (userId, { name, email }) => {
+  const update = {};
+
+  if (name) {
+    const cleanName = String(name).trim();
+    if (cleanName.length < 2) {
+      const err = new Error("Name must be at least 2 characters");
+      err.status = 400;
+      throw err;
+    }
+    update.name = cleanName;
+  }
+
+  if (email) {
+    const cleanEmail = normalizeEmail(email);
+    if (!cleanEmail.includes("@")) {
+      const err = new Error("Valid email is required");
+      err.status = 400;
+      throw err;
+    }
+
+    const exists = await User.findOne({
+      email: cleanEmail,
+      _id: { $ne: userId },
+    }).lean();
+    if (exists) {
+      const err = new Error("Email already in use");
+      err.status = 400;
+      throw err;
+    }
+    update.email = cleanEmail;
+  }
+
+  const user = await User.findByIdAndUpdate(userId, update, {
+    new: true,
+    runValidators: true,
+  }).lean();
+
+  if (!user) {
+    const err = new Error("User not found");
+    err.status = 404;
+    throw err;
+  }
+
+  return user;
+};
+
+exports.changePassword = async (userId, { oldPassword, newPassword }) => {
+  if (!oldPassword || !newPassword) {
+    const err = new Error("Old password and new password are required");
+    err.status = 400;
+    throw err;
+  }
+
+  if (String(newPassword).length < 6) {
+    const err = new Error("New password must be at least 6 characters");
+    err.status = 400;
+    throw err;
+  }
+
+  const user = await User.findById(userId).select("+password");
+  if (!user) {
+    const err = new Error("User not found");
+    err.status = 404;
+    throw err;
+  }
+
+  const isMatch = await bcrypt.compare(String(oldPassword), user.password);
+  if (!isMatch) {
+    const err = new Error("Old password is incorrect");
+    err.status = 400;
+    throw err;
+  }
+
+  user.password = await bcrypt.hash(String(newPassword), SALT_ROUNDS);
+  await user.save();
   return true;
 };

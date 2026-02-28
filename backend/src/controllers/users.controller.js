@@ -72,13 +72,22 @@ exports.changePassword = async (req, res, next) => {
 -------------------------------------------------- */
 exports.updateUserRole = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const targetUserId = req.params.id;
+    const actorUserId = req.user?.id;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!actorUserId) {
+      return fail(res, { status: 401, message: "Not authorized" });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
       return fail(res, { status: 400, message: "Invalid user ID" });
     }
 
-    const user = await usersService.updateUserRole(id, req.body.role);
+    const user = await usersService.updateUserRole(
+      actorUserId,
+      targetUserId,
+      req.body.role
+    );
 
     return ok(res, { message: "User role updated", data: user });
   } catch (err) {
@@ -91,13 +100,18 @@ exports.updateUserRole = async (req, res, next) => {
 -------------------------------------------------- */
 exports.deleteUser = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const targetUserId = req.params.id;
+    const actorUserId = req.user?.id;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!actorUserId) {
+      return fail(res, { status: 401, message: "Not authorized" });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
       return fail(res, { status: 400, message: "Invalid user ID" });
     }
 
-    await usersService.deleteUser(id);
+    await usersService.deleteUser(actorUserId, targetUserId);
 
     return ok(res, { message: "User deleted successfully", data: null });
   } catch (err) {
