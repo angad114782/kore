@@ -172,6 +172,49 @@ export interface Vendor {
   shippingAddress: VendorAddress;
   // Contact Persons
   contactPersons: VendorContact[];
+
   // Bank Details
   bankDetails: VendorBankDetail[];
+}
+
+// Purchase Order types
+export interface PurchaseOrderItem {
+  id: string;
+  articleId: string;
+  variantId: string;
+  itemName: string;
+  image: string;
+  sku: string;
+  skuCompany: string; // brand
+  itemTaxCode: string; // HSN code
+  quantity: number;
+  taxRate: number;
+  taxType: "GST" | "IGST";
+  basePrice: number;
+  taxPerItem: number;
+  unitTotal: number;
+}
+
+export type POStatus = "DRAFT" | "SENT";
+
+export interface PurchaseOrder {
+  id: string;
+  vendorId: string;
+  vendorName: string;
+  poNumber: string;
+  referenceNumber: string;
+  date: string;
+  deliveryDate: string;
+  paymentTerms: string;
+  shipmentPreference: string;
+  notes: string;
+  termsAndConditions: string;
+  items: PurchaseOrderItem[];
+  subTotal: number;
+  discountPercent: number;
+  discountAmount: number;
+  totalTax: number;
+  total: number;
+  status: POStatus;
+  createdAt: string;
 }

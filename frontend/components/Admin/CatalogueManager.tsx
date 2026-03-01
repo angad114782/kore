@@ -51,6 +51,9 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
+  
+  // New state for Catalogue Details overlay
+  const [selectedDetailsItem, setSelectedDetailsItem] = useState<any | null>(null);
 
   // preview urls for selected files / saved urls
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
@@ -154,20 +157,84 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   };
 
   // ---------- Data Views ----------
-  const filtered = useMemo(() => {
+  const catalogItems = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
+    const result: any[] = [];
 
-    return articles
+    articles
       .filter((a) => {
         const status = (((a as any).catalogStatus as CatalogStatus) || "AVAILABLE") as CatalogStatus;
         return status === activeTab;
       })
-      .filter((a) => {
-        if (!q) return true;
-        const name = (a.name || "").toLowerCase();
-        const sku = (a.sku || "").toLowerCase();
-        return name.includes(q) || sku.includes(q);
+      .forEach((a) => {
+        if (a.variants && a.variants.length > 0) {
+          a.variants.forEach((v) => {
+            const sizes = Object.keys(v.sizeSkus || {});
+            if (sizes.length > 0) {
+              sizes.forEach((s) => {
+                const sku = v.sizeSkus[s] || a.sku;
+                const baseName = v.itemName || `${a.name} - ${v.color}`;
+                const fullName = `${baseName} - Size ${s}`;
+                
+                if (q && !fullName.toLowerCase().includes(q) && !sku.toLowerCase().includes(q)) return;
+                
+                result.push({
+                  id: `${a.id}-${v.id}-${s}`,
+                  article: a,
+                  variant: v,
+                  name: fullName,
+                  sku: sku,
+                  color: v.color,
+                  size: s,
+                  mrp: v.mrp || v.sellingPrice || a.pricePerPair || 0,
+                  pairs: (v.sizeQuantities && v.sizeQuantities[s]) || 0,
+                  image: a.imageUrl || "",
+                });
+              });
+            } else {
+              const sku = v.sku || a.sku;
+              const name = v.itemName || `${a.name} - ${v.color}`;
+              
+              if (q && !name.toLowerCase().includes(q) && !sku.toLowerCase().includes(q)) return;
+              
+              result.push({
+                id: `${a.id}-${v.id}`,
+                article: a,
+                variant: v,
+                name: name,
+                sku: sku,
+                color: v.color,
+                size: "—",
+                mrp: v.mrp || v.sellingPrice || a.pricePerPair || 0,
+                pairs: 0,
+                image: a.imageUrl || "",
+              });
+            }
+          });
+        } else {
+          if (q && !(a.name || "").toLowerCase().includes(q) && !(a.sku || "").toLowerCase().includes(q)) return;
+          
+          let pairs = 0;
+          if ((a as any).sizeBreakup) {
+             const breakups = Object.values((a as any).sizeBreakup);
+             pairs = breakups.reduce((sum: number, val: any) => sum + (Number(val) || 0), 0) as number;
+          }
+          
+          result.push({
+            id: a.id,
+            article: a,
+            variant: null,
+            name: a.name,
+            sku: a.sku,
+            color: "",
+            size: (a as any).sizeRange || "—",
+            mrp: Number((a as any).mrp || a.pricePerPair || 0),
+            pairs: pairs,
+            image: a.imageUrl || "",
+          });
+        }
       });
+      return result;
   }, [articles, activeTab, searchTerm]);
 
   // ---------- Modal ----------
@@ -214,6 +281,8 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
       });
     }
 
+    // if editing from Details view, close details view first.
+    setSelectedDetailsItem(null);
     setIsModalOpen(true);
   };
 
@@ -364,29 +433,21 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
             </thead>
 
             <tbody className="divide-y divide-slate-100">
-              {filtered.map((a) => {
+              {catalogItems.map((item) => {
+                const a = item.article;
                 const status: CatalogStatus =
                   ((a as any).catalogStatus as CatalogStatus) || "AVAILABLE";
 
-                const mrp = Number((a as any).mrp || 0);
-                const sizeRange = String((a as any).sizeRange || "");
-                const sizeBreakup: Record<string, number> =
-                  (a as any).sizeBreakup || {};
-                const pairs = Object.values(sizeBreakup).reduce(
-                  (s, v) => s + (Number(v) || 0),
-                  0,
-                );
-
+                const mrp = Number(item.mrp || 0);
+                const pairs = item.pairs || 0;
                 const expectedDate = String((a as any).expectedAvailableDate || "");
-
-                const imgs: string[] =
-                  (a as any).images || (a.imageUrl ? [a.imageUrl] : []);
-                const cover = imgs[0] || "https://picsum.photos/seed/kore/200/200";
+                const cover = item.image || "https://picsum.photos/seed/kore/200/200";
 
                 return (
                   <tr
-                    key={a.id}
-                    className="hover:bg-slate-50/50 transition-colors"
+                    key={item.id}
+                    onClick={() => setSelectedDetailsItem(item)}
+                    className="hover:bg-slate-50/50 transition-colors cursor-pointer"
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
@@ -396,12 +457,9 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                           className="w-12 h-12 rounded-xl object-cover border border-slate-100"
                         />
                         <div>
-                          <p className="font-bold text-slate-900">{a.name}</p>
+                          <p className="font-bold text-slate-900">{item.name}</p>
                           <p className="text-[10px] text-slate-400 font-mono tracking-widest">
-                            {a.sku}
-                          </p>
-                          <p className="text-[10px] text-slate-400">
-                            {imgs.length} image{imgs.length === 1 ? "" : "s"}
+                            {item.sku}
                           </p>
                         </div>
                       </div>
@@ -429,12 +487,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
 
                     <td className="px-6 py-4 text-sm text-slate-700">
                       <div className="font-semibold">
-                        {sizeRange || <span className="text-slate-400 italic">—</span>}
-                      </div>
-                      <div className="text-xs text-slate-400">
-                        {Object.keys(sizeBreakup || {}).length
-                          ? `${Object.keys(sizeBreakup).length} sizes`
-                          : "No breakup"}
+                        {item.size || <span className="text-slate-400 italic">—</span>}
                       </div>
                     </td>
 
@@ -445,12 +498,13 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                             ? "bg-slate-100 text-slate-500"
                             : pairs % 24 === 0
                             ? "bg-emerald-50 text-emerald-700"
-                            : "bg-rose-50 text-rose-700"
+                            : "bg-indigo-50 text-indigo-700"
                         }`}
                       >
                         {pairs || 0}
                       </span>
                     </td>
+
 
                     <td className="px-6 py-4 text-sm">
                       {status === "WISH" ? (
@@ -469,7 +523,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                     </td>
 
                     <td className="px-6 py-4 text-right">
-                      <div className="inline-flex items-center gap-2">
+                      <div className="inline-flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => openModal(a)}
                           className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
@@ -511,7 +565,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                 );
               })}
 
-              {filtered.length === 0 && (
+              {catalogItems.length === 0 && (
                 <tr>
                   <td
                     colSpan={7}
@@ -528,28 +582,20 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
 
       {/* Cards (mobile) */}
       <div className="md:hidden space-y-3">
-        {filtered.map((a) => {
+        {catalogItems.map((item) => {
+          const a = item.article;
           const status: CatalogStatus =
             ((a as any).catalogStatus as CatalogStatus) || "AVAILABLE";
-          const mrp = Number((a as any).mrp || 0);
-          const sizeRange = String((a as any).sizeRange || "");
-          const sizeBreakup: Record<string, number> =
-            (a as any).sizeBreakup || {};
-          const pairs = Object.values(sizeBreakup).reduce(
-            (s, v) => s + (Number(v) || 0),
-            0,
-          );
-
+          const mrp = Number(item.mrp || 0);
+          const pairs = item.pairs || 0;
           const expectedDate = String((a as any).expectedAvailableDate || "");
-
-          const imgs: string[] =
-            (a as any).images || (a.imageUrl ? [a.imageUrl] : []);
-          const cover = imgs[0] || "https://picsum.photos/seed/kore/200/200";
+          const cover = item.image || "https://picsum.photos/seed/kore/200/200";
 
           return (
             <div
-              key={a.id}
-              className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm"
+              key={item.id}
+              onClick={() => setSelectedDetailsItem(item)}
+              className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm cursor-pointer hover:border-indigo-200 transition-colors"
             >
               <div className="flex gap-3">
                 <img
@@ -558,9 +604,9 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                   className="w-14 h-14 rounded-2xl object-cover border border-slate-100"
                 />
                 <div className="flex-1">
-                  <p className="font-bold text-slate-900">{a.name}</p>
+                  <p className="font-bold text-slate-900">{item.name}</p>
                   <p className="text-[10px] text-slate-400 font-mono tracking-widest">
-                    {a.sku}
+                    {item.sku}
                   </p>
 
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -576,7 +622,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                           ? "bg-slate-100 text-slate-600"
                           : pairs % 24 === 0
                           ? "bg-emerald-50 text-emerald-700"
-                          : "bg-rose-50 text-rose-700"
+                          : "bg-indigo-50 text-indigo-700"
                       }`}
                     >
                       Pairs: {pairs || 0}
@@ -585,7 +631,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
 
                   <p className="mt-2 text-sm text-slate-600">
                     Assortment:{" "}
-                    <span className="font-semibold">{sizeRange || "—"}</span>
+                    <span className="font-semibold">{item.size || "—"}</span>
                   </p>
 
                   {status === "WISH" && (
@@ -599,7 +645,8 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                 </div>
               </div>
 
-              <div className="mt-3 flex gap-2">
+
+              <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
                 <button
                   onClick={() => openModal(a)}
                   className="flex-1 px-3 py-2 rounded-xl border border-slate-200 font-bold text-slate-700 hover:bg-slate-50"
@@ -632,14 +679,186 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
           );
         })}
 
-        {filtered.length === 0 && (
+        {catalogItems.length === 0 && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center text-slate-400 italic">
             No items in this tab.
           </div>
         )}
       </div>
 
-      {/* Modal */}
+      {/* Catalogue Details Overlay */}
+      {selectedDetailsItem && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
+          <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="bg-white border-b border-slate-100 p-5 flex justify-between items-center sticky top-0 z-10">
+              <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800">
+                <Layers className="text-indigo-600" size={20} />
+                Catalogue Details
+              </h3>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => openModal(selectedDetailsItem.article)}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold rounded-xl transition-colors text-sm"
+                >
+                  <Edit2 size={16} /> Edit Article
+                </button>
+                <button
+                  onClick={() => setSelectedDetailsItem(null)}
+                  className="p-2 text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 md:p-8 overflow-y-auto flex-1">
+              <div className="flex flex-col sm:flex-row gap-8 items-start">
+                
+                {/* Image Section */}
+                <div className="w-full sm:w-1/3 shrink-0">
+                  <div className="aspect-square rounded-2xl border border-slate-200 overflow-hidden bg-slate-50 relative">
+                    <img 
+                      src={selectedDetailsItem.image || "https://picsum.photos/seed/kore/400/400"} 
+                      alt={selectedDetailsItem.name}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-xs font-bold text-slate-700 border border-slate-200/50 shadow-sm">
+                      {selectedDetailsItem.article.images?.length || 1} Photo{(selectedDetailsItem.article.images?.length || 1) !== 1 ? 's' : ''}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Details Section */}
+                <div className="w-full sm:w-2/3 space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-slate-900">{selectedDetailsItem.name}</h2>
+                    <div className="flex items-center gap-3 mt-2">
+                       <span className="text-sm font-mono tracking-widest text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                         {selectedDetailsItem.sku}
+                       </span>
+                    </div>
+                  </div>
+
+                  {/* Pricing Details */}
+                  <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
+                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">MRP</p>
+                        <p className="font-bold text-slate-800 text-lg">₹{Number(selectedDetailsItem.mrp || 0).toLocaleString()}</p>
+                     </div>
+                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Selling Price</p>
+                        <p className="font-bold text-slate-800 text-lg">
+                           ₹{selectedDetailsItem.variant?.sellingPrice || selectedDetailsItem.article.pricePerPair || 0}
+                        </p>
+                     </div>
+                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Cost Price</p>
+                        <p className="font-bold text-slate-800 text-lg">
+                           ₹{selectedDetailsItem.variant?.costPrice || 0}
+                        </p>
+                     </div>
+                  </div>
+
+                  {/* Core Classification */}
+                  <div className="grid grid-cols-3 gap-4">
+                     <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Category / Gender</p>
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${
+                            selectedDetailsItem.article.category === AssortmentType.MEN
+                              ? "bg-indigo-100 text-indigo-700"
+                              : selectedDetailsItem.article.category === AssortmentType.WOMEN
+                              ? "bg-pink-100 text-pink-700"
+                              : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          {selectedDetailsItem.article.category}
+                        </span>
+                     </div>
+                     <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Product Category</p>
+                        <p className="font-semibold text-slate-700 px-2 py-0.5 bg-slate-100 rounded-md inline-block text-xs">{selectedDetailsItem.article.productCategory || "—"}</p>
+                     </div>
+                     <div>
+                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Brand</p>
+                        <p className="font-semibold text-slate-700 px-2 py-0.5 bg-slate-100 rounded-md inline-block text-xs">{selectedDetailsItem.article.brand || "—"}</p>
+                     </div>
+                  </div>
+
+                  {/* Variant specifics */}
+                  <div className="grid grid-cols-4 gap-4">
+                     <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Color</p>
+                        <p className="font-semibold text-slate-700">{selectedDetailsItem.color || "—"}</p>
+                     </div>
+                     <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Sole Color</p>
+                        <p className="font-semibold text-slate-700">{selectedDetailsItem.article.soleColor || "—"}</p>
+                     </div>
+                     <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Size</p>
+                        <p className="font-semibold text-slate-700">{selectedDetailsItem.size || "—"}</p>
+                     </div>
+                     <div>
+                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">HSN Code</p>
+                        <p className="font-semibold text-slate-700">{selectedDetailsItem.variant?.hsnCode || "—"}</p>
+                     </div>
+                  </div>
+                  
+                  {/* Stock & Origin */}
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
+                     <div className="space-y-4">
+                       <div>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Available Pairs</p>
+                          <span
+                            className={`inline-block text-sm font-bold px-3 py-1 rounded-xl ${
+                              selectedDetailsItem.pairs === 0
+                                ? "bg-slate-100 text-slate-500"
+                                : selectedDetailsItem.pairs % 24 === 0
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                            }`}
+                          >
+                            {selectedDetailsItem.pairs || 0} Pairs
+                          </span>
+                       </div>
+                       
+                       <div>
+                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Manufacturer</p>
+                         <p className="font-semibold text-slate-700 text-sm">{selectedDetailsItem.article.manufacturer || "—"}</p>
+                       </div>
+                       
+                     </div>
+                     <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Catalogue Status</p>
+                        {(((selectedDetailsItem.article as any).catalogStatus as CatalogStatus) || "AVAILABLE") === "WISH" ? (
+                          <div>
+                            <span className="inline-block text-xs font-bold px-2 py-1 rounded-full bg-rose-50 text-rose-700 mb-1">
+                               Wish List
+                            </span>
+                            {(selectedDetailsItem.article as any).expectedAvailableDate ? (
+                              <p className="text-xs text-slate-500 font-medium">Expected: {(selectedDetailsItem.article as any).expectedAvailableDate}</p>
+                            ) : (
+                               <p className="text-xs text-rose-600 font-bold">Date Required</p>
+                            )}
+                          </div>
+                        ) : (
+                             <span className="inline-block text-xs font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
+                               Available
+                            </span>
+                        )}
+                     </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+      )}
+
+      {/* Edit Form Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
           <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl">

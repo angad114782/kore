@@ -190,32 +190,32 @@ const VendorManager: React.FC = () => {
     }));
   };
 
-  const addContactPerson = () => {
-    setFormData((prev) => ({
-      ...prev,
-      contactPersons: [...prev.contactPersons, emptyContact()],
-    }));
-  };
+  // const addContactPerson = () => {
+  //   setFormData((prev) => ({
+  //     ...prev,
+  //     contactPersons: [...prev.contactPersons, emptyContact()],
+  //   }));
+  // };
 
-  const removeContactPerson = (id: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      contactPersons: prev.contactPersons.filter((c) => c.id !== id),
-    }));
-  };
+  // const removeContactPerson = (id: string) => {
+  //   setFormData((prev) => ({
+  //     ...prev,
+  //     contactPersons: prev.contactPersons.filter((c) => c.id !== id),
+  //   }));
+  // };
 
-  const updateContactPerson = (
-    id: string,
-    field: keyof VendorContact,
-    value: string
-  ) => {
-    setFormData((prev) => ({
-      ...prev,
-      contactPersons: prev.contactPersons.map((c) =>
-        c.id === id ? { ...c, [field]: value } : c
-      ),
-    }));
-  };
+  // const updateContactPerson = (
+  //   id: string,
+  //   field: keyof VendorContact,
+  //   value: string
+  // ) => {
+  //   setFormData((prev) => ({
+  //     ...prev,
+  //     contactPersons: prev.contactPersons.map((c) =>
+  //       c.id === id ? { ...c, [field]: value } : c
+  //     ),
+  //   }));
+  // };
 
   const addBankDetail = () => {
     setFormData((prev) => ({
@@ -256,7 +256,6 @@ const VendorManager: React.FC = () => {
   const formTabs = [
     { key: "other", label: "Other Details", icon: <FileText size={14} /> },
     { key: "address", label: "Address", icon: <MapPin size={14} /> },
-    { key: "contacts", label: "Contact Persons", icon: <Users size={14} /> },
     { key: "bank", label: "Bank Details", icon: <Landmark size={14} /> },
   ];
 
@@ -719,162 +718,7 @@ const VendorManager: React.FC = () => {
             </div>
           )}
 
-          {/* ─── CONTACT PERSONS ─── */}
-          {activeFormTab === "contacts" && (
-            <div className="space-y-6">
-              {formData.contactPersons.length === 0 ? (
-                <div className="py-12 text-center">
-                  <div className="inline-flex p-4 bg-slate-50 rounded-full mb-4">
-                    <Users size={28} className="text-slate-300" />
-                  </div>
-                  <p className="text-slate-400 font-semibold text-sm mb-4">
-                    No contact persons added yet.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={addContactPerson}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-600/20"
-                  >
-                    <Plus size={16} />
-                    Add Contact Person
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {formData.contactPersons.map((cp, idx) => (
-                    <div
-                      key={cp.id}
-                      className="p-5 bg-slate-50/50 border border-slate-200 rounded-xl space-y-4 relative"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                          Contact #{idx + 1}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeContactPerson(cp.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className={labelClass}>Salutation</label>
-                          <select
-                            className={selectClass}
-                            value={cp.salutation}
-                            onChange={(e) =>
-                              updateContactPerson(
-                                cp.id,
-                                "salutation",
-                                e.target.value
-                              )
-                            }
-                          >
-                            <option value="">Select</option>
-                            <option>Mr.</option>
-                            <option>Ms.</option>
-                            <option>Mrs.</option>
-                            <option>Dr.</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className={labelClass}>First Name</label>
-                          <input
-                            type="text"
-                            className={inputClass}
-                            value={cp.firstName}
-                            onChange={(e) =>
-                              updateContactPerson(
-                                cp.id,
-                                "firstName",
-                                e.target.value
-                              )
-                            }
-                          />
-                        </div>
-                        <div>
-                          <label className={labelClass}>Last Name</label>
-                          <input
-                            type="text"
-                            className={inputClass}
-                            value={cp.lastName}
-                            onChange={(e) =>
-                              updateContactPerson(
-                                cp.id,
-                                "lastName",
-                                e.target.value
-                              )
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className={labelClass}>Email</label>
-                          <input
-                            type="email"
-                            className={inputClass}
-                            value={cp.email}
-                            onChange={(e) =>
-                              updateContactPerson(
-                                cp.id,
-                                "email",
-                                e.target.value
-                              )
-                            }
-                          />
-                        </div>
-                        <div>
-                          <label className={labelClass}>Work Phone</label>
-                          <input
-                            type="text"
-                            className={inputClass}
-                            value={cp.workPhone}
-                            onChange={(e) =>
-                              updateContactPerson(
-                                cp.id,
-                                "workPhone",
-                                e.target.value
-                              )
-                            }
-                          />
-                        </div>
-                        <div>
-                          <label className={labelClass}>Mobile</label>
-                          <input
-                            type="text"
-                            className={inputClass}
-                            value={cp.mobile}
-                            onChange={(e) =>
-                              updateContactPerson(
-                                cp.id,
-                                "mobile",
-                                e.target.value
-                              )
-                            }
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  <button
-                    type="button"
-                    onClick={addContactPerson}
-                    className="inline-flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
-                  >
-                    <Plus size={16} />
-                    Add Another Contact Person
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-
+    
           {/* ─── BANK DETAILS ─── */}
           {activeFormTab === "bank" && (
             <div className="space-y-6">

@@ -328,7 +328,7 @@ const App: React.FC = () => {
           />
         )}
 {activeTab === "po" && user.role === UserRole.ADMIN && (
-  <POPage articles={articles} addArticle={addArticle} updateArticle={updateArticle} />
+  <POPage articles={articles} />
 )}
 {activeTab === "grn" && user.role === UserRole.ADMIN && (
   <GRN />
