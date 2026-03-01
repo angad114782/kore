@@ -136,11 +136,16 @@ const ProductMaster: React.FC<ProductMasterProps> = ({ addArticle }) => {
           } else {
             const sizes = parseSizeRange(range);
             const sizeQuantities: Record<string, number> = {};
-            sizes.forEach((s) => (sizeQuantities[s] = 0));
+            const sizeSkus: Record<string, string> = {};
+            sizes.forEach((s) => {
+              sizeQuantities[s] = 0;
+              sizeSkus[s] = "";
+            });
             newVariants.push({
               id: `var-${color}-${range}-${Date.now()}`,
               itemName: `${formData.artname || "Item"}-${color}-${range}`,
               sku: "",
+              sizeSkus,
               color,
               sizeRange: range,
               costPrice: 0,
@@ -168,6 +173,15 @@ const ProductMaster: React.FC<ProductMasterProps> = ({ addArticle }) => {
       prev.map((v) => {
         if (v.id !== id) return v;
         return { ...v, sizeQuantities: { ...v.sizeQuantities, [size]: qty } };
+      })
+    );
+  };
+
+  const updateVariantSizeSku = (id: string, size: string, sku: string) => {
+    setVariants((prev) =>
+      prev.map((v) => {
+        if (v.id !== id) return v;
+        return { ...v, sizeSkus: { ...v.sizeSkus, [size]: sku } };
       })
     );
   };
@@ -201,7 +215,9 @@ const ProductMaster: React.FC<ProductMasterProps> = ({ addArticle }) => {
 
   const addSizeRange = () => {
     const trimmed = sizeRangeInput.trim();
-    if (trimmed && !sizeRanges.includes(trimmed)) {
+    // Regex for start-end format (e.g., 5-7, 10-12)
+    const rangeRegex = /^\d+-\d+$/;
+    if (trimmed && rangeRegex.test(trimmed) && !sizeRanges.includes(trimmed)) {
       setSizeRanges([...sizeRanges, trimmed]);
       setSizeRangeInput("");
     }
@@ -406,12 +422,13 @@ const ProductMaster: React.FC<ProductMasterProps> = ({ addArticle }) => {
                         placeholder="e.g. White"
                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium text-slate-800"
                         value={formData.soleColor}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const val = e.target.value;
                           setFormData({
                             ...formData,
-                            soleColor: e.target.value,
-                          })
-                        }
+                            soleColor: val.charAt(0).toUpperCase() + val.slice(1),
+                          });
+                        }}
                       />
                     </div>
                     <div>
@@ -477,7 +494,11 @@ const ProductMaster: React.FC<ProductMasterProps> = ({ addArticle }) => {
                         placeholder="e.g. Red"
                         className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium text-sm transition-all text-slate-800"
                         value={customColor}
-                        onChange={(e) => setCustomColor(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomColor(val.charAt(0).toUpperCase() + val.slice(1));
+                        }}
+                        onBlur={addColor}
                         onKeyDown={(e) =>
                           e.key === "Enter" && (e.preventDefault(), addColor())
                         }
@@ -520,7 +541,14 @@ const ProductMaster: React.FC<ProductMasterProps> = ({ addArticle }) => {
                         placeholder="e.g. 5-7"
                         className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium text-sm transition-all text-slate-800"
                         value={sizeRangeInput}
-                        onChange={(e) => setSizeRangeInput(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          // Only allow digits and hyphens
+                          if (/^[0-9-]*$/.test(val)) {
+                            setSizeRangeInput(val);
+                          }
+                        }}
+                        onBlur={addSizeRange}
                         onKeyDown={(e) =>
                           e.key === "Enter" &&
                           (e.preventDefault(), addSizeRange())
@@ -835,9 +863,6 @@ const ProductMaster: React.FC<ProductMasterProps> = ({ addArticle }) => {
                                   Item Name
                                 </th>
                                 <th className="px-3 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider whitespace-nowrap">
-                                  SKU
-                                </th>
-                                <th className="px-3 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider whitespace-nowrap">
                                   <div className="flex flex-col gap-0.5">
                                     Cost Price (₹)
                                     <button
@@ -869,9 +894,12 @@ const ProductMaster: React.FC<ProductMasterProps> = ({ addArticle }) => {
                                 {rangeSizes.map((size) => (
                                   <th
                                     key={size}
-                                    className="px-2 py-3 text-[10px] font-bold text-emerald-600 uppercase tracking-wider text-center whitespace-nowrap min-w-15"
+                                    className="px-2 py-3 text-[10px] font-bold text-emerald-600 uppercase tracking-wider text-center whitespace-nowrap min-w-20"
                                   >
-                                    {size}
+                                    <div className="flex flex-col">
+                                      <span>Size {size}</span>
+                                      <span className="text-[8px] text-slate-400 font-medium">Qty / SKU</span>
+                                    </div>
                                   </th>
                                 ))}
                                 <th className="px-3 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider whitespace-nowrap">
@@ -921,22 +949,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({ addArticle }) => {
                                       }
                                     />
                                   </td>
-                                  {/* SKU */}
-                                  <td className="px-3 py-2.5">
-                                    <input
-                                      type="text"
-                                      placeholder="Auto"
-                                      className="w-full min-w-22.5 p-2 bg-transparent border border-slate-200 rounded-lg text-xs text-slate-500 outline-none focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-300 transition-all"
-                                      value={variant.sku}
-                                      onChange={(e) =>
-                                        updateVariantField(
-                                          variant.id,
-                                          "sku",
-                                          e.target.value
-                                        )
-                                      }
-                                    />
-                                  </td>
+
                                   {/* Cost Price */}
                                   <td className="px-3 py-2.5">
                                     <input
@@ -975,22 +988,37 @@ const ProductMaster: React.FC<ProductMasterProps> = ({ addArticle }) => {
                                       key={size}
                                       className="px-2 py-2.5 text-center"
                                     >
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        placeholder="0"
-                                        className="w-full min-w-12.5 p-2 bg-emerald-50/50 border border-emerald-200/50 rounded-lg text-xs font-bold text-emerald-800 text-center outline-none focus:ring-1 focus:ring-emerald-400/30 focus:border-emerald-400 transition-all"
-                                        value={
-                                          variant.sizeQuantities[size] || ""
-                                        }
-                                        onChange={(e) =>
-                                          updateVariantSizeQty(
-                                            variant.id,
-                                            size,
-                                            Number(e.target.value)
-                                          )
-                                        }
-                                      />
+                                      <div className="flex flex-col gap-1.5">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          placeholder="Qty"
+                                          className="w-full min-w-12.5 p-2 bg-emerald-50/50 border border-emerald-200/50 rounded-lg text-xs font-bold text-emerald-800 text-center outline-none focus:ring-1 focus:ring-emerald-400/30 focus:border-emerald-400 transition-all"
+                                          value={
+                                            variant.sizeQuantities[size] || ""
+                                          }
+                                          onChange={(e) =>
+                                            updateVariantSizeQty(
+                                              variant.id,
+                                              size,
+                                              Number(e.target.value)
+                                            )
+                                          }
+                                        />
+                                        <input
+                                          type="text"
+                                          placeholder="SKU"
+                                          className="w-full min-w-12.5 p-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] font-medium text-slate-600 text-center outline-none focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-300 transition-all"
+                                          value={variant.sizeSkus[size] || ""}
+                                          onChange={(e) =>
+                                            updateVariantSizeSku(
+                                              variant.id,
+                                              size,
+                                              e.target.value
+                                            )
+                                          }
+                                        />
+                                      </div>
                                     </td>
                                   ))}
                                   {/* MRP */}
@@ -1059,7 +1087,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({ addArticle }) => {
               type="button"
               className="flex-1 sm:flex-none px-6 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition-all shadow-sm"
             >
-              Discard Clear
+              Save as Draft
             </button>
             <button
               type="submit"

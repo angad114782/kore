@@ -26,7 +26,8 @@ export interface SizeBreakup {
 export interface Variant {
   id: string;
   itemName: string;
-  sku: string;
+  sku?: string;
+  sizeSkus: Record<string, string>;
   color: string;
   sizeRange: string;
   costPrice: number;
@@ -116,4 +117,61 @@ export interface MovementRecord {
   cartonCount: number;
   date: string;
   note: string;
+}
+
+// Vendor-related types
+export interface VendorAddress {
+  attention: string;
+  country: string;
+  address1: string;
+  address2: string;
+  city: string;
+  state: string;
+  pinCode: string;
+  phone: string;
+  fax: string;
+}
+
+export interface VendorContact {
+  id: string;
+  salutation: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  workPhone: string;
+  mobile: string;
+}
+
+export interface VendorBankDetail {
+  id: string;
+  accountHolderName: string;
+  bankName: string;
+  accountNumber: string;
+  ifsc: string;
+}
+
+export interface Vendor {
+  id: string;
+  salutation: string;
+  firstName: string;
+  lastName: string;
+  companyName: string;
+  displayName: string;
+  email: string;
+  workPhone: string;
+  mobile: string;
+  // Other Details
+  pan: string;
+  msmeRegistered: boolean;
+  currency: string;
+  paymentTerms: string;
+  tds: string;
+  enablePortal: boolean;
+  // Addresses
+  billingAddress: VendorAddress;
+  shippingAddress: VendorAddress;
+  // Contact Persons
+  contactPersons: VendorContact[];
+  // Bank Details
+  bankDetails: VendorBankDetail[];
 }

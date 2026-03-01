@@ -24,6 +24,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Receipt,
 } from "lucide-react";
 
 import { User, UserRole } from "../../types";
@@ -56,7 +57,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   setIsCollapsed,
 }) => {
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>({
-    manufacturing: true,
+    purchases: true,
     inventory: true,
     sales: true,
     partners: true,
@@ -194,10 +195,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div className="pt-2">
                   <GroupHeader
                     icon={<Factory size={16} />}
-                    label="Manufacturing"
-                    groupKey="manufacturing"
+                    label="Purchases"
+                    groupKey="purchases"
                   />
-                  {!isCollapsed && openGroups.manufacturing && (
+                  {!isCollapsed && openGroups.purchases && (
                     <div className="mt-1 ml-2 space-y-1 border-l border-slate-100 pl-3">
                       <NavItem
                         icon={<FileText size={18} />}
@@ -212,6 +213,22 @@ const Sidebar: React.FC<SidebarProps> = ({
                         label="GRN"
                         active={activeTab === "grn"}
                         onClick={() => go("grn")}
+                        compact
+                        isCollapsed={isCollapsed}
+                      />
+                      <NavItem
+                        icon={<Truck size={18} />}
+                        label="Vendors"
+                        active={activeTab === "vendors"}
+                        onClick={() => go("vendors")}
+                        compact
+                        isCollapsed={isCollapsed}
+                      />
+                      <NavItem
+                        icon={<Receipt size={18} />}
+                        label="Bills"
+                        active={activeTab === "bills"}
+                        onClick={() => go("bills")}
                         compact
                         isCollapsed={isCollapsed}
                       />

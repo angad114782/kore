@@ -25,6 +25,7 @@ import Auth from "./components/Auth";
 import POPage from "./components/Admin/POPage";
 import GRN from "./components/Admin/GRN";
 import ProductMaster from "./components/Admin/ProductMaster";
+import VendorManager from "./components/Admin/VendorManager";
 
 // ✅ NEW: Sidebar component (create this file separately)
 import Sidebar from "./components/Layout/Sidebar";
@@ -331,6 +332,9 @@ const App: React.FC = () => {
 )}
 {activeTab === "grn" && user.role === UserRole.ADMIN && (
   <GRN />
+)}
+{activeTab === "vendors" && user.role === UserRole.ADMIN && (
+  <VendorManager />
 )}
         {activeTab === "master_inventory" && user.role === UserRole.ADMIN && (
           <MasterInventory
