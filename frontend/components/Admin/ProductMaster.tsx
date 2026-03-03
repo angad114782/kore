@@ -16,6 +16,9 @@ import {
   Copy,
   Trash2,
   Grid3X3,
+  GripVertical,
+  Star,
+  ArrowUp,
 } from "lucide-react";
 import { AssortmentType, Article, Variant } from "../../types";
 import { ASSORTMENTS } from "../../constants";
@@ -62,6 +65,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [customColor, setCustomColor] = useState("");
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   // Size Ranges & Variants
   const [sizeRanges, setSizeRanges] = useState<string[]>([]);
@@ -218,7 +222,12 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
             const sizeSkus: Record<string, string> = {};
             sizes.forEach((s) => {
               sizeQuantities[s] = 0;
-              sizeSkus[s] = "";
+              // Auto-generate SKU: ArtName-Color-Size
+              const artNameSlug = (formData.artname || "Item")
+                .toLowerCase()
+                .replace(/\s+/g, "-");
+              const colorSlug = color.toLowerCase().replace(/\s+/g, "-");
+              sizeSkus[s] = `${artNameSlug}-${colorSlug}-${s}`;
             });
             newVariants.push({
               id: `var-${color}-${range}-${Date.now()}`,
@@ -372,17 +381,107 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
     }
   };
 
-  // Image handler (multiple images)
+  // Image handler (multiple images) — appends to existing
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length) {
       const previews = files.map((f) => URL.createObjectURL(f));
-      setFormData({
-        ...formData,
-        images: files,
-        imagePreviews: previews,
-      });
+      setFormData((prev) => ({
+        ...prev,
+        images: [...prev.images, ...files],
+        imagePreviews: [...prev.imagePreviews, ...previews],
+      }));
+      // Reset file input so re-selecting same files works
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  };
+
+  // Remove a single image by index
+  const removeImage = (idx: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== idx),
+      imagePreviews: prev.imagePreviews.filter((_, i) => i !== idx),
+    }));
+  };
+
+  // Reorder images via drag
+  const handleImageDrop = (dropIdx: number) => {
+    if (dragIndex === null || dragIndex === dropIdx) return;
+    setFormData((prev) => {
+      const newPreviews = [...prev.imagePreviews];
+      const newImages = [...prev.images];
+      // Move preview
+      const [movedPreview] = newPreviews.splice(dragIndex, 1);
+      newPreviews.splice(dropIdx, 0, movedPreview);
+      // Move file (if exists at that index)
+      if (newImages.length > dragIndex) {
+        const [movedFile] = newImages.splice(dragIndex, 1);
+        newImages.splice(dropIdx, 0, movedFile);
+      }
+      return { ...prev, images: newImages, imagePreviews: newPreviews };
+    });
+    setDragIndex(null);
+  };
+
+  // Move image to position 0 (set as cover)
+  const setAsCover = (idx: number) => {
+    if (idx === 0) return;
+    setFormData((prev) => {
+      const newPreviews = [...prev.imagePreviews];
+      const newImages = [...prev.images];
+      const [movedPreview] = newPreviews.splice(idx, 1);
+      newPreviews.unshift(movedPreview);
+      if (newImages.length > idx) {
+        const [movedFile] = newImages.splice(idx, 1);
+        newImages.unshift(movedFile);
+      }
+      return { ...prev, images: newImages, imagePreviews: newPreviews };
+    });
+  };
+
+  // Touch drag support for mobile
+  const touchDragRef = useRef<{ startIdx: number; startY: number; startX: number } | null>(null);
+  const imageGridRef = useRef<HTMLDivElement>(null);
+
+  const handleTouchStart = (idx: number, e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchDragRef.current = { startIdx: idx, startY: touch.clientY, startX: touch.clientX };
+    setDragIndex(idx);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    // Prevent scroll while dragging
+    if (touchDragRef.current) {
+      e.preventDefault();
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchDragRef.current || !imageGridRef.current) {
+      setDragIndex(null);
+      touchDragRef.current = null;
+      return;
+    }
+    const touch = e.changedTouches[0];
+    const elements = imageGridRef.current.querySelectorAll('[data-img-idx]');
+    let dropIdx: number | null = null;
+    elements.forEach((el) => {
+      const rect = el.getBoundingClientRect();
+      if (
+        touch.clientX >= rect.left &&
+        touch.clientX <= rect.right &&
+        touch.clientY >= rect.top &&
+        touch.clientY <= rect.bottom
+      ) {
+        dropIdx = parseInt(el.getAttribute('data-img-idx') || '-1');
+      }
+    });
+    if (dropIdx !== null && dropIdx >= 0) {
+      handleImageDrop(dropIdx);
+    }
+    setDragIndex(null);
+    touchDragRef.current = null;
   };
 
   const toggleSize = (size: string) => {
@@ -553,9 +652,10 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
                       placeholder="e.g. Urban Runner X1"
                       className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium text-slate-800"
                       value={formData.artname}
-                      onChange={(e) =>
-                        setFormData({ ...formData, artname: e.target.value })
-                      }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData({ ...formData, artname: val.charAt(0).toUpperCase() + val.slice(1) });
+                      }}
                     />
                   </div>
 
@@ -820,56 +920,102 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
                 </h3>
 
                 <div>
-                  {/* container that will trigger file chooser on click */}
-                  <div
-                    className="grid grid-cols-2 gap-2 mb-2 cursor-pointer"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    {formData.imagePreviews.map((src, idx) => (
-                      <div key={idx} className="relative">
-                        <img
-                          src={src}
-                          className="w-full h-24 object-cover rounded-xl border"
-                          alt={`Preview ${idx + 1}`}
-                        />
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            // prevent the container click from firing
-                            e.stopPropagation();
-                            const newPre = formData.imagePreviews.filter(
-                              (_, i) => i !== idx
-                            );
-                            const newFiles = formData.images.filter(
-                              (_, i) => i !== idx
-                            );
-                            setFormData({
-                              ...formData,
-                              imagePreviews: newPre,
-                              images: newFiles,
-                            });
-                          }}
-                          className="absolute top-1 right-1 p-1 bg-white/90 text-rose-500 rounded-full shadow-sm hover:bg-rose-50 transition-all"
+                  {formData.imagePreviews.length > 0 ? (
+                    <div ref={imageGridRef} className="grid grid-cols-3 gap-3 mb-3">
+                      {formData.imagePreviews.map((src, idx) => (
+                        <div
+                          key={idx}
+                          data-img-idx={idx}
+                          draggable
+                          onDragStart={() => setDragIndex(idx)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => handleImageDrop(idx)}
+                          onTouchStart={(e) => handleTouchStart(idx, e)}
+                          onTouchMove={handleTouchMove}
+                          onTouchEnd={handleTouchEnd}
+                          className={`relative group rounded-xl border-2 overflow-hidden transition-all cursor-grab active:cursor-grabbing ${
+                            dragIndex === idx
+                              ? "border-indigo-400 opacity-50 scale-95"
+                              : idx === 0
+                              ? "border-indigo-500 shadow-md shadow-indigo-500/10"
+                              : "border-slate-200 hover:border-slate-300"
+                          }`}
                         >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                    {formData.imagePreviews.length === 0 && (
-                      <div className="aspect-square w-full rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center transition-all group-hover:border-indigo-400 group-hover:bg-indigo-50/50">
-                        <div className="p-4 bg-white rounded-full shadow-sm border border-slate-100 text-slate-400 group-hover:text-indigo-500 group-hover:scale-110 transition-transform mb-3">
-                          <ImageIcon size={28} />
+                          <img
+                            src={src}
+                            className="w-full h-28 object-cover"
+                            alt={`Preview ${idx + 1}`}
+                            draggable={false}
+                          />
+                          {/* Cover badge */}
+                          {idx === 0 && (
+                            <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-2 py-0.5 bg-indigo-600 text-white rounded-full text-[9px] font-bold shadow-lg">
+                              <Star size={9} fill="currentColor" /> Cover
+                            </div>
+                          )}
+                          {/* Set as Cover button — visible on mobile, hover on desktop */}
+                          {idx !== 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAsCover(idx);
+                              }}
+                              className="absolute top-1.5 left-1.5 flex items-center gap-1 px-2 py-1 bg-white/90 backdrop-blur-sm text-indigo-600 rounded-full text-[9px] font-bold shadow-sm hover:bg-indigo-50 transition-all sm:opacity-0 sm:group-hover:opacity-100"
+                            >
+                              <ArrowUp size={10} /> Set Cover
+                            </button>
+                          )}
+
+                          {/* Remove button — visible on mobile, hover on desktop */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeImage(idx);
+                            }}
+                            className="absolute top-1.5 right-1.5 p-1 bg-white/90 backdrop-blur-sm text-rose-500 rounded-full shadow-sm hover:bg-rose-50 transition-all sm:opacity-0 sm:group-hover:opacity-100"
+                          >
+                            <X size={12} />
+                          </button>
+                          {/* Index badge */}
+                          <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 bg-black/50 backdrop-blur-sm text-white rounded-md text-[9px] font-bold">
+                            {idx + 1}
+                          </div>
                         </div>
-                        <p className="text-xs text-slate-500 font-bold">
-                          Click to upload image
-                        </p>
-                        <p className="text-[10px] text-slate-400 mt-1">
-                          PNG, JPG up to 5MB
-                        </p>
+                      ))}
+                      {/* Add more tile */}
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex flex-col items-center justify-center h-28 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/50 transition-all group"
+                      >
+                        <div className="p-2 bg-white rounded-full shadow-sm border border-slate-100 text-slate-400 group-hover:text-indigo-500 group-hover:scale-110 transition-transform mb-1.5">
+                          <Plus size={18} />
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-bold group-hover:text-indigo-600">Add More</p>
                       </div>
-                    )}
-                  </div>
-                  {/* hidden input used by click handler */}
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="aspect-[4/3] w-full rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/50 transition-all group"
+                    >
+                      <div className="p-4 bg-white rounded-full shadow-sm border border-slate-100 text-slate-400 group-hover:text-indigo-500 group-hover:scale-110 transition-transform mb-3">
+                        <ImageIcon size={28} />
+                      </div>
+                      <p className="text-xs text-slate-500 font-bold group-hover:text-indigo-600">
+                        Click to upload images
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        PNG, JPG up to 5MB · Drag to reorder
+                      </p>
+                    </div>
+                  )}
+                  {formData.imagePreviews.length > 0 && (
+                    <p className="text-[10px] text-slate-400 font-medium text-center">
+                      Drag images to reorder · First image is the cover
+                    </p>
+                  )}
                   <input
                     ref={fileInputRef}
                     type="file"

@@ -35,6 +35,14 @@ exports.list = async (Model, query) => {
     filter.name = { $regex: q, $options: "i" };
   }
 
+  // Apply other query fields (e.g. categoryId)
+  Object.keys(query).forEach(key => {
+    if (['q', 'isActive', 'page', 'limit'].includes(key)) return;
+    if (query[key] !== undefined && query[key] !== '') {
+      filter[key] = query[key];
+    }
+  });
+
   const skip = (Number(page) - 1) * Number(limit);
 
   const [items, total] = await Promise.all([

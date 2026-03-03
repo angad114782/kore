@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, UserPlus, Search, Shield, Mail, Trash2, 
-  MoreVertical, AlertCircle, CheckCircle2, X, Edit3
+  MoreVertical, AlertCircle, CheckCircle2, X, Edit3,
+  Edit
 } from 'lucide-react';
 import { userService } from '../../services/userService';
 import { User, UserRole } from '../../types';
@@ -66,12 +67,17 @@ const UserManager: React.FC = () => {
     try {
       if (editingUser) {
         // Update
+        const userId = editingUser.id || (editingUser as any)._id;
+        if (!userId) {
+          throw new Error("Cannot update: User ID is missing");
+        }
+        
         const updateData: any = { 
           name: formData.name, 
           email: formData.email, 
           role: formData.role 
         };
-        await userService.updateUser(editingUser.id, updateData);
+        await userService.updateUser(userId, updateData);
         setSuccess('User updated successfully');
       } else {
         // Create
@@ -277,7 +283,7 @@ const UserManager: React.FC = () => {
                               className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                               title="Edit User Role"
                             >
-                              <Shield size={18} />
+                              <Edit size={18} />
                             </button>
                             <button 
                               onClick={() => handleDeleteUser(user.id)}
@@ -288,9 +294,7 @@ const UserManager: React.FC = () => {
                             </button>
                           </>
                         )}
-                        <button className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-all">
-                          <MoreVertical size={18} />
-                        </button>
+                       
                       </div>
                     </td>
                   </tr>

@@ -71,14 +71,15 @@ export const masterCatalogService = {
     });
   },
 
-  async listBrands() {
-    return apiFetch("/brands");
+  async listBrands(categoryId?: string) {
+    const query = categoryId ? `?categoryId=${categoryId}` : "";
+    return apiFetch(`/brands${query}`);
   },
 
-  async createBrand(name: string) {
+  async createBrand(name: string, categoryId?: string) {
     return apiFetch("/brands", {
       method: "POST",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, categoryId }),
     });
   },
 

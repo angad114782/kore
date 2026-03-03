@@ -1,5 +1,5 @@
 // src/pages/Admin/CatalogueManager.tsx
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   Plus,
   Search,
@@ -15,6 +15,8 @@ import {
   ArrowRightLeft,
   CalendarDays,
   Package,
+  ChevronDown,
+  Palette,
 } from "lucide-react";
 import { Article, AssortmentType } from "../../types";
 
@@ -22,17 +24,13 @@ type CatalogStatus = "AVAILABLE" | "WISHLIST";
 
 type CatalogueForm = {
   name: string;
-  category: AssortmentType; // gender
+  category: AssortmentType;
   mrp: number;
-
-  sizeRange: string; // "4-8"
-  sizeBreakup: Record<string, number>; // { "4": 0, "5": 6, ... }
-
-  images: File[]; // files
-  catalogStatus: CatalogStatus; // AVAILABLE / WISH
-
-  // ✅ only required when catalogStatus === "WISHLIST"
-  expectedAvailableDate: string; // "YYYY-MM-DD"
+  sizeRange: string;
+  sizeBreakup: Record<string, number>;
+  images: File[];
+  catalogStatus: CatalogStatus;
+  expectedAvailableDate: string;
 };
 
 interface CatalogueManagerProps {
@@ -41,6 +39,7 @@ interface CatalogueManagerProps {
   updateArticle: (article: Article) => void;
   deleteArticle: (id: string) => void;
   onEditArticle: (id: string) => void;
+  onViewVariant: (articleId: string, variantId: string) => void;
 }
 
 const CatalogueManager: React.FC<CatalogueManagerProps> = ({
@@ -49,16 +48,13 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   updateArticle,
   deleteArticle,
   onEditArticle,
+  onViewVariant,
 }) => {
   const [activeTab, setActiveTab] = useState<CatalogStatus>("AVAILABLE");
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
-  
-  // New state for Catalogue Details overlay
-  const [selectedDetailsItem, setSelectedDetailsItem] = useState<any | null>(null);
-
-  // preview urls for selected files / saved urls
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
 
   const [formData, setFormData] = useState<CatalogueForm>({
@@ -71,6 +67,14 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
     catalogStatus: "WISHLIST",
     expectedAvailableDate: "",
   });
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsModalOpen(false);
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, []);
 
   // ---------- Helpers ----------
   const capFirst = (v: string) => {
@@ -115,17 +119,13 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   // ---------- Image ----------
   const handleImageSelect = (files: FileList | null) => {
     if (!files) return;
-
     const fileArray = Array.from(files).filter((f) => f.type.startsWith("image/"));
     if (fileArray.length === 0) return;
-
     const previewUrls = fileArray.map((file) => URL.createObjectURL(file));
-
     setFormData((prev) => ({
       ...prev,
       images: [...(prev.images || []), ...fileArray],
     }));
-
     setImagePreviews((prev) => [...prev, ...previewUrls]);
   };
 
@@ -135,7 +135,6 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
       updated.splice(index, 1);
       return { ...prev, images: updated };
     });
-
     setImagePreviews((prev) => {
       const updated = [...prev];
       const removed = updated.splice(index, 1)[0];
@@ -144,105 +143,50 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
     });
   };
 
-  // ✅ Only allow move: WISH -> AVAILABLE
   const moveWishToAvailable = (article: Article) => {
-    const status = (((article as any).catalogStatus as CatalogStatus) || "AVAILABLE") as CatalogStatus;
+    const status = (article.status || "AVAILABLE") as CatalogStatus;
     if (status !== "WISHLIST") return;
-
     const updated: Article = {
       ...article,
-      // @ts-ignore
-      catalogStatus: "AVAILABLE",
-      // @ts-ignore (once in catalog, date not needed)
-      expectedAvailableDate: "",
+      status: "AVAILABLE",
+      expectedDate: "",
     };
     updateArticle(updated);
   };
 
-  // ---------- Data Views ----------
-  const catalogItems = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    const result: any[] = [];
+  // ---------- Toggle Accordion ----------
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
-    articles
-      .filter((a) => {
-        const status = (a.status || "AVAILABLE") as CatalogStatus;
-        return status === activeTab;
-      })
-      .forEach((a) => {
-        if (a.variants && a.variants.length > 0) {
-          a.variants.forEach((v) => {
-            const sizes = Object.keys(v.sizeSkus || {});
-            if (sizes.length > 0) {
-              sizes.forEach((s) => {
-                const sku = v.sizeSkus[s] || a.sku;
-                const baseName = v.itemName || `${a.name} - ${v.color}`;
-                const fullName = `${baseName} - Size ${s}`;
-                
-                if (q && !fullName.toLowerCase().includes(q) && !sku.toLowerCase().includes(q)) return;
-                
-                result.push({
-                  id: `${a.id}-${v.id}-${s}`,
-                  article: a,
-                  variant: v,
-                  name: fullName,
-                  sku: sku,
-                  color: v.color,
-                  size: s,
-                  mrp: v.mrp || v.sellingPrice || a.pricePerPair || 0,
-                  pairs: (v.sizeQuantities && v.sizeQuantities[s]) || 0,
-                  image: a.imageUrl || "",
-                });
-              });
-            } else {
-              const sku = v.sku || a.sku;
-              const name = v.itemName || `${a.name} - ${v.color}`;
-              
-              if (q && !name.toLowerCase().includes(q) && !sku.toLowerCase().includes(q)) return;
-              
-              result.push({
-                id: `${a.id}-${v.id}`,
-                article: a,
-                variant: v,
-                name: name,
-                sku: sku,
-                color: v.color,
-                size: "—",
-                mrp: v.mrp || v.sellingPrice || a.pricePerPair || 0,
-                pairs: 0,
-                image: a.imageUrl || "",
-              });
-            }
-          });
-        } else {
-          if (q && !(a.name || "").toLowerCase().includes(q) && !(a.sku || "").toLowerCase().includes(q)) return;
-          
-          let pairs = 0;
-          if ((a as any).sizeBreakup) {
-             const breakups = Object.values((a as any).sizeBreakup);
-             pairs = breakups.reduce((sum: number, val: any) => sum + (Number(val) || 0), 0) as number;
-          }
-          
-          result.push({
-            id: a.id,
-            article: a,
-            variant: null,
-            name: a.name,
-            sku: a.sku,
-            color: "",
-            size: a.selectedSizes?.join(", ") || "—",
-            mrp: Number((a as any).mrp || a.pricePerPair || 0),
-            pairs: pairs,
-            image: a.imageUrl || "",
-          });
-        }
-      });
-      return result;
+  // ---------- Data: filtered master articles ----------
+  const filteredMasters = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    return articles.filter((a) => {
+      const status = (a.status || "AVAILABLE") as CatalogStatus;
+      if (status !== activeTab) return false;
+      if (!q) return true;
+      // Match on article name, sku, or any variant name/sku
+      if ((a.name || "").toLowerCase().includes(q)) return true;
+      if ((a.sku || "").toLowerCase().includes(q)) return true;
+      if (a.variants?.some((v) => {
+        const vName = v.itemName || `${a.name} - ${v.color}`;
+        if (vName.toLowerCase().includes(q)) return true;
+        if ((v.sku || "").toLowerCase().includes(q)) return true;
+        if (Object.values(v.sizeSkus || {}).some((sk) => sk.toLowerCase().includes(q))) return true;
+        return false;
+      })) return true;
+      return false;
+    });
   }, [articles, activeTab, searchTerm]);
 
   // ---------- Modal ----------
   const openModal = (article?: Article) => {
-    // cleanup old blob previews
     setImagePreviews((prev) => {
       prev.forEach((u) => {
         if (u.startsWith("blob:")) URL.revokeObjectURL(u);
@@ -252,10 +196,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
 
     if (article) {
       setEditingArticle(article);
-
-      const status: CatalogStatus =
-        ((article as any).catalogStatus as CatalogStatus) || "AVAILABLE";
-
+      const status: CatalogStatus = (article.status as CatalogStatus) || "AVAILABLE";
       setFormData({
         name: article.name || "",
         category: article.category,
@@ -266,7 +207,6 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
         catalogStatus: status,
         expectedAvailableDate: String((article as any).expectedAvailableDate || ""),
       });
-
       const savedUrls: string[] = (article as any).images || [];
       if (savedUrls.length) setImagePreviews(savedUrls);
     } else {
@@ -278,38 +218,26 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
         sizeRange: "",
         sizeBreakup: {},
         images: [],
-        // ✅ default WISH, and user will select before submit
         catalogStatus: "WISHLIST",
         expectedAvailableDate: "",
       });
     }
-
-    // if editing from Details view, close details view first.
-    setSelectedDetailsItem(null);
     setIsModalOpen(true);
   };
 
   const closeModal = () => setIsModalOpen(false);
 
-  // ✅ Manual catalogue submit
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!formData.name.trim()) return alert("Article name required");
     if (formData.mrp <= 0) return alert("MRP must be > 0");
-
     if (Object.keys(formData.sizeBreakup || {}).length > 0 && !isValidMultiple) {
       return alert("Total pairs must be 24, 48, 72... (multiple of 24)");
     }
-
-    // ✅ if WISH → expected date required
     if (formData.catalogStatus === "WISHLIST" && !formData.expectedAvailableDate) {
       return alert("Expected available date is required for Wish List items.");
     }
-
-    // ✅ store preview urls for now (later replace by backend URLs)
     const storedImages: string[] = imagePreviews;
-
     const payload: Article = {
       id: editingArticle ? editingArticle.id : `art-${Date.now()}`,
       sku: editingArticle?.sku || `CAT-${Date.now().toString().slice(-6)}`,
@@ -325,17 +253,18 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
       sizeBreakup: formData.sizeBreakup || {},
       // @ts-ignore
       images: storedImages,
-      // @ts-ignore
-      catalogStatus: formData.catalogStatus,
-      // @ts-ignore
-      expectedAvailableDate:
-        formData.catalogStatus === "WISHLIST" ? formData.expectedAvailableDate : "",
+      status: formData.catalogStatus,
+      expectedDate: formData.catalogStatus === "WISHLIST" ? formData.expectedAvailableDate : "",
     };
-
     if (editingArticle) updateArticle(payload);
     else addArticle(payload);
-
     setIsModalOpen(false);
+  };
+
+  // ---------- Render helpers ----------
+  const imgSrc = (url: string | undefined) => {
+    if (!url) return "https://picsum.photos/seed/kore/200/200";
+    return url.startsWith("http") ? url : `http://localhost:5005${url}`;
   };
 
   return (
@@ -349,26 +278,23 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
           <div>
             <h3 className="text-xl font-bold text-slate-900">Catalogue</h3>
             <p className="text-sm text-slate-500">
-              Master Catalogue • 2 Tabs: <b>Available</b> + <b>Wish</b>
+              {filteredMasters.length} Master{filteredMasters.length !== 1 ? "s" : ""} •{" "}
+              <b>{activeTab === "AVAILABLE" ? "Available" : "Wish List"}</b>
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2 w-full lg:w-auto">
           <div className="relative flex-1 lg:w-72">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              size={18}
-            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               type="text"
-              placeholder="Search SKU or Name..."
+              placeholder="Search master, variant or SKU..."
               className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-
           <button
             onClick={() => openModal()}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
@@ -405,512 +331,296 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
         </button>
       </div>
 
-      {/* Table (desktop) */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hidden md:block">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[950px]">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Article
-                </th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Gender
-                </th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  MRP
-                </th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Assortment
-                </th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Pairs
-                </th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Expected Date
-                </th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">
-                  Actions
-                </th>
-              </tr>
-            </thead>
+      {/* Master Articles List */}
+      <div className="space-y-3">
+        {filteredMasters.length === 0 && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center">
+            <Package className="mx-auto text-slate-300 mb-3" size={40} />
+            <p className="text-slate-400 font-medium">No items in this tab.</p>
+          </div>
+        )}
 
-            <tbody className="divide-y divide-slate-100">
-              {catalogItems.map((item) => {
-                const a = item.article;
-                const status: CatalogStatus =
-                  ((a as any).catalogStatus as CatalogStatus) || "AVAILABLE";
-
-                const mrp = Number(item.mrp || 0);
-                const pairs = item.pairs || 0;
-                const expectedDate = String((a as any).expectedAvailableDate || "");
-                const cover = item.image || "https://picsum.photos/seed/kore/200/200";
-
-                return (
-                  <tr
-                    key={item.id}
-                    onClick={() => setSelectedDetailsItem(item)}
-                    className="hover:bg-slate-50/50 transition-colors cursor-pointer"
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-4">
-                        <img
-                          src={cover ? (cover.startsWith('http') ? cover : `http://localhost:5005${cover}`) : "https://picsum.photos/seed/kore/200/200"}
-                          alt=""
-                          className="w-12 h-12 rounded-xl object-cover border border-slate-100"
-                        />
-                        <div>
-                          <p className="font-bold text-slate-900">{item.name}</p>
-                          <p className="text-[10px] text-slate-400 font-mono tracking-widest">
-                            {item.sku}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                          a.category === AssortmentType.MEN
-                            ? "bg-indigo-50 text-indigo-600"
-                            : a.category === AssortmentType.WOMEN
-                            ? "bg-pink-50 text-pink-600"
-                            : "bg-amber-50 text-amber-600"
-                        }`}
-                      >
-                        {a.category}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <span className="font-bold text-slate-800">
-                        ₹{mrp.toLocaleString()}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4 text-sm text-slate-700">
-                      <div className="font-semibold">
-                        {item.size || <span className="text-slate-400 italic">—</span>}
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <span
-                        className={`text-xs font-bold px-2 py-1 rounded-full ${
-                          pairs === 0
-                            ? "bg-slate-100 text-slate-500"
-                            : pairs % 24 === 0
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-indigo-50 text-indigo-700"
-                        }`}
-                      >
-                        {pairs || 0}
-                      </span>
-                    </td>
-
-
-                    <td className="px-6 py-4 text-sm">
-                      {status === "WISHLIST" ? (
-                        expectedDate ? (
-                          <span className="font-semibold text-slate-700">
-                            {expectedDate}
-                          </span>
-                        ) : (
-                          <span className="text-rose-600 font-bold text-xs">
-                            Required
-                          </span>
-                        )
-                      ) : (
-                        <span className="text-slate-400">—</span>
-                      )}
-                    </td>
-
-                    <td className="px-6 py-4 text-right">
-                      <div className="inline-flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => onEditArticle(a.id)}
-                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                          title="Edit Product"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-
-                        {/* ✅ Only WISH -> AVAILABLE */}
-                        <button
-                          onClick={() => moveWishToAvailable(a)}
-                          disabled={status !== "WISHLIST"}
-                          className={`p-2 rounded-xl transition-all ${
-                            status === "WISHLIST"
-                              ? "text-slate-400 hover:text-slate-900 hover:bg-slate-100"
-                              : "text-slate-300 cursor-not-allowed"
-                          }`}
-                          title={
-                            status === "WISHLIST"
-                              ? "Move Wish → Catalogue"
-                              : "Catalogue → Wish not allowed"
-                          }
-                        >
-                          <ArrowRightLeft size={16} />
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            if (window.confirm(`Delete ${a.name}?`)) deleteArticle(a.id);
-                          }}
-                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
-                          title="Delete"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {catalogItems.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-6 py-12 text-center text-slate-400 italic"
-                  >
-                    No items in this tab.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Cards (mobile) */}
-      <div className="md:hidden space-y-3">
-        {catalogItems.map((item) => {
-          const a = item.article;
-          const status: CatalogStatus =
-            ((a as any).catalogStatus as CatalogStatus) || "AVAILABLE";
-          const mrp = Number(item.mrp || 0);
-          const pairs = item.pairs || 0;
-          const expectedDate = String((a as any).expectedAvailableDate || "");
-          const cover = item.image || "https://picsum.photos/seed/kore/200/200";
+        {filteredMasters.map((article) => {
+          const isExpanded = expandedIds.has(article.id);
+          const status = (article.status || "AVAILABLE") as CatalogStatus;
+          const variantCount = article.variants?.length || 0;
+          const cover = imgSrc(article.imageUrl);
 
           return (
             <div
-              key={item.id}
-              onClick={() => setSelectedDetailsItem(item)}
-              className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm cursor-pointer hover:border-indigo-200 transition-colors"
+              key={article.id}
+              className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden transition-all"
             >
-              <div className="flex gap-3">
+              {/* Master Row */}
+              <div
+                className="flex items-center gap-4 p-4 md:p-5 cursor-pointer hover:bg-slate-50/50 transition-colors"
+                onClick={() => toggleExpand(article.id)}
+              >
+                {/* Image */}
                 <img
                   src={cover}
-                  alt=""
-                  className="w-14 h-14 rounded-2xl object-cover border border-slate-100"
+                  alt={article.name}
+                  className="w-14 h-14 md:w-16 md:h-16 rounded-xl object-cover border border-slate-100 shrink-0"
                 />
-                <div className="flex-1">
-                  <p className="font-bold text-slate-900">{item.name}</p>
-                  <p className="text-[10px] text-slate-400 font-mono tracking-widest">
-                    {item.sku}
-                  </p>
 
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <span className="text-xs font-bold bg-slate-100 text-slate-700 px-2 py-1 rounded-full">
-                      ₹{mrp.toLocaleString()}
-                    </span>
-                    <span className="text-xs font-bold bg-slate-100 text-slate-700 px-2 py-1 rounded-full">
-                      {a.category}
-                    </span>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-bold text-slate-900 text-base truncate">
+                      {article.name}
+                    </h4>
                     <span
-                      className={`text-xs font-bold px-2 py-1 rounded-full ${
-                        pairs === 0
-                          ? "bg-slate-100 text-slate-600"
-                          : pairs % 24 === 0
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-indigo-50 text-indigo-700"
+                      className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                        article.category === AssortmentType.MEN
+                          ? "bg-indigo-50 text-indigo-600"
+                          : article.category === AssortmentType.WOMEN
+                          ? "bg-pink-50 text-pink-600"
+                          : "bg-amber-50 text-amber-600"
                       }`}
                     >
-                      Pairs: {pairs || 0}
+                      {article.category}
                     </span>
                   </div>
+                  <div className="flex items-center gap-3 mt-1 flex-wrap">
+                    <span className="text-[10px] text-slate-400 font-mono tracking-widest">
+                      {article.sku}
+                    </span>
+                    <span className="text-xs font-bold text-slate-600">
+                      ₹{(article.mrp || article.pricePerPair || 0).toLocaleString()}
+                    </span>
+                    {article.brand && (
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {article.brand}
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-                  <p className="mt-2 text-sm text-slate-600">
-                    Assortment:{" "}
-                    <span className="font-semibold">{item.size || "—"}</span>
-                  </p>
+                {/* Variant count badge */}
+                <div className="hidden sm:flex items-center gap-3 shrink-0">
+                  <div className="text-center">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-100">
+                      <Palette size={12} />
+                      {variantCount} variant{variantCount !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div
+                  className="flex items-center gap-1 shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => onEditArticle(article.id)}
+                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                    title="Edit Product"
+                  >
+                    <Edit2 size={16} />
+                  </button>
 
                   {status === "WISHLIST" && (
-                    <p className="mt-1 text-sm text-slate-600">
-                      Expected:{" "}
-                      <span className="font-semibold">
-                        {expectedDate || "Required"}
-                      </span>
-                    </p>
+                    <button
+                      onClick={() => moveWishToAvailable(article)}
+                      className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all"
+                      title="Move Wish → Catalogue"
+                    >
+                      <ArrowRightLeft size={16} />
+                    </button>
                   )}
+
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Delete ${article.name}?`))
+                        deleteArticle(article.id);
+                    }}
+                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                    title="Delete"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
+
+                {/* Chevron */}
+                <ChevronDown
+                  size={20}
+                  className={`text-slate-400 shrink-0 transition-transform duration-300 ${
+                    isExpanded ? "rotate-180" : ""
+                  }`}
+                />
               </div>
 
+              {/* Accordion Content — Variants */}
+              <div
+                className={`grid transition-all duration-300 ease-in-out ${
+                  isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                }`}
+              >
+                <div className="overflow-hidden">
+                  <div className="border-t border-slate-100 bg-slate-50/50">
+                    {variantCount === 0 ? (
+                      <div className="px-6 py-8 text-center text-slate-400 italic text-sm">
+                        No variants for this master. Edit to add variants.
+                      </div>
+                    ) : (
+                      <>
+                        {/* Desktop variant table */}
+                        <div className="hidden md:block overflow-x-auto">
+                          <table className="w-full text-left">
+                            <thead className="bg-slate-100/80 border-b border-slate-200">
+                              <tr>
+                                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  Variant
+                                </th>
+                                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  Color
+                                </th>
+                                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  Sizes
+                                </th>
+                                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  MRP
+                                </th>
+                                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  Selling
+                                </th>
+                                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">
+                                  
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {article.variants!.map((v) => {
+                                const vName =
+                                  v.itemName || `${article.name} - ${v.color}`;
+                                const sizeCount = Object.keys(
+                                  v.sizeSkus || {}
+                                ).length;
+                                return (
+                                  <tr
+                                    key={v.id}
+                                    onClick={() =>
+                                      onViewVariant(article.id, v.id)
+                                    }
+                                    className="hover:bg-white cursor-pointer transition-colors"
+                                  >
+                                    <td className="px-6 py-3">
+                                      <p className="font-bold text-sm text-slate-800 truncate max-w-[220px]">
+                                        {vName}
+                                      </p>
+                                      <p className="text-[10px] font-mono text-slate-400 tracking-wider mt-0.5">
+                                        {v.sku || article.sku || ""}
+                                      </p>
+                                    </td>
+                                    <td className="px-6 py-3">
+                                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                                        <span
+                                          className="w-3 h-3 rounded-full border border-slate-300 shrink-0"
+                                          style={{
+                                            backgroundColor:
+                                              v.color?.toLowerCase() ||
+                                              "#ccc",
+                                          }}
+                                        />
+                                        {v.color || "—"}
+                                      </span>
+                                    </td>
+                                    <td className="px-6 py-3">
+                                      <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                                        {sizeCount} size{sizeCount !== 1 ? "s" : ""}
+                                      </span>
+                                    </td>
+                                    <td className="px-6 py-3">
+                                      <span className="text-sm font-bold text-slate-800">
+                                        ₹{(v.mrp || 0).toLocaleString()}
+                                      </span>
+                                    </td>
+                                    <td className="px-6 py-3">
+                                      <span className="text-sm font-bold text-indigo-600">
+                                        ₹{(v.sellingPrice || 0).toLocaleString()}
+                                      </span>
+                                    </td>
+                                    <td className="px-6 py-3 text-right">
+                                      <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">
+                                        View →
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
 
-              <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
-                <button
-                  onClick={() => onEditArticle(a.id)}
-                  className="flex-1 px-3 py-2 rounded-xl border border-slate-200 font-bold text-slate-700 hover:bg-slate-50"
-                >
-                  Edit Product
-                </button>
-
-                <button
-                  onClick={() => moveWishToAvailable(a)}
-                  disabled={status !== "WISHLIST"}
-                  className={`flex-1 px-3 py-2 rounded-xl font-bold ${
-                    status === "WISHLIST"
-                      ? "bg-slate-900 text-white hover:bg-slate-800"
-                      : "bg-slate-200 text-slate-500 cursor-not-allowed"
-                  }`}
-                >
-                  Move to Catalogue
-                </button>
-
-                <button
-                  onClick={() => {
-                    if (window.confirm(`Delete ${a.name}?`)) deleteArticle(a.id);
-                  }}
-                  className="px-3 py-2 rounded-xl bg-rose-600 text-white font-bold hover:bg-rose-700"
-                >
-                  <Trash2 size={16} />
-                </button>
+                        {/* Mobile variant cards */}
+                        <div className="md:hidden p-3 space-y-2">
+                          {article.variants!.map((v) => {
+                            const vName =
+                              v.itemName || `${article.name} - ${v.color}`;
+                            const sizeCount = Object.keys(
+                              v.sizeSkus || {}
+                            ).length;
+                            return (
+                              <div
+                                key={v.id}
+                                onClick={() =>
+                                  onViewVariant(article.id, v.id)
+                                }
+                                className="bg-white border border-slate-200 rounded-xl p-3 cursor-pointer hover:border-indigo-200 transition-colors"
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className="font-bold text-sm text-slate-800">
+                                      {vName}
+                                    </p>
+                                    <p className="text-[10px] font-mono text-slate-400 tracking-wider mt-0.5">
+                                      {v.sku || article.sku || ""}
+                                    </p></div>
+                                  <span className="text-[10px] font-bold text-indigo-500 uppercase shrink-0">
+                                    View →
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                                    <span
+                                      className="w-2.5 h-2.5 rounded-full border border-slate-300"
+                                      style={{
+                                        backgroundColor: v.color?.toLowerCase() || "#ccc",
+                                      }}
+                                    />
+                                    {v.color || "—"}
+                                  </span>
+                                  <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                                    {sizeCount} sizes
+                                  </span>
+                                  <span className="text-xs font-bold text-indigo-600">
+                                    ₹{(v.mrp || 0).toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           );
         })}
-
-        {catalogItems.length === 0 && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center text-slate-400 italic">
-            No items in this tab.
-          </div>
-        )}
       </div>
 
-      {/* Catalogue Details Overlay */}
-      {selectedDetailsItem && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
-          <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-            <div className="bg-white border-b border-slate-100 p-5 flex justify-between items-center sticky top-0 z-10">
-              <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800">
-                <Layers className="text-indigo-600" size={20} />
-                Catalogue Details
-              </h3>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => onEditArticle(selectedDetailsItem.article.id)}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold rounded-xl transition-colors text-sm"
-                >
-                  <Edit2 size={16} /> Edit Product
-                </button>
-                <button
-                  onClick={() => setSelectedDetailsItem(null)}
-                  className="p-2 text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-6 md:p-8 overflow-y-auto flex-1">
-              <div className="flex flex-col sm:flex-row gap-8 items-start">
-                
-                {/* Image Section */}
-                <div className="w-full sm:w-1/3 shrink-0 space-y-4">
-                  <div className="aspect-square rounded-2xl border border-slate-200 overflow-hidden bg-slate-50 relative">
-                    <img 
-                      src={selectedDetailsItem.image ? (selectedDetailsItem.image.startsWith('http') ? selectedDetailsItem.image : `http://localhost:5005${selectedDetailsItem.image}`) : "https://picsum.photos/seed/kore/400/400"} 
-                      alt={selectedDetailsItem.name}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-xs font-bold text-slate-700 border border-slate-200/50 shadow-sm">
-                      Primary
-                    </div>
-                  </div>
-
-                  {/* Secondary Images Gallery */}
-                  {selectedDetailsItem.article.secondaryImages?.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">
-                        Gallery ({selectedDetailsItem.article.secondaryImages.length})
-                      </p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {selectedDetailsItem.article.secondaryImages.map((img: any, idx: number) => (
-                          <div key={idx} className="aspect-square rounded-xl border border-slate-100 overflow-hidden bg-slate-50 cursor-zoom-in hover:border-indigo-300 transition-colors">
-                            <img 
-                              src={img.url ? (img.url.startsWith('http') ? img.url : `http://localhost:5005${img.url}`) : ""} 
-                              alt={`Gallery ${idx + 1}`}
-                              className="w-full h-full object-cover"
-                              onClick={() => {
-                                // Simple swap or lightbox logic could go here
-                                // For now just showing them
-                              }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Details Section */}
-                <div className="w-full sm:w-2/3 space-y-6">
-                  <div>
-                    <h2 className="text-2xl font-bold text-slate-900">{selectedDetailsItem.name}</h2>
-                    <div className="flex items-center gap-3 mt-2">
-                       <span className="text-sm font-mono tracking-widest text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                         {selectedDetailsItem.sku}
-                       </span>
-                    </div>
-                  </div>
-
-                  {/* Pricing Details */}
-                  <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100">
-                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">MRP</p>
-                        <p className="font-bold text-slate-800 text-lg">₹{Number(selectedDetailsItem.mrp || 0).toLocaleString()}</p>
-                     </div>
-                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Selling Price</p>
-                        <p className="font-bold text-slate-800 text-lg">
-                           ₹{selectedDetailsItem.variant?.sellingPrice || selectedDetailsItem.article.pricePerPair || 0}
-                        </p>
-                     </div>
-                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Cost Price</p>
-                        <p className="font-bold text-slate-800 text-lg">
-                           ₹{selectedDetailsItem.variant?.costPrice || 0}
-                        </p>
-                     </div>
-                  </div>
-
-                  {/* Core Classification */}
-                   <div className="flex flex-wrap items-center gap-3 mb-4">
-                      <div className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100 flex items-center gap-1.5">
-                        <Tag size={10} /> {selectedDetailsItem.article.category}
-                      </div>
-                      <div className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-100 flex items-center gap-1.5">
-                        <Package size={10} /> {selectedDetailsItem.article.productCategory || "Product"}
-                      </div>
-                      <div className="px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-100 flex items-center gap-1.5">
-                        <Layers size={10} /> {selectedDetailsItem.article.brand || "Unbranded"}
-                      </div>
-                      <div className="px-3 py-1 bg-slate-50 text-slate-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-slate-200 flex items-center gap-1.5">
-                        <ArrowRightLeft size={10} /> Range: {selectedDetailsItem.article.selectedSizes?.join(", ") || "—"}
-                      </div>
-                   </div>
-
-                  {/* Variant specifics */}
-                   <div className="grid grid-cols-3 gap-4 pb-4 border-b border-slate-100 text-xs">
-                      <div>
-                        <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">SKU</p>
-                        <p className="font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md inline-block">
-                          {selectedDetailsItem.sku}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Category</p>
-                        <p className="font-semibold text-slate-700">{selectedDetailsItem.article.productCategory || "—"}</p>
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-400 uppercase tracking-wider mb-1">Brand</p>
-                        <p className="font-semibold text-slate-700">{selectedDetailsItem.article.brand || "—"}</p>
-                      </div>
-                   </div>
-
-                   {/* Pricing Section */}
-                   <div className="grid grid-cols-3 gap-2 pb-4 border-b border-slate-100">
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">MRP</p>
-                        <p className="text-sm font-bold text-slate-700">₹{selectedDetailsItem.mrp.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Selling</p>
-                        <p className="text-sm font-bold text-indigo-600">₹{(selectedDetailsItem.variant?.sellingPrice || 0).toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Cost</p>
-                        <p className="text-sm font-bold text-slate-500">₹{(selectedDetailsItem.variant?.costPrice || 0).toLocaleString()}</p>
-                      </div>
-                   </div>
-                   <div className="grid grid-cols-4 gap-4">
-                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Color</p>
-                         <p className="text-xs font-bold text-slate-700">{selectedDetailsItem.color || "—"}</p>
-                      </div>
-                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Sole Color</p>
-                         <p className="text-xs font-bold text-slate-700">{selectedDetailsItem.article.soleColor || "—"}</p>
-                      </div>
-                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Item Size</p>
-                         <p className="text-xs font-bold text-slate-700">{selectedDetailsItem.size || "—"}</p>
-                      </div>
-                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">HSN Code</p>
-                         <p className="text-xs font-bold text-slate-700">{selectedDetailsItem.variant?.hsnCode || "—"}</p>
-                      </div>
-                   </div>
-                  
-                  {/* Stock & Origin */}
-                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
-                     <div className="space-y-4">
-                       <div>
-                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Available Pairs</p>
-                          <span
-                            className={`inline-block text-sm font-bold px-3 py-1 rounded-xl ${
-                              selectedDetailsItem.pairs === 0
-                                ? "bg-slate-100 text-slate-500"
-                                : selectedDetailsItem.pairs % 24 === 0
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                : "bg-indigo-50 text-indigo-700 border border-indigo-200"
-                            }`}
-                          >
-                            {selectedDetailsItem.pairs || 0} Pairs
-                          </span>
-                       </div>
-                       
-                       <div>
-                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Manufacturer</p>
-                         <p className="font-semibold text-slate-700 text-sm">{selectedDetailsItem.article.manufacturer || "—"}</p>
-                       </div>
-                       
-                     </div>
-                     <div>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Catalogue Status</p>
-                        {selectedDetailsItem.article.status === "WISHLIST" ? (
-                           <div>
-                             <span className="inline-block text-xs font-bold px-2 py-1 rounded-full bg-rose-50 text-rose-700 mb-1">
-                                Wish List
-                             </span>
-                             {selectedDetailsItem.article.expectedDate ? (
-                               <p className="text-xs text-slate-500 font-medium">Expected: {selectedDetailsItem.article.expectedDate}</p>
-                             ) : (
-                                <p className="text-xs text-rose-600 font-bold">Date Required</p>
-                            )}
-                          </div>
-                        ) : (
-                             <span className="inline-block text-xs font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
-                               Available
-                            </span>
-                        )}
-                     </div>
-                  </div>
-
-                </div>
-              </div>
-            </div>
-            
-          </div>
-        </div>
-      )}
-
-      {/* Edit Form Modal */}
+      {/* Edit Form Modal — unchanged */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
-          <div className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl">
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-100 flex items-center justify-center p-3 cursor-pointer"
+          onClick={closeModal}
+        >
+          <div
+            className="bg-white rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="bg-indigo-600 p-5 flex justify-between items-center text-white">
               <h3 className="text-lg sm:text-xl font-bold flex items-center gap-2">
                 {editingArticle ? <Edit2 size={20} /> : <Plus size={20} />}
@@ -964,11 +674,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                       </select>
                     </Field>
 
-                    <Field
-                      label="MRP (per pair)"
-                      required
-                      icon={<ShoppingBag size={12} />}
-                    >
+                    <Field label="MRP (per pair)" required icon={<ShoppingBag size={12} />}>
                       <input
                         type="number"
                         min={0}
@@ -1000,12 +706,9 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
                       Size-wise Pairs (Input)
                     </p>
-
                     <div
                       className={`p-3 border rounded-2xl transition ${
-                        isValidMultiple
-                          ? "bg-slate-50 border-slate-200"
-                          : "bg-rose-50 border-rose-300"
+                        isValidMultiple ? "bg-slate-50 border-slate-200" : "bg-rose-50 border-rose-300"
                       }`}
                     >
                       <div className="flex flex-wrap gap-2">
@@ -1046,7 +749,6 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                           ))
                         )}
                       </div>
-
                       {Object.keys(formData.sizeBreakup || {}).length > 0 && (
                         <div className="mt-3 text-xs font-bold">
                           <span className={isValidMultiple ? "text-emerald-600" : "text-rose-600"}>
@@ -1060,12 +762,11 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                     </div>
                   </div>
 
-                  {/* ✅ Add To: Catalogue or Wish List */}
+                  {/* Add To: Catalogue or Wish List */}
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
                     <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
                       Add To (Before Submit)
                     </p>
-
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -1084,14 +785,10 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                       >
                         Catalogue
                       </button>
-
                       <button
                         type="button"
                         onClick={() =>
-                          setFormData((p) => ({
-                            ...p,
-                            catalogStatus: "WISHLIST",
-                          }))
+                          setFormData((p) => ({ ...p, catalogStatus: "WISHLIST" }))
                         }
                         className={`flex-1 px-3 py-2 rounded-xl font-bold text-sm border transition ${
                           formData.catalogStatus === "WISHLIST"
@@ -1102,19 +799,12 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                         Wish List
                       </button>
                     </div>
-
                     <p className="mt-2 text-[11px] text-slate-500">
                       ✅ Rule: <b>Catalogue → Wish</b> not allowed. Only <b>Wish → Catalogue</b>.
                     </p>
-
-                    {/* ✅ Expected date only for WISH */}
                     {formData.catalogStatus === "WISHLIST" && (
                       <div className="mt-4">
-                        <Field
-                          label="Expected Available Date"
-                          required
-                          icon={<CalendarDays size={12} />}
-                        >
+                        <Field label="Expected Available Date" required icon={<CalendarDays size={12} />}>
                           <input
                             type="date"
                             className="w-full p-3 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20"
@@ -1141,12 +831,10 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                   <p className="text-xs font-black text-slate-400 uppercase tracking-widest">
                     Images (Multiple)
                   </p>
-
                   <div className="bg-white border border-slate-200 rounded-2xl p-4">
                     <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
                       Choose Images
                     </label>
-
                     <input
                       type="file"
                       multiple
@@ -1157,7 +845,6 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                         e.currentTarget.value = "";
                       }}
                     />
-
                     <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
                       {imagePreviews.length === 0 ? (
                         <div className="col-span-2 sm:col-span-3 text-center text-slate-400 italic py-10">
@@ -1183,7 +870,6 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                         ))
                       )}
                     </div>
-
                     <p className="mt-3 text-[11px] text-slate-500">
                       You can select multiple images (JPG, PNG, WebP).
                     </p>
@@ -1210,7 +896,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="flex-[2] bg-indigo-600 text-white py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100"
+                  className="flex-2 bg-indigo-600 text-white py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100"
                 >
                   {editingArticle ? "Save Changes" : "Create Master"}
                 </button>
@@ -1233,7 +919,7 @@ const Field: React.FC<{
   children: React.ReactNode;
 }> = ({ label, required, icon, children }) => (
   <div>
-    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+    <label className=" text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
       {icon ? icon : null}
       {label} {required ? <span className="text-rose-500">*</span> : null}
     </label>

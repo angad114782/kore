@@ -23,4 +23,14 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// ✅ Transform _id to id for frontend consistency
+userSchema.set("toJSON", {
+  virtuals: true,
+  versionKey: false,
+  transform: function (doc, ret) {
+    ret.id = ret._id;
+    delete ret._id;
+  },
+});
+
 module.exports = mongoose.model("User", userSchema);

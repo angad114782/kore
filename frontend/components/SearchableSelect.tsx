@@ -128,7 +128,10 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                   placeholder="Enter new name..."
                   className="flex-1 p-2 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
                   value={newValue}
-                  onChange={(e) => setNewValue(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNewValue(val.charAt(0).toUpperCase() + val.slice(1));
+                  }}
                 />
                 <button
                   onClick={handleAddNew}

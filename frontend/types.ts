@@ -68,6 +68,7 @@ export interface Article {
   selectedSizes?: string[];
   selectedColors?: string[];
   variants?: Variant[];
+  secondaryImages?: { url: string }[];
 }
 
 export interface Inventory {

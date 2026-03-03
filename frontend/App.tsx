@@ -26,6 +26,7 @@ import POPage from "./components/Admin/POPage";
 import GRN from "./components/Admin/GRN";
 import ProductMaster from "./components/Admin/ProductMaster";
 import VendorManager from "./components/Admin/VendorManager";
+import VariantDetailsPage from "./components/Admin/VariantDetailsPage";
 import UserManager from "./components/Admin/UserManager";
 import { masterCatalogService } from "./services/masterCatalogService";
 
@@ -49,6 +50,12 @@ const App: React.FC = () => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loadingArticles, setLoadingArticles] = useState(true);
   const [editingArticleId, setEditingArticleId] = useState<string | null>(null);
+  const [viewingVariant, setViewingVariant] = useState<{ articleId: string; variantId: string } | null>(null);
+
+  const handleViewVariant = (articleId: string, variantId: string) => {
+    setViewingVariant({ articleId, variantId });
+    setActiveTab("variant_details");
+  };
 
   const handleEditArticle = (id: string) => {
     setEditingArticleId(id);
@@ -78,15 +85,8 @@ const App: React.FC = () => {
           };
         });
 
-        // Try to get a real SKU from variants if available
-        let topSku = `KK-${item._id.slice(-4)}`;
-        if (normalizedVariants.length > 0) {
-          const firstVar = normalizedVariants[0];
-          const firstSizeKey = Object.keys(firstVar.sizeSkus)[0];
-          if (firstSizeKey && firstVar.sizeSkus[firstSizeKey]) {
-            topSku = firstVar.sizeSkus[firstSizeKey];
-          }
-        }
+        // Use Article's own SKU if available (from backend or master creation)
+        const topSku = item.sku || "";
 
         return {
           id: item._id,
@@ -417,8 +417,24 @@ const App: React.FC = () => {
             updateArticle={updateArticle}
             deleteArticle={deleteArticle}
             onEditArticle={handleEditArticle}
+            onViewVariant={handleViewVariant}
           />
         )}
+
+        {activeTab === "variant_details" && viewingVariant && (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN) && (() => {
+          const art = articles.find(a => a.id === viewingVariant.articleId);
+          const vari = art?.variants?.find(v => v.id === viewingVariant.variantId);
+          if (!art || !vari) return <div className="text-center text-slate-400 py-12">Variant not found.</div>;
+          return (
+            <VariantDetailsPage
+              article={art}
+              variant={vari}
+              onBack={() => { setViewingVariant(null); setActiveTab("catalogue"); }}
+              onEditArticle={handleEditArticle}
+              onDelete={(id) => { deleteArticle(id); setViewingVariant(null); setActiveTab("catalogue"); }}
+            />
+          );
+        })()}
 {activeTab === "po" && (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN) && (
   <POPage articles={articles} />
 )}

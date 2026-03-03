@@ -97,8 +97,7 @@ exports.listUsers = async ({
     User.find(q)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
-      .limit(limit)
-      .lean(),
+      .limit(limit),
     User.countDocuments(q),
   ]);
 
@@ -114,7 +113,7 @@ exports.listUsers = async ({
 };
 
 exports.getUserById = async (id) => {
-  const user = await User.findById(id).lean();
+  const user = await User.findById(id);
   if (!user) {
     const err = new Error("User not found");
     err.status = 404;
@@ -125,6 +124,7 @@ exports.getUserById = async (id) => {
 
 exports.updateUser = async (actorUserId, targetUserId, { name, email, role }) => {
   if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+    console.error(`[UserService] updateUser: Invalid targetUserId: "${targetUserId}"`);
     const err = new Error("Invalid user ID");
     err.status = 400;
     throw err;
@@ -140,7 +140,7 @@ exports.updateUser = async (actorUserId, targetUserId, { name, email, role }) =>
       throw err;
     }
     // Check if email taken by someone else
-    const exists = await User.findOne({ email: cleanEmail, _id: { $ne: targetUserId } }).lean();
+    const exists = await User.findOne({ email: cleanEmail, _id: { $ne: targetUserId } });
     if (exists) {
       const err = new Error("Email already in use");
       err.status = 400;
@@ -160,7 +160,7 @@ exports.updateUser = async (actorUserId, targetUserId, { name, email, role }) =>
   }
 
   // Protection checks
-  const target = await User.findById(targetUserId).lean();
+  const target = await User.findById(targetUserId);
   if (!target) {
     const err = new Error("User not found");
     err.status = 404;
@@ -189,7 +189,7 @@ exports.deleteUser = async (actorUserId, targetUserId) => {
     throw err;
   }
 
-  const target = await User.findById(targetUserId).lean();
+  const target = await User.findById(targetUserId);
   if (!target) {
     const err = new Error("User not found");
     err.status = 404;
@@ -214,7 +214,7 @@ exports.deleteUser = async (actorUserId, targetUserId) => {
   return true;
 };
 exports.getMe = async (userId) => {
-  const user = await User.findById(userId).lean();
+  const user = await User.findById(userId);
   if (!user) {
     const err = new Error("User not found");
     err.status = 404;
@@ -247,7 +247,7 @@ exports.updateMe = async (userId, { name, email }) => {
     const exists = await User.findOne({
       email: cleanEmail,
       _id: { $ne: userId },
-    }).lean();
+    });
     if (exists) {
       const err = new Error("Email already in use");
       err.status = 400;
@@ -259,7 +259,7 @@ exports.updateMe = async (userId, { name, email }) => {
   const user = await User.findByIdAndUpdate(userId, update, {
     new: true,
     runValidators: true,
-  }).lean();
+  });
 
   if (!user) {
     const err = new Error("User not found");
