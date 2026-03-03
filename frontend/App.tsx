@@ -33,6 +33,7 @@ import { masterCatalogService } from "./services/masterCatalogService";
 // ✅ NEW: Sidebar component (create this file separately)
 import Sidebar from "./components/Layout/Sidebar";
 import { useKoreStore } from "./store";
+import { Toaster, toast } from "sonner";
 
 const App: React.FC = () => {
   const store = useKoreStore();
@@ -51,13 +52,17 @@ const App: React.FC = () => {
   const [loadingArticles, setLoadingArticles] = useState(true);
   const [editingArticleId, setEditingArticleId] = useState<string | null>(null);
   const [viewingVariant, setViewingVariant] = useState<{ articleId: string; variantId: string } | null>(null);
+  const [catalogueExpandedIds, setCatalogueExpandedIds] = useState<Set<string>>(new Set());
+  const [previousTab, setPreviousTab] = useState<string>("catalogue");
 
   const handleViewVariant = (articleId: string, variantId: string) => {
+    setPreviousTab("catalogue");
     setViewingVariant({ articleId, variantId });
     setActiveTab("variant_details");
   };
 
   const handleEditArticle = (id: string) => {
+    setPreviousTab(activeTab);
     setEditingArticleId(id);
     setActiveTab("master");
   };
@@ -204,10 +209,21 @@ const App: React.FC = () => {
     setArticles((prev) => prev.map((a) => (a.id === article.id ? article : a)));
   };
 
-  const deleteArticle = (id: string) => {
-    setArticles((prev) => prev.filter((a) => a.id !== id));
-    setInventory((prev) => prev.filter((i) => i.articleId !== id));
-    setCart((prev) => prev.filter((i) => i.articleId !== id));
+  const deleteArticle = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this master article?")) return;
+
+    const deletePromise = async () => {
+      await masterCatalogService.deleteMasterItem(id);
+      setArticles((prev) => prev.filter((a) => a.id !== id));
+      setInventory((prev) => prev.filter((i) => i.articleId !== id));
+      setCart((prev) => prev.filter((i) => i.articleId !== id));
+    };
+
+    toast.promise(deletePromise(), {
+      loading: "Deleting article...",
+      success: "Article deleted successfully",
+      error: (err: any) => err.message || "Failed to delete article",
+    });
   };
 
   const addToCart = (articleId: string) => {
@@ -316,33 +332,44 @@ const App: React.FC = () => {
   };
 
   const updateOrderStatus = (orderId: string, status: OrderStatus) => {
-    setOrders((prev) =>
-      prev.map((o) => {
-        if (o.id === orderId) {
-          // dispatch: deduct actual + release reserved (only once)
-          if (status === OrderStatus.DISPATCHED && o.status !== OrderStatus.DISPATCHED) {
-            setInventory((invs) =>
-              invs.map((inv) => {
-                const item = o.items.find((i) => i.articleId === inv.articleId);
-                if (item) {
-                  const newActual = inv.actualStock - item.cartonCount;
-                  const newReserved = inv.reservedStock - item.cartonCount;
-                  return {
-                    ...inv,
-                    actualStock: newActual,
-                    reservedStock: newReserved,
-                    availableStock: newActual - newReserved,
-                  };
-                }
-                return inv;
-              })
-            );
+    const updatePromise = async () => {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      setOrders((prev) =>
+        prev.map((o) => {
+          if (o.id === orderId) {
+            // dispatch: deduct actual + release reserved (only once)
+            if (status === OrderStatus.DISPATCHED && o.status !== OrderStatus.DISPATCHED) {
+              setInventory((invs) =>
+                invs.map((inv) => {
+                  const item = o.items.find((i) => i.articleId === inv.articleId);
+                  if (item) {
+                    const newActual = inv.actualStock - item.cartonCount;
+                    const newReserved = inv.reservedStock - item.cartonCount;
+                    return {
+                      ...inv,
+                      actualStock: newActual,
+                      reservedStock: newReserved,
+                      availableStock: newActual - newReserved,
+                    };
+                  }
+                  return inv;
+                })
+              );
+            }
+            return { ...o, status };
           }
-          return { ...o, status };
-        }
-        return o;
-      })
-    );
+          return o;
+        })
+      );
+    };
+
+    toast.promise(updatePromise(), {
+      loading: "Updating order status...",
+      success: `Order ${orderId} marked as ${status.replace(/_/g, " ")}`,
+      error: "Failed to update order status",
+    });
   };
 
   if (isLoadingAuth) {
@@ -387,7 +414,7 @@ const App: React.FC = () => {
 
         {/* Content Router */}
         {activeTab === "dashboard" &&
-          (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN ? (
+          (user.role !== UserRole.DISTRIBUTOR ? (
             <AdminDashboard orders={orders} inventory={inventory} articles={articles} />
           ) : (
             <DistributorDashboard
@@ -398,19 +425,19 @@ const App: React.FC = () => {
             />
           ))}
 
-        {activeTab === "master" && (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN) && (
+        {activeTab === "master" && (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN || user.role === UserRole.MANAGER) && (
           <ProductMaster 
             addArticle={addArticle} 
             editingId={editingArticleId}
             onSuccess={fetchArticles}
             onCancelEdit={() => {
               setEditingArticleId(null);
-              setActiveTab("catalogue");
+              setActiveTab(previousTab === "variant_details" ? "variant_details" : "catalogue");
             }}
           />
         )}
 
-        {activeTab === "catalogue" && (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN) && (
+        {activeTab === "catalogue" && (user.role !== UserRole.DISTRIBUTOR) && (
           <CatalogueManager
             articles={articles}
             addArticle={addArticle}
@@ -418,10 +445,12 @@ const App: React.FC = () => {
             deleteArticle={deleteArticle}
             onEditArticle={handleEditArticle}
             onViewVariant={handleViewVariant}
+            expandedIds={catalogueExpandedIds}
+            setExpandedIds={setCatalogueExpandedIds}
           />
         )}
 
-        {activeTab === "variant_details" && viewingVariant && (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN) && (() => {
+        {activeTab === "variant_details" && viewingVariant && (user.role !== UserRole.DISTRIBUTOR) && (() => {
           const art = articles.find(a => a.id === viewingVariant.articleId);
           const vari = art?.variants?.find(v => v.id === viewingVariant.variantId);
           if (!art || !vari) return <div className="text-center text-slate-400 py-12">Variant not found.</div>;
@@ -435,19 +464,19 @@ const App: React.FC = () => {
             />
           );
         })()}
-{activeTab === "po" && (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN) && (
+{activeTab === "po" && (user.role !== UserRole.DISTRIBUTOR) && (
   <POPage articles={articles} />
 )}
-{activeTab === "grn" && (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN) && (
+{activeTab === "grn" && (user.role !== UserRole.DISTRIBUTOR) && (
   <GRN />
 )}
-{activeTab === "vendors" && (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN) && (
+{activeTab === "vendors" && (user.role !== UserRole.DISTRIBUTOR) && (
   <VendorManager />
 )}
 {activeTab === "users" && user.role === UserRole.SUPERADMIN && (
   <UserManager />
 )}
-        {activeTab === "master_inventory" && (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN) && (
+        {activeTab === "master_inventory" && (user.role !== UserRole.DISTRIBUTOR) && (
           <MasterInventory
             inventory={inventory}
             articles={articles}
@@ -456,12 +485,12 @@ const App: React.FC = () => {
           />
         )}
 
-        {activeTab === "booking_inventory" && (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN) && (
+        {activeTab === "booking_inventory" && (user.role !== UserRole.DISTRIBUTOR) && (
           <BookingInventory inventory={inventory} articles={articles} orders={orders} />
         )}
 
         {activeTab === "orders" &&
-          (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN ? (
+          (user.role !== UserRole.DISTRIBUTOR ? (
             <OrderProcessor orders={orders} updateStatus={updateOrderStatus} articles={articles} />
           ) : (
             <MyOrders orders={orders.filter((o) => o.distributorId === user.id)} articles={articles} />
@@ -491,7 +520,7 @@ const App: React.FC = () => {
           />
         )}
 
-        {activeTab === "distributors" && (user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN) && (
+        {activeTab === "distributors" && (user.role !== UserRole.DISTRIBUTOR) && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left min-w-[600px]">
@@ -527,6 +556,7 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+      <Toaster position="top-right" richColors />
     </div>
   );
 };

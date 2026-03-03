@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import {
   FileText,
   Plus,
@@ -16,6 +17,7 @@ import {
   Send,
   Save,
   Edit2,
+  Loader2,
 } from "lucide-react";
 import {
   Article,
@@ -399,9 +401,9 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
   };
 
   const savePO = async (status: POStatus) => {
-    if (!selectedVendorId) return alert("Please select a vendor.");
+    if (!selectedVendorId) return toast.error("Please select a vendor.");
     if (items.every((it) => !it.articleId))
-      return alert("Please add at least one item.");
+      return toast.error("Please add at least one item.");
 
     const poData: Partial<PurchaseOrder> = {
       vendorId: selectedVendorId,
@@ -423,23 +425,25 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
       status,
     };
 
-    try {
-      setLoading(true);
+    const savePromise = async () => {
       if (editingPOId) {
         await poService.updatePO(editingPOId, poData);
-        alert("Purchase Order Updated Successfully!");
       } else {
         await poService.createPO(poData);
-        alert("Purchase Order Created Successfully!");
       }
       await fetchData();
       setView("list");
       resetForm();
-    } catch (err: any) {
-      alert(err.message || "Failed to save Purchase Order");
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    setLoading(true);
+    const promise = savePromise();
+    toast.promise(promise, {
+      loading: editingPOId ? "Updating Purchase Order..." : "Creating Purchase Order...",
+      success: editingPOId ? "Purchase Order Updated Successfully!" : "Purchase Order Created Successfully!",
+      error: (err: any) => err.message || "Failed to save Purchase Order",
+    });
+    promise.finally(() => setLoading(false));
   };
 
   // ── Filtered PO list ──
@@ -532,16 +536,14 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
                     <th className="px-6 py-3.5 text-[10px] font-bold text-indigo-600 uppercase tracking-wider text-right">
                       Status
                     </th>
-                    <th className="px-6 py-3.5 text-[10px] font-bold text-indigo-600 uppercase tracking-wider text-right">
-                      Actions
-                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredPOs.map((po) => (
                     <tr
                       key={po.id}
-                      className="hover:bg-indigo-50/30 transition-colors"
+                      onClick={() => handleEditPO(po)}
+                      className="hover:bg-indigo-50/50 transition-colors cursor-pointer group"
                     >
                       <td className="px-6 py-4 text-sm text-slate-600">
                         {new Date(po.date).toLocaleDateString("en-IN", {
@@ -551,7 +553,7 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
                         })}
                       </td>
                       <td className="px-6 py-4">
-                        <span className="font-bold text-slate-900 text-sm">
+                        <span className="font-bold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors">
                           {po.poNumber}
                         </span>
                       </td>
@@ -576,15 +578,6 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
                           )}
                           {po.status}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => handleEditPO(po)}
-                          className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                          title="Edit PO"
-                        >
-                          <Edit2 size={16} />
-                        </button>
                       </td>
                     </tr>
                   ))}
@@ -922,12 +915,12 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
                   <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
                     SKU
                   </th>
-                  <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                  {/* <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
                     SKU Company
-                  </th>
-                  <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                  </th> */}
+                  {/* <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
                     Item Name
-                  </th>
+                  </th> */}
                   <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
                     Tax Code
                   </th>
@@ -937,9 +930,9 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
                   <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider w-[70px]">
                     Tax Rate %
                   </th>
-                  <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider w-[80px]">
+                  {/* <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider w-[80px]">
                     Tax Type
-                  </th>
+                  </th> */}
                   <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider text-right">
                     Base Price
                   </th>
@@ -1097,18 +1090,18 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
                     </td>
 
                     {/* SKU Company */}
-                    <td className="px-2 py-3">
+                    {/* <td className="px-2 py-3">
                       <span className="text-xs text-slate-600">
                         {item.skuCompany || "—"}
                       </span>
-                    </td>
+                    </td> */}
 
                     {/* Item Name */}
-                    <td className="px-2 py-3">
+                    {/* <td className="px-2 py-3">
                       <span className="text-xs font-medium text-slate-800">
                         {item.itemName || "—"}
                       </span>
-                    </td>
+                    </td> */}
 
                     {/* Tax Code (HSN) */}
                     <td className="px-2 py-3">
@@ -1160,7 +1153,7 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
                     </td>
 
                     {/* Tax Type */}
-                    <td className="px-2 py-3">
+                    {/* <td className="px-2 py-3">
                       <div className="flex bg-slate-50 border border-slate-200 rounded-lg overflow-hidden">
                         <button
                           type="button"
@@ -1189,7 +1182,7 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
                           IGST
                         </button>
                       </div>
-                    </td>
+                    </td> */}
 
                     {/* Base Price */}
                     <td className="px-2 py-3 text-right">
@@ -1330,17 +1323,19 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
           <button
             type="button"
             onClick={() => savePO("DRAFT")}
-            className="flex items-center justify-center gap-2 px-6 py-3 border-2 border-slate-200 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all"
+            disabled={loading}
+            className="flex items-center justify-center gap-2 px-6 py-3 border-2 border-slate-200 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all disabled:opacity-50"
           >
-            <Save size={16} />
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             Save as Draft
           </button>
           <button
             type="button"
             onClick={() => savePO("SENT")}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-md shadow-indigo-600/20"
+            disabled={loading}
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-md shadow-indigo-600/20 disabled:opacity-50"
           >
-            <Send size={16} />
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             Save and Send
           </button>
           <button

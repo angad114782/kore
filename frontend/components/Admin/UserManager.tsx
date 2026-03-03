@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Users, UserPlus, Search, Shield, Mail, Trash2, 
+  Users, UserPlus, Search, Shield, Mail, Trash2,
   MoreVertical, AlertCircle, CheckCircle2, X, Edit3,
-  Edit
+  Edit, Loader2
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { userService } from '../../services/userService';
 import { User, UserRole } from '../../types';
 
@@ -22,7 +23,7 @@ const UserManager: React.FC = () => {
     name: '',
     email: '',
     password: '',
-    role: 'staff'
+    role: 'manager'
   });
 
   const fetchUsers = async () => {
@@ -43,7 +44,7 @@ const UserManager: React.FC = () => {
 
   const handleOpenAdd = () => {
     setEditingUser(null);
-    setFormData({ name: '', email: '', password: '', role: 'staff' });
+    setFormData({ name: '', email: '', password: '', role: 'manager' });
     setShowModal(true);
   };
 
@@ -61,10 +62,8 @@ const UserManager: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setError('');
-    setSuccess('');
-
-    try {
+    
+    const submitPromise = async () => {
       if (editingUser) {
         // Update
         const userId = editingUser.id || (editingUser as any)._id;
@@ -78,32 +77,43 @@ const UserManager: React.FC = () => {
           role: formData.role 
         };
         await userService.updateUser(userId, updateData);
-        setSuccess('User updated successfully');
       } else {
         // Create
         await userService.createUser(formData);
-        setSuccess('User created successfully');
       }
       setShowModal(false);
-      setFormData({ name: '', email: '', password: '', role: 'staff' });
+      setFormData({ name: '', email: '', password: '', role: 'manager' });
       fetchUsers();
-    } catch (err: any) {
-      setError(err.message || `Failed to ${editingUser ? 'update' : 'create'} user`);
-    } finally {
+    };
+
+    const promise = submitPromise();
+    toast.promise(promise, {
+      loading: editingUser ? 'Updating user...' : 'Creating user...',
+      success: editingUser ? 'User updated successfully' : 'User created successfully',
+      error: (err: any) => err.message || `Failed to ${editingUser ? 'update' : 'create'} user`,
+    });
+    
+    promise.finally(() => {
       setIsSubmitting(false);
-    }
+    });
   };
 
   const handleDeleteUser = async (userId: string) => {
     if (!window.confirm('Are you sure you want to delete this user?')) return;
 
-    try {
-      await userService.deleteUser(userId);
-      setSuccess('User deleted successfully');
+    const deletePromise = userService.deleteUser(userId);
+    
+    const promise = deletePromise;
+    
+    toast.promise(promise, {
+      loading: 'Deleting user...',
+      success: 'User deleted successfully',
+      error: (err: any) => err.message || 'Failed to delete user',
+    });
+    
+    promise.then(() => {
       fetchUsers();
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete user');
-    }
+    });
   };
 
   return (
@@ -123,9 +133,10 @@ const UserManager: React.FC = () => {
 
         <button
           onClick={handleOpenAdd}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+          disabled={loading}
+          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <UserPlus size={20} />
+          {loading ? <Loader2 size={20} className="animate-spin" /> : <UserPlus size={20} />}
           Add New User
         </button>
       </div>
@@ -203,7 +214,13 @@ const UserManager: React.FC = () => {
                       ? 'bg-purple-100 text-purple-700' 
                       : user.role === UserRole.ADMIN 
                         ? 'bg-indigo-100 text-indigo-700' 
-                        : 'bg-slate-100 text-slate-700'
+                        : user.role === UserRole.MANAGER
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : user.role === UserRole.SUPERVISOR
+                            ? 'bg-amber-100 text-amber-700'
+                            : user.role === UserRole.ACCOUNTANT
+                              ? 'bg-rose-100 text-rose-700'
+                              : 'bg-slate-100 text-slate-700'
                   }`}>
                     <Shield size={10} />
                     {user.role}
@@ -265,7 +282,13 @@ const UserManager: React.FC = () => {
                           ? 'bg-purple-100 text-purple-700' 
                           : user.role === UserRole.ADMIN 
                             ? 'bg-indigo-100 text-indigo-700' 
-                            : 'bg-slate-100 text-slate-700'
+                            : user.role === UserRole.MANAGER
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : user.role === UserRole.SUPERVISOR
+                                ? 'bg-amber-100 text-amber-700'
+                                : user.role === UserRole.ACCOUNTANT
+                                  ? 'bg-rose-100 text-rose-700'
+                                  : 'bg-slate-100 text-slate-700'
                       }`}>
                         <Shield size={12} />
                         {user.role}
@@ -332,10 +355,11 @@ const UserManager: React.FC = () => {
                 <input
                   type="text"
                   required
+                  disabled={isSubmitting}
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="John Doe"
-                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all disabled:opacity-50"
                 />
               </div>
 
@@ -346,10 +370,11 @@ const UserManager: React.FC = () => {
                   <input
                     type="email"
                     required
+                    disabled={isSubmitting}
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="name@company.com"
-                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all disabled:opacity-50"
                   />
                 </div>
               </div>
@@ -360,11 +385,12 @@ const UserManager: React.FC = () => {
                   <input
                     type="password"
                     required
+                    disabled={isSubmitting}
                     minLength={6}
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     placeholder="Minimum 6 characters"
-                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all disabled:opacity-50"
                   />
                 </div>
               )}
@@ -372,17 +398,20 @@ const UserManager: React.FC = () => {
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1.5">System Role</label>
                 <select
+                  disabled={isSubmitting}
                   value={formData.role}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%2364748b%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22m6%208%204%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-size-[1.25rem_1.25rem] bg-position-[right_0.5rem_center] bg-no-repeat"
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%2364748b%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22m6%208%204%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-size-[1.25rem_1.25rem] bg-position-[right_0.5rem_center] bg-no-repeat disabled:opacity-50"
                 >
-                  <option value="admin">Admin (Full Access)</option>
-                  <option value="staff">Staff / Distributor (Limited)</option>
+                  <option value="admin">Admin</option>
+                  <option value="manager">Manager</option>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="accountant">Accountant</option>
                   {editingUser?.role === UserRole.SUPERADMIN && (
                     <option value="superadmin">Superadmin</option>
                   )}
                 </select>
-                <p className="text-[10px] text-slate-400 mt-1">Superadmin accounts cannot be created via this interface for security.</p>
+                <p className="text-[10px] text-slate-400 mt-1">Superadmin accounts cannot be created or converted via this interface.</p>
               </div>
 
               <div className="pt-4 flex gap-3">

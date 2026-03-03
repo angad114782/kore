@@ -179,7 +179,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             />
 
             {/* ✅ Master Tab (below Dashboard) */}
-            {(user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN) && (
+            {(user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN || user.role === UserRole.MANAGER) && (
               <NavItem
                 icon={<Database size={20} />}
                 label="Master"
@@ -190,7 +190,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
 
             {/* Admin menus only */}
-            {user.role === UserRole.ADMIN || user.role === UserRole.SUPERADMIN ? (
+            {user.role !== UserRole.DISTRIBUTOR ? (
               <>
                 {/* Manufacturing */}
                 <div className="pt-2">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { toast } from "sonner";
 import {
   Package,
   Tag,
@@ -19,6 +20,7 @@ import {
   GripVertical,
   Star,
   ArrowUp,
+  Loader2,
 } from "lucide-react";
 import { AssortmentType, Article, Variant } from "../../types";
 import { ASSORTMENTS } from "../../constants";
@@ -326,7 +328,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
       }
       await fetchTaxonomy();
     } catch (err: any) {
-      alert(err.message || "Failed to add category");
+      toast.error(err.message || "Failed to add category");
     }
   };
 
@@ -337,7 +339,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
         await masterCatalogService.deleteCategory(categoryDoc._id);
         await fetchTaxonomy();
       } catch (err: any) {
-        alert(err.message || "Failed to delete category");
+        toast.error(err.message || "Failed to delete category");
       }
     }
   };
@@ -352,7 +354,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
       }
       await fetchTaxonomy();
     } catch (err: any) {
-      alert(err.message || "Failed to add brand");
+      toast.error(err.message || "Failed to add brand");
     }
   };
 
@@ -363,7 +365,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
         await masterCatalogService.deleteBrand(brandDoc._id);
         await fetchTaxonomy();
       } catch (err: any) {
-        alert(err.message || "Failed to delete brand");
+        toast.error(err.message || "Failed to delete brand");
       }
     }
   };
@@ -378,7 +380,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
       }
       await fetchTaxonomy();
     } catch (err: any) {
-      alert(err.message || "Failed to add manufacturer");
+      toast.error(err.message || "Failed to add manufacturer");
     }
   };
 
@@ -389,7 +391,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
         await masterCatalogService.deleteManufacturer(manDoc._id);
         await fetchTaxonomy();
       } catch (err: any) {
-        alert(err.message || "Failed to delete manufacturer");
+        toast.error(err.message || "Failed to delete manufacturer");
       }
     }
   };
@@ -519,7 +521,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
 
     // Basic validation
     if (!formData.artname || !formData.category || !formData.brand) {
-      return alert("Please fill all required fields");
+      return toast.error("Please fill all required fields");
     }
 
     const foundCategory = categories.find(c => (c.name || c) === formData.category);
@@ -532,7 +534,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
     const manufacturerId = foundMan?._id || foundMan?.id;
 
     if (!categoryId || !brandId || !manufacturerId) {
-      return alert("One or more taxonomy IDs (Category/Brand/Manufacturer) were not found. Please re-select them.");
+      return toast.error("One or more taxonomy IDs (Category/Brand/Manufacturer) were not found. Please re-select them.");
     }
 
     const data = new FormData();
@@ -575,16 +577,13 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
       });
     }
 
-    try {
-      setLoading(true);
+    const savePromise = async () => {
       if (editingId) {
         await masterCatalogService.updateMasterItem(editingId, data);
-        alert("Product Updated Successfully!");
         if (onSuccess) onSuccess();
         if (onCancelEdit) onCancelEdit();
       } else {
         await masterCatalogService.createMasterItem(data);
-        alert("Product Created Successfully!");
         if (onSuccess) onSuccess();
         
         // Reset form
@@ -609,11 +608,16 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
         setSizeRanges([]);
         setVariants([]);
       }
-    } catch (err: any) {
-      alert(err.message || "Failed to save product");
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    setLoading(true);
+    const promise = savePromise();
+    toast.promise(promise, {
+      loading: editingId ? "Updating product..." : "Creating product...",
+      success: editingId ? "Product Updated Successfully!" : "Product Created Successfully!",
+      error: (err: any) => err.message || "Failed to save product",
+    });
+    promise.finally(() => setLoading(false));
   };
 
   // Available Sizes for Parameter selection
@@ -671,8 +675,9 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
                     <input
                       type="text"
                       required
+                      disabled={loading}
                       placeholder="e.g. Urban Runner X1"
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium text-slate-800"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium text-slate-800 disabled:opacity-50"
                       value={formData.artname}
                       onChange={(e) => {
                         const val = e.target.value;

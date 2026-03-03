@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Package, Truck, CheckCircle2, Clock, Eye, Download } from 'lucide-react';
+import { Package, Truck, CheckCircle2, Clock, Eye, Download, Loader2 } from 'lucide-react';
 import { Order, OrderStatus, Article } from '../../types';
 
 interface OrderProcessorProps {
@@ -51,7 +51,7 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ orders, articles, updat
                   {order.status === OrderStatus.BOOKED && (
                     <button 
                       onClick={() => updateStatus(order.id, OrderStatus.READY_FOR_DISPATCH)}
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-100"
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-100 disabled:opacity-50"
                     >
                       <Package size={18} /> Ready
                     </button>

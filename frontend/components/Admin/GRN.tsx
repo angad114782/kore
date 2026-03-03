@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   Barcode,
   Boxes,
@@ -11,6 +12,7 @@ import {
   RotateCcw,
   PackageCheck,
   Package,
+  Loader2,
 } from "lucide-react";
 
 type RefType = "PO" | "CAT";
@@ -76,6 +78,7 @@ const GRN: React.FC = () => {
 
   // UI states
   const [expandedCarton, setExpandedCarton] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   // GRN History (dummy - API se ayega)
   const [grnHistory, setGrnHistory] = useState<GRNHistoryItem[]>([
@@ -141,7 +144,7 @@ const GRN: React.FC = () => {
     const code = (pairInput || "").trim();
     const err = validatePair(code);
     if (err) {
-      alert(err);
+      toast.error(err);
       return;
     }
 
@@ -194,27 +197,35 @@ const GRN: React.FC = () => {
   const submitGRN = () => {
     if (!canSubmit || !selectedRef) return;
 
-    // TODO: API call
-    // POST /grn/submit { refId, cartons[] } -> stock entries carton-wise
+    const submitPromise = async () => {
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      
+      // Add to history
+      setGrnHistory((prev) => [
+        {
+          grnNo: `GRN-${todayYYYYMMDD()}-${Math.floor(Math.random() * 900 + 100)}`,
+          refId: selectedRef.id,
+          cartons: cartons.length,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
 
-    alert(
-      `GRN Submitted ✅\nReference: ${selectedRef.id}\nCartons: ${cartons.length}\n(Stock entry carton-wise will be created)`
-    );
+      // reset scanning (keep ref selected)
+      const refId = selectedRef.id;
+      resetAll();
+      setSelectedRefId(refId);
+    };
 
-    // Add to history
-    setGrnHistory((prev) => [
-      {
-        grnNo: `GRN-${todayYYYYMMDD()}-${Math.floor(Math.random() * 900 + 100)}`,
-        refId: selectedRef.id,
-        cartons: cartons.length,
-        createdAt: new Date().toISOString(),
-      },
-      ...prev,
-    ]);
-
-    // reset scanning (keep ref selected)
-    resetAll();
-    setSelectedRefId(selectedRef.id);
+    setLoading(true);
+    const promise = submitPromise();
+    toast.promise(promise, {
+      loading: "Submitting GRN...",
+      success: `GRN Submitted Reference: ${selectedRef.id} Cartons: ${cartons.length}`,
+      error: "Failed to submit GRN",
+    });
+    promise.finally(() => setLoading(false));
   };
 
   return (
@@ -561,13 +572,14 @@ const GRN: React.FC = () => {
             <button
               type="button"
               onClick={submitGRN}
-              disabled={!canSubmit}
-              className={`px-6 py-3 rounded-2xl font-black transition-all shadow-xl ${
-                canSubmit
+              disabled={!canSubmit || loading}
+              className={`px-6 py-3 rounded-2xl font-black transition-all shadow-xl flex items-center justify-center gap-2 ${
+                canSubmit && !loading
                   ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-100"
                   : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-transparent"
               }`}
             >
+              {loading && <Loader2 size={18} className="animate-spin" />}
               Submit GRN
             </button>
           </div>

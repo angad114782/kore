@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { toast } from "sonner";
 import {
   Truck,
   Plus,
@@ -18,6 +19,7 @@ import {
   Landmark,
   CheckCircle2,
   FileText,
+  Loader2,
 } from "lucide-react";
 import {
   Vendor,
@@ -152,11 +154,10 @@ const VendorManager: React.FC = () => {
 
   const saveVendor = async () => {
     if (!formData.displayName) {
-      return alert("Display Name is required.");
+      return toast.error("Display Name is required.");
     }
 
-    try {
-      setLoading(true);
+    const savePromise = async () => {
       if (editingVendor) {
         await vendorService.updateVendor(editingVendor.id, formData);
       } else {
@@ -166,24 +167,33 @@ const VendorManager: React.FC = () => {
       setView("list");
       setFormData(emptyVendor());
       setEditingVendor(null);
-    } catch (err: any) {
-      alert(err.message || "Failed to save vendor");
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    setLoading(true);
+    const promise = savePromise();
+    toast.promise(promise, {
+      loading: editingVendor ? "Updating vendor..." : "Creating vendor...",
+      success: editingVendor ? "Vendor updated successfully!" : "Vendor created successfully!",
+      error: (err) => err.message || "Failed to save vendor",
+    });
+    promise.finally(() => setLoading(false));
   };
 
   const deleteVendor = async (id: string) => {
     if (confirm("Are you sure you want to delete this vendor?")) {
-      try {
-        setLoading(true);
+      const deletePromise = async () => {
         await vendorService.deleteVendor(id);
         await fetchVendors();
-      } catch (err: any) {
-        alert(err.message || "Failed to delete vendor");
-      } finally {
-        setLoading(false);
-      }
+      };
+
+      setLoading(true);
+      const promise = deletePromise();
+      toast.promise(promise, {
+        loading: "Deleting vendor...",
+        success: "Vendor deleted successfully!",
+        error: (err) => err.message || "Failed to delete vendor",
+      });
+      promise.finally(() => setLoading(false));
     }
   };
 
@@ -388,14 +398,15 @@ const VendorManager: React.FC = () => {
                   {filteredVendors.map((vendor) => (
                     <tr
                       key={vendor.id}
-                      className="hover:bg-indigo-50/30 transition-colors"
+                      onClick={() => openEditForm(vendor)}
+                      className="hover:bg-indigo-50/50 transition-colors cursor-pointer group"
                     >
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
+                          <div className="w-9 h-9 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm group-hover:bg-indigo-600 group-hover:text-white transition-all">
                             {vendor.displayName.charAt(0).toUpperCase()}
                           </div>
-                          <span className="font-semibold text-slate-900 text-sm">
+                          <span className="font-semibold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors">
                             {vendor.displayName}
                           </span>
                         </div>
@@ -412,14 +423,10 @@ const VendorManager: React.FC = () => {
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => openEditForm(vendor)}
-                            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                            title="Edit"
-                          >
-                            <Edit3 size={15} />
-                          </button>
-                          <button
-                            onClick={() => deleteVendor(vendor.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteVendor(vendor.id);
+                            }}
                             className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                             title="Delete"
                           >
@@ -477,6 +484,7 @@ const VendorManager: React.FC = () => {
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr_1fr] gap-2">
                 <select
+                  disabled={loading}
                   className={selectClass}
                   value={formData.salutation}
                   onChange={(e) => updateField("salutation", e.target.value)}
@@ -488,6 +496,7 @@ const VendorManager: React.FC = () => {
                   <option>Dr.</option>
                 </select>
                 <input
+                  disabled={loading}
                   type="text"
                   placeholder="First Name"
                   className={inputClass}
@@ -495,6 +504,7 @@ const VendorManager: React.FC = () => {
                   onChange={(e) => updateField("firstName", e.target.value)}
                 />
                 <input
+                  disabled={loading}
                   type="text"
                   placeholder="Last Name"
                   className={inputClass}
@@ -508,6 +518,7 @@ const VendorManager: React.FC = () => {
             <div>
               <label className={labelClass}>Company Name</label>
               <input
+                disabled={loading}
                 type="text"
                 className={inputClass}
                 value={formData.companyName}
@@ -521,6 +532,7 @@ const VendorManager: React.FC = () => {
                 Display Name <span className="text-rose-500">*</span>
               </label>
               <input
+                disabled={loading}
                 type="text"
                 required
                 className={inputClass}
@@ -538,6 +550,7 @@ const VendorManager: React.FC = () => {
                   className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                 />
                 <input
+                  disabled={loading}
                   type="email"
                   className={`${inputClass} pl-10`}
                   value={formData.email}
@@ -555,6 +568,7 @@ const VendorManager: React.FC = () => {
                     +91
                   </span>
                   <input
+                    disabled={loading}
                     type="text"
                     placeholder="Work Phone"
                     className={inputClass}
@@ -567,6 +581,7 @@ const VendorManager: React.FC = () => {
                     +91
                   </span>
                   <input
+                    disabled={loading}
                     type="text"
                     placeholder="Mobile"
                     className={inputClass}

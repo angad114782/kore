@@ -4,6 +4,7 @@ import {
   Inventory, Order, OrderStatus, OrderItem 
 } from './types';
 import { authService } from './services/auth';
+import { toast } from "sonner";
 
 // Initial Mock Data
 const MOCK_ASSORTMENTS: Assortment[] = [
@@ -186,7 +187,11 @@ export const useKoreStore = () => {
     setOrders(prev => [newOrder, ...prev]);
     setInventory(updatedInventory);
     setCart([]);
-    alert(isPending ? 'Order placed! Some items are pending stock.' : 'Order confirmed and inventory reserved!');
+    if (isPending) {
+      toast.info('Order placed! Some items are pending stock.');
+    } else {
+      toast.success('Order confirmed and inventory reserved!');
+    }
   };
 
   const updateOrderStatus = (orderId: string, newStatus: OrderStatus) => {

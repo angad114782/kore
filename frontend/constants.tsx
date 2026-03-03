@@ -253,6 +253,6 @@ export const MOCK_DISTRIBUTORS: User[] = [
     id: 'dist-admin',
     email: 'admin@kore.com',
     name: 'Super Admin',
-    role: UserRole.ADMIN,
+    role: UserRole.SUPERADMIN,
   }
 ];

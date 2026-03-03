@@ -1,5 +1,5 @@
-// src/pages/Admin/CatalogueManager.tsx
 import React, { useMemo, useState, useEffect } from "react";
+import { toast } from "sonner";
 import {
   Plus,
   Search,
@@ -17,6 +17,7 @@ import {
   Package,
   ChevronDown,
   Palette,
+  Loader2,
 } from "lucide-react";
 import { Article, AssortmentType } from "../../types";
 
@@ -40,6 +41,8 @@ interface CatalogueManagerProps {
   deleteArticle: (id: string) => void;
   onEditArticle: (id: string) => void;
   onViewVariant: (articleId: string, variantId: string) => void;
+  expandedIds: Set<string>;
+  setExpandedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
 }
 
 const CatalogueManager: React.FC<CatalogueManagerProps> = ({
@@ -49,13 +52,15 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   deleteArticle,
   onEditArticle,
   onViewVariant,
+  expandedIds,
+  setExpandedIds,
 }) => {
   const [activeTab, setActiveTab] = useState<CatalogStatus>("AVAILABLE");
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState<CatalogueForm>({
     name: "",
@@ -143,7 +148,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
     });
   };
 
-  const moveWishToAvailable = (article: Article) => {
+  const moveWishToAvailable = async (article: Article) => {
     const status = (article.status || "AVAILABLE") as CatalogStatus;
     if (status !== "WISHLIST") return;
     const updated: Article = {
@@ -151,7 +156,17 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
       status: "AVAILABLE",
       expectedDate: "",
     };
-    updateArticle(updated);
+
+    const promise = async () => {
+      // Simulate/Trigger update
+      await updateArticle(updated);
+    };
+
+    toast.promise(promise(), {
+      loading: "Moving to Catalogue...",
+      success: "Moved to Available Catalogue!",
+      error: "Failed to move article",
+    });
   };
 
   // ---------- Toggle Accordion ----------
@@ -229,13 +244,13 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim()) return alert("Article name required");
-    if (formData.mrp <= 0) return alert("MRP must be > 0");
+    if (!formData.name.trim()) return toast.error("Article name required");
+    if (formData.mrp <= 0) return toast.error("MRP must be > 0");
     if (Object.keys(formData.sizeBreakup || {}).length > 0 && !isValidMultiple) {
-      return alert("Total pairs must be 24, 48, 72... (multiple of 24)");
+      return toast.error("Total pairs must be 24, 48, 72... (multiple of 24)");
     }
     if (formData.catalogStatus === "WISHLIST" && !formData.expectedAvailableDate) {
-      return alert("Expected available date is required for Wish List items.");
+      return toast.error("Expected available date is required for Wish List items.");
     }
     const storedImages: string[] = imagePreviews;
     const payload: Article = {
@@ -256,9 +271,25 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
       status: formData.catalogStatus,
       expectedDate: formData.catalogStatus === "WISHLIST" ? formData.expectedAvailableDate : "",
     };
-    if (editingArticle) updateArticle(payload);
-    else addArticle(payload);
-    setIsModalOpen(false);
+
+    const savePromise = async () => {
+      // Simulate API delay if needed or just handle props
+      if (editingArticle) {
+        await updateArticle(payload);
+      } else {
+        await addArticle(payload);
+      }
+      setIsModalOpen(false);
+    };
+
+    setLoading(true);
+    const promise = savePromise();
+    toast.promise(promise, {
+      loading: editingArticle ? "Updating..." : "Creating...",
+      success: editingArticle ? "Updated successfully!" : "Created successfully!",
+      error: "Failed to save catalogue item",
+    });
+    promise.finally(() => setLoading(false));
   };
 
   // ---------- Render helpers ----------
@@ -334,7 +365,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
       {/* Master Articles List */}
       <div className="space-y-3">
         {filteredMasters.length === 0 && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center">
+          <div className="bg-white border border-slate-200 rounded-2xl p-2 text-center">
             <Package className="mx-auto text-slate-300 mb-3" size={40} />
             <p className="text-slate-400 font-medium">No items in this tab.</p>
           </div>
@@ -346,6 +377,26 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
           const variantCount = article.variants?.length || 0;
           const cover = imgSrc(article.imageUrl);
 
+          // Calculate price ranges
+          const sellingPrices = article.variants?.map(v => v.sellingPrice || 0).filter(p => p > 0) || [];
+          const costPrices = article.variants?.map(v => v.costPrice || 0).filter(p => p > 0) || [];
+          const mrpPrices = article.variants?.map(v => v.mrp || 0).filter(p => p > 0) || [];
+
+          const formatRange = (prices: number[], fallback: number) => {
+            if (!prices.length) return `₹${fallback.toLocaleString()}`;
+            const min = Math.min(...prices);
+            const max = Math.max(...prices);
+            return min === max ? `₹${min.toLocaleString()}` : `₹${min.toLocaleString()} - ₹${max.toLocaleString()}`;
+          };
+
+          const sellingDisplay = formatRange(sellingPrices, article.pricePerPair || 0);
+          const costDisplay = formatRange(costPrices, 0);
+          const mrpDisplay = formatRange(mrpPrices, article.mrp || 0);
+
+          // Find common HSN
+          const hsnCodes = Array.from(new Set(article.variants?.map(v => v.hsnCode).filter(Boolean)));
+          const hsnDisplay = hsnCodes.length === 1 ? hsnCodes[0] : hsnCodes.length > 1 ? "Multiple" : "N/A";
+
           return (
             <div
               key={article.id}
@@ -353,7 +404,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
             >
               {/* Master Row */}
               <div
-                className="flex items-center gap-4 p-4 md:p-5 cursor-pointer hover:bg-slate-50/50 transition-colors"
+                className="flex items-center gap-4 p-4 md:p-1 cursor-pointer hover:bg-slate-50/50 transition-colors"
                 onClick={() => toggleExpand(article.id)}
               >
                 {/* Image */}
@@ -363,45 +414,56 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                   className="w-14 h-14 md:w-16 md:h-16 rounded-xl object-cover border border-slate-100 shrink-0"
                 />
 
-                {/* Info */}
+                {/* Info Container */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-bold text-slate-900 text-base truncate">
+                  {/* Info Header */}
+                  <div className="flex items-center gap-2 mb-1">
+                    <h4 className="font-bold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors truncate">
                       {article.name}
                     </h4>
                     <span
-                      className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      className={`shrink-0 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
                         article.category === AssortmentType.MEN
-                          ? "bg-indigo-50 text-indigo-600"
+                          ? "bg-indigo-50 text-indigo-600 border border-indigo-100/50"
                           : article.category === AssortmentType.WOMEN
-                          ? "bg-pink-50 text-pink-600"
-                          : "bg-amber-50 text-amber-600"
+                          ? "bg-pink-50 text-pink-600 border border-pink-100/50"
+                          : "bg-amber-50 text-amber-600 border border-amber-100/50"
                       }`}
                     >
                       {article.category}
                     </span>
-                  </div>
-                  <div className="flex items-center gap-3 mt-1 flex-wrap">
-                    <span className="text-[10px] text-slate-400 font-mono tracking-widest">
-                      {article.sku}
-                    </span>
-                    <span className="text-xs font-bold text-slate-600">
-                      ₹{(article.mrp || article.pricePerPair || 0).toLocaleString()}
-                    </span>
-                    {article.brand && (
-                      <span className="text-[10px] text-slate-400 font-medium">
-                        {article.brand}
+                    {article.productCategory && (
+                      <span className="shrink-0 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[9px] font-bold border border-slate-200/50">
+                        {article.productCategory}
                       </span>
                     )}
+                    {status === "WISHLIST" && article.expectedDate && (
+                      <span className="shrink-0 px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 text-[9px] font-bold flex items-center gap-1 border border-rose-100/50">
+                        <CalendarDays size={8} />
+                        ETA: {new Date(article.expectedDate).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* Compact Stats Row */}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <StatItem label="Brand" value={article.brand || "Internal"} />
+                    <div className="flex items-center gap-2">
+                      <StatBox label="Selling" value={sellingDisplay} highlight />
+                      <StatBox label="Cost" value={costDisplay} />
+                      <StatBox label="MRP" value={mrpDisplay} />
+                    </div>
                   </div>
                 </div>
 
                 {/* Variant count badge */}
-                <div className="hidden sm:flex items-center gap-3 shrink-0">
+                <div className="hidden lg:block shrink-0 px-4 border-l border-slate-100">
                   <div className="text-center">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-100">
-                      <Palette size={12} />
-                      {variantCount} variant{variantCount !== 1 ? "s" : ""}
+                    <span className="text-xl font-black text-indigo-600 block leading-tight">
+                      {variantCount}
+                    </span>
+                    <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest">
+                      Variants
                     </span>
                   </div>
                 </div>
@@ -479,6 +541,12 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                                   Sizes
                                 </th>
                                 <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  HSN Code
+                                </th>
+                                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  Cost
+                                </th>
+                                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                   MRP
                                 </th>
                                 <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -528,6 +596,14 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                                     <td className="px-6 py-3">
                                       <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
                                         {sizeCount} size{sizeCount !== 1 ? "s" : ""}
+                                      </span>
+                                    </td>
+                                    <td className="px-6 py-3 font-mono text-[11px] text-slate-500">
+                                      {v.hsnCode || article.sku || "—"}
+                                    </td>
+                                    <td className="px-6 py-3">
+                                      <span className="text-sm font-bold text-slate-500">
+                                        ₹{(v.costPrice || 0).toLocaleString()}
                                       </span>
                                     </td>
                                     <td className="px-6 py-3">
@@ -908,6 +984,27 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
     </div>
   );
 };
+
+/* ---------- Helper Components ---------- */
+const StatItem: React.FC<{ label: string; value: string; mono?: boolean }> = ({ label, value, mono }) => (
+  <div className="flex items-center gap-1.5 overflow-hidden">
+    <span className="text-[10px] text-slate-400 uppercase font-black shrink-0">{label}:</span>
+    <span className={`text-[11px] text-slate-600 truncate ${mono ? "font-mono" : "font-semibold"}`}>{value}</span>
+  </div>
+);
+
+const StatBox: React.FC<{ label: string; value: string; highlight?: boolean }> = ({ label, value, highlight }) => (
+  <div className={`px-2 py-1 rounded-lg border flex flex-col justify-center ${
+    highlight ? "bg-indigo-50 border-indigo-100" : "bg-slate-50 border-slate-100"
+  }`}>
+    <span className={`text-[8px] uppercase font-black tracking-tighter ${highlight ? "text-indigo-400" : "text-slate-400"}`}>
+      {label}
+    </span>
+    <span className={`text-[11px] font-bold leading-none ${highlight ? "text-indigo-600" : "text-slate-800"}`}>
+      {value}
+    </span>
+  </div>
+);
 
 export default CatalogueManager;
 
