@@ -465,7 +465,7 @@ const App: React.FC = () => {
           );
         })()}
 {activeTab === "po" && (user.role !== UserRole.DISTRIBUTOR) && (
-  <POPage articles={articles} />
+  <POPage articles={articles} onSyncSuccess={fetchArticles} />
 )}
 {activeTab === "grn" && (user.role !== UserRole.DISTRIBUTOR) && (
   <GRN />

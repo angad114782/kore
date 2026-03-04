@@ -28,6 +28,7 @@ import {
 } from "../../types";
 import { poService } from "../../services/poService";
 import { vendorService } from "../../services/vendorService";
+import { masterCatalogService } from "../../services/masterCatalogService";
 
 // ─── Reusable styles ───────────────────────────────────
 const inputClass =
@@ -69,12 +70,252 @@ const todayStr = () => new Date().toISOString().split("T")[0];
 
 interface POPageProps {
   articles: Article[];
+  onSyncSuccess?: () => void;
 }
+
+// ─── Quantity Grid Modal ──────────────────────────────
+const QuantityGridModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  article: Article | undefined;
+  variantId: string | null;
+  existingItems: PurchaseOrderItem[];
+  onSave: (aggregatedItem: Partial<PurchaseOrderItem>, fullGrid: Record<string, Record<string, { qty: number; sku: string }>>) => void;
+}> = ({ isOpen, onClose, article, variantId, existingItems, onSave }) => {
+  if (!isOpen || !article) return null;
+
+  // Search for the specific variant
+  const variants = variantId 
+    ? (article.variants || []).filter(v => v.id === variantId)
+    : (article.variants || []);
+
+  // Sizes (Uniquely from all variants or article.selectedSizes)
+  const sizes = useMemo(() => {
+    const s = new Set<string>();
+    variants.forEach((v) => {
+      Object.keys(v.sizeQuantities || {}).forEach((sz) => s.add(sz));
+    });
+    // Fallback to selectedSizes if variants don't have quantities yet
+    if (s.size === 0 && article.selectedSizes) {
+      article.selectedSizes.forEach((sz) => s.add(sz));
+    }
+    return Array.from(s).sort((a, b) => {
+      const na = parseInt(a),
+        nb = parseInt(b);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return a.localeCompare(b);
+    });
+  }, [variants, article.selectedSizes]);
+
+  const [grid, setGrid] = useState<
+    Record<string, Record<string, { qty: number; sku: string }>>
+  >(() => {
+    const initial: Record<
+      string,
+      Record<string, { qty: number; sku: string }>
+    > = {};
+
+    variants.forEach((v) => {
+      initial[v.id] = {};
+      sizes.forEach((sz) => {
+        // Since we aggregate in PO and sync with Master,
+        // we always show the current Master's data for editing.
+        initial[v.id][sz] = {
+          qty: v.sizeQuantities?.[sz] || 0,
+          sku: v.sizeSkus?.[sz] || "",
+        };
+      });
+    });
+    return initial;
+  });
+
+  const handleUpdate = (
+    variantId: string,
+    size: string,
+    field: "qty" | "sku",
+    value: any
+  ) => {
+    setGrid((prev) => ({
+      ...prev,
+      [variantId]: {
+        ...prev[variantId],
+        [size]: {
+          ...prev[variantId][size],
+          [field]: value,
+        },
+      },
+    }));
+  };
+
+  const handleApply = () => {
+    // 1. Prepare aggregated item for PO table
+    let totalQty = 0;
+    let firstSku = "";
+    
+    // We only have one variant in this modal now due to filtering
+    const vId = variantId || "";
+    const variant = variants.find(v => v.id === vId);
+    if (!variant) return;
+
+    const sizeData = grid[vId] || {};
+    Object.entries(sizeData).forEach(([sz, data]) => {
+      totalQty += data.qty || 0;
+      if (!firstSku && data.sku) firstSku = data.sku;
+    });
+
+    if (totalQty === 0) {
+      // If user cleared all quantities, we might want to remove the row?
+      // For now, let's just use 0.
+    }
+
+    const aggregatedItem: Partial<PurchaseOrderItem> = {
+      variantId: vId,
+      articleId: article.id,
+      itemName: `${article.name}-${variant.color || "Default"}-${variant.sizeRange || "Range"}`,
+      sku: firstSku || variant.sku || article.sku,
+      quantity: totalQty,
+      basePrice: variant.costPrice || variant.sellingPrice || article.pricePerPair || 0,
+      image: article.imageUrl || "",
+      skuCompany: article.brand || "",
+      itemTaxCode: variant.hsnCode || article.sku || "",
+    };
+
+    onSave(aggregatedItem, grid);
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-10000 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+        {/* Header */}
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-indigo-50/30">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-white border border-indigo-100 flex items-center justify-center shadow-sm">
+              <Package className="text-indigo-600" size={24} />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-slate-900">
+                {article.name}
+              </h3>
+              <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">
+                Set Quantities & SKUs
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-white rounded-full text-slate-400 hover:text-slate-600 transition-all border border-transparent hover:border-slate-200"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Grid Content */}
+        <div className="flex-1 overflow-auto p-6">
+          {variants.length === 0 ? (
+            <div className="py-20 text-center text-slate-400">
+                No variants found for this article.
+            </div>
+          ) : (
+            <table className="w-full text-left border-collapse">
+                <thead>
+                <tr className="border-b border-slate-100">
+                    <th className="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 sticky left-0 z-10">
+                    Color / Variant
+                    </th>
+                    {sizes.map((sz) => (
+                    <th
+                        key={sz}
+                        className="py-3 px-4 text-[10px] font-black text-indigo-600 uppercase tracking-widest text-center min-w-[120px]"
+                    >
+                        Size {sz}
+                    </th>
+                    ))}
+                </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                {variants.map((v) => (
+                    <tr
+                    key={v.id}
+                    className="hover:bg-slate-50/50 transition-colors"
+                    >
+                    <td className="py-4 px-4 font-bold text-slate-700 bg-white sticky left-0 z-10 shadow-[4px_0_4px_-2px_rgba(0,0,0,0.05)]">
+                        <div className="flex flex-col">
+                        <span>{v.color || "Default"}</span>
+                        <span className="text-[10px] font-medium text-slate-400">
+                            {v.itemName || ""}
+                        </span>
+                        </div>
+                    </td>
+                    {sizes.map((sz) => (
+                        <td key={sz} className="py-4 px-3">
+                        <div className="space-y-2">
+                            <div className="relative">
+                            <input
+                                type="number"
+                                min="0"
+                                placeholder="Qty"
+                                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-center text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all"
+                                value={grid[v.id]?.[sz]?.qty || ""}
+                                onChange={(e) =>
+                                handleUpdate(
+                                    v.id,
+                                    sz,
+                                    "qty",
+                                    parseInt(e.target.value) || 0
+                                )
+                                }
+                            />
+                            </div>
+                            <input
+                            type="text"
+                            placeholder="SKU"
+                            className="w-full min-w-[100px] p-1.5 bg-white border border-slate-100 rounded-lg text-[10px] font-mono outline-none focus:border-indigo-300 transition-all"
+                            value={grid[v.id]?.[sz]?.sku || ""}
+                            onChange={(e) =>
+                                handleUpdate(v.id, sz, "sku", e.target.value)
+                            }
+                            />
+                        </div>
+                        </td>
+                    ))}
+                    </tr>
+                ))}
+                </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+          <p className="text-xs text-slate-400 font-medium whitespace-pre-wrap">
+            Entering quantities will create/update rows in the PO item table.<br/>
+            Existing rows for other articles will be preserved.
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleApply}
+              className="px-8 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+            >
+              Apply Quantities
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
 
 // ═══════════════════════════════════════════════════════
 // COMPONENT
 // ═══════════════════════════════════════════════════════
-const POPage: React.FC<POPageProps> = ({ articles }) => {
+const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
   // ── PO list from API ──
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -130,6 +371,12 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
   const [itemPickerSearch, setItemPickerSearch] = useState("");
   const itemPickerRef = useRef<HTMLDivElement>(null);
 
+  // ── Quantity Grid Modal state ──
+  const [showQtyModal, setShowQtyModal] = useState(false);
+  const [qtyModalArticleId, setQtyModalArticleId] = useState<string | null>(null);
+  const [qtyModalVariantId, setQtyModalVariantId] = useState<string | null>(null);
+  const [qtyModalRowId, setQtyModalRowId] = useState<string | null>(null);
+
   // ── Click outside handlers ──
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -160,13 +407,13 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
       v.companyName.toLowerCase().includes(vendorSearch.toLowerCase())
   );
 
-  // ── Build flat item list from articles + variants ──
+  // ── Build item list from variants (Article-Color-SizeRange) ──
   const itemOptions = useMemo(() => {
     const list: {
       articleId: string;
       variantId: string;
       masterName: string;
-      itemName: string;
+      name: string; // Fmt: Urban-Pink-4-7
       sku: string;
       brand: string;
       hsnCode: string;
@@ -177,76 +424,52 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
     articles.forEach((article) => {
       if (article.variants && article.variants.length > 0) {
         article.variants.forEach((variant) => {
-          const baseItemName = variant.itemName || `${article.name} - ${variant.color}`;
-          const variantSKUs = variant.sizeSkus || {};
-          const sizes = Object.keys(variantSKUs);
-
-          if (sizes.length > 0) {
-            sizes.forEach((size) => {
-              list.push({
-                articleId: article.id,
-                variantId: variant.id,
-                masterName: article.name,
-                itemName: `${baseItemName} - Size ${size}`,
-                sku: variantSKUs[size],
-                brand: article.brand || "",
-                hsnCode: variant.hsnCode || article.sku, // Fallback to master sku or hsn if needed
-                image: article.imageUrl || "",
-                basePrice: variant.costPrice || variant.sellingPrice || article.pricePerPair || 0,
-              });
-            });
-          } else {
-            // Fallback if no sizes defined
-            list.push({
-              articleId: article.id,
-              variantId: variant.id,
-              masterName: article.name,
-              itemName: baseItemName,
-              sku: variant.sku || article.sku,
-              brand: article.brand || "",
-              hsnCode: variant.hsnCode || "",
-              image: article.imageUrl || "",
-              basePrice: variant.costPrice || variant.sellingPrice || article.pricePerPair || 0,
-            });
-          }
+          list.push({
+            articleId: article.id,
+            masterName: article.name,
+            variantId: variant.id,
+            name: `${article.name}-${variant.color || "Default"}-${variant.sizeRange || "NoRange"}`,
+            sku: variant.sku || article.sku,
+            brand: article.brand || "",
+            hsnCode: variant.hsnCode || article.sku || "",
+            image: article.imageUrl || "",
+            basePrice: variant.costPrice || variant.sellingPrice || article.pricePerPair || 0,
+          });
         });
       } else {
+        // Fallback for articles without variants
         list.push({
           articleId: article.id,
-          variantId: "",
           masterName: article.name,
-          itemName: article.name,
+          variantId: "",
+          name: article.name,
           sku: article.sku,
           brand: article.brand || "",
-          hsnCode: "",
+          hsnCode: article.sku || "",
           image: article.imageUrl || "",
           basePrice: article.pricePerPair || 0,
         });
       }
     });
-
     return list;
   }, [articles]);
 
-  // ── Grouped items for picker ──
+  // ── Grouped items (Articles) for picker ──
   const groupedItems = useMemo(() => {
     const q = itemPickerSearch.toLowerCase().trim();
     const filtered = q
       ? itemOptions.filter(
           (it) =>
-            it.itemName.toLowerCase().includes(q) ||
-            it.sku.toLowerCase().includes(q) ||
-            it.masterName.toLowerCase().includes(q)
+            it.name.toLowerCase().includes(q) ||
+            it.sku.toLowerCase().includes(q)
         )
       : itemOptions;
 
-    const groups: Record<
-      string,
-      typeof itemOptions
-    > = {};
+    const groups: Record<string, typeof itemOptions> = {};
     filtered.forEach((item) => {
-      if (!groups[item.masterName]) groups[item.masterName] = [];
-      groups[item.masterName].push(item);
+      const master = item.masterName || "Other Items";
+      if (!groups[master]) groups[master] = [];
+      groups[master].push(item);
     });
     return groups;
   }, [itemOptions, itemPickerSearch]);
@@ -386,8 +609,8 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
         return computeItem({
           ...it,
           articleId: option.articleId,
-          variantId: option.variantId,
-          itemName: option.itemName,
+          variantId: option.variantId, 
+          itemName: option.name,
           sku: option.sku,
           skuCompany: option.brand,
           itemTaxCode: option.hsnCode,
@@ -398,6 +621,87 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
     );
     setActiveItemPickerIdx(null);
     setItemPickerSearch("");
+
+    // NOTE: User requested NO auto-open of dialog.
+    // User will click the Qty cell manually.
+  };
+
+  const handleSaveQtyGrid = async (
+    aggregatedItem: Partial<PurchaseOrderItem>,
+    fullGrid: Record<string, Record<string, { qty: number; sku: string }>>
+  ) => {
+    // 1. Update PO State (Single Row)
+    setItems((prev) => {
+      const otherItems = prev.filter((it) => 
+        !(it.articleId === qtyModalArticleId && it.variantId === qtyModalVariantId)
+      );
+
+      const baseItem: PurchaseOrderItem = {
+        ...emptyItem(),
+        ...aggregatedItem,
+        id: qtyModalRowId || `poi-${Date.now()}`,
+        taxRate: 18,
+        taxType: "GST",
+      };
+      
+      const newItems = [...otherItems, computeItem(baseItem)];
+      return newItems.length > 0 ? newItems : [emptyItem()];
+    });
+
+    // 2. Sync with Real Master (Article)
+    if (qtyModalArticleId && qtyModalVariantId) {
+      try {
+        const res = await masterCatalogService.getMasterItem(qtyModalArticleId);
+        const article = res.data || res;
+        
+        if (article && article.variants) {
+          // Find and update the specific variant's sizeMap
+          const updatedVariants = article.variants.map((v: any) => {
+            const vId = v._id || v.id;
+            if (vId === qtyModalVariantId) {
+              const newSizeMap = { ...(v.sizeMap || {}) };
+              const gridData = fullGrid[qtyModalVariantId];
+              if (gridData) {
+                Object.entries(gridData).forEach(([sz, data]) => {
+                  newSizeMap[sz] = { qty: data.qty, sku: data.sku };
+                });
+              }
+              return { ...v, sizeMap: newSizeMap };
+            }
+            return v;
+          });
+
+          // Prepare FormData for update (similar to ProductMaster)
+          const data = new FormData();
+          data.append("articleName", article.articleName || article.name);
+          data.append("variants", JSON.stringify(updatedVariants.map((v: any) => ({
+            itemName: v.itemName,
+            costPrice: v.costPrice,
+            sellingPrice: v.sellingPrice,
+            mrp: v.mrp,
+            hsnCode: v.hsnCode,
+            color: v.color,
+            sizeRange: v.sizeRange,
+            sizeMap: v.sizeMap
+          }))));
+
+          // Retain existing taxonomy if available
+          if (article.categoryId?._id || article.categoryId) data.append("categoryId", article.categoryId?._id || article.categoryId);
+          if (article.brandId?._id || article.brandId) data.append("brandId", article.brandId?._id || article.brandId);
+          if (article.manufacturerCompanyId?._id || article.manufacturerCompanyId) data.append("manufacturerCompanyId", article.manufacturerCompanyId?._id || article.manufacturerCompanyId);
+          if (article.unitId?._id || article.unitId) data.append("unitId", article.unitId?._id || article.unitId);
+
+          await masterCatalogService.updateMasterItem(qtyModalArticleId, data);
+          toast.success("Article Master updated successfully");
+          if (onSyncSuccess) onSyncSuccess();
+        }
+      } catch (err) {
+        console.error("Failed to sync with master", err);
+        toast.error("Warning: Failed to sync changes with Article Master");
+      }
+    }
+
+    setShowQtyModal(false);
   };
 
   const savePO = async (status: POStatus) => {
@@ -1019,7 +1323,7 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
                                       </div>
                                       {variants.map((option) => (
                                         <button
-                                          key={`${option.articleId}-${option.variantId}-${option.sku}`}
+                                          key={`${option.articleId}-${option.sku}`}
                                           type="button"
                                           className="w-full text-left px-4 py-2.5 text-sm hover:bg-indigo-50 transition-colors flex items-center gap-3 border-b border-slate-50"
                                           onClick={() =>
@@ -1042,7 +1346,7 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
                                           )}
                                           <div className="min-w-0">
                                             <p className="font-semibold text-slate-800 truncate">
-                                              {option.itemName}
+                                              {option.name}
                                             </p>
                                             <p className="text-[10px] text-slate-400 font-mono">
                                               {option.sku}
@@ -1118,19 +1422,28 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
 
                     {/* Quantity */}
                     <td className="px-2 py-3">
-                      <input
-                        type="number"
-                        min={1}
-                        className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-bold text-center"
-                        value={item.quantity || ""}
-                        onChange={(e) =>
-                          updateItem(
-                            item.id,
-                            "quantity",
-                            parseInt(e.target.value) || 0
-                          )
-                        }
-                      />
+                      {item.articleId ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQtyModalArticleId(item.articleId);
+                            setQtyModalVariantId(item.variantId || null);
+                            setQtyModalRowId(item.id);
+                            setShowQtyModal(true);
+                          }}
+                          className="w-full px-2 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition-all flex items-center justify-center gap-1 min-h-[30px]"
+                        >
+                          {item.quantity}
+                          <Edit2 size={10} />
+                        </button>
+                      ) : (
+                        <input
+                          type="number"
+                          disabled
+                          className="w-full px-2 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold text-center text-slate-400"
+                          placeholder="—"
+                        />
+                      )}
                     </td>
 
                     {/* Tax Rate */}
@@ -1347,6 +1660,15 @@ const POPage: React.FC<POPageProps> = ({ articles }) => {
           </button>
         </div>
       </div>
+
+      <QuantityGridModal
+        isOpen={showQtyModal}
+        onClose={() => setShowQtyModal(false)}
+        article={articles.find((a) => a.id === qtyModalArticleId)}
+        variantId={qtyModalVariantId}
+        existingItems={items}
+        onSave={handleSaveQtyGrid}
+      />
     </div>
   );
 };

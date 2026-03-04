@@ -181,74 +181,6 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
               <p className={`text-lg font-black leading-tight ${margin > 0 ? "text-amber-600" : "text-slate-400"}`}>{margin}%</p>
             </div>
           </div>
-
-          {/* Size Breakdown */}
-          {sizes.length > 0 && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
-                  <ArrowRightLeft size={13} className="text-indigo-500" />
-                  Size Breakdown
-                </h3>
-                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
-                  totalPairs > 0 && totalPairs % 24 === 0
-                    ? "bg-emerald-50 text-emerald-600"
-                    : totalPairs > 0
-                    ? "bg-indigo-50 text-indigo-600"
-                    : "bg-slate-100 text-slate-500"
-                }`}>
-                  {totalPairs} prs
-                </span>
-              </div>
-              <div className="p-3">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                  {sizes.map((sz) => {
-                    const qty = variant.sizeQuantities?.[sz] || 0;
-                    const sku = variant.sizeSkus[sz] || "";
-                    return (
-                      <div
-                        key={sz}
-                        className={`group relative rounded-2xl border p-4 transition-all hover:shadow-md ${
-                          qty > 0
-                            ? "bg-white border-emerald-200"
-                            : "bg-slate-50 border-slate-200 opacity-60"
-                        }`}
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="text-xl font-bold text-slate-800">{sz}</span>
-                          <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
-                            qty > 0 ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
-                          }`}>
-                            {qty} prs
-                          </span>
-                        </div>
-                        
-                        {sku && (
-                          <div className="mt-3 space-y-1">
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-left ml-1">SKU</p>
-                            <button
-                              onClick={() => copySku(sku)}
-                              className="flex items-center justify-between w-full px-2 py-2 bg-slate-50 border border-slate-100 rounded-xl group/copy hover:bg-indigo-50 hover:border-indigo-200 transition-all"
-                              title={sku}
-                            >
-                              <span className="text-[11px] font-mono font-bold text-slate-700 truncate mr-1">
-                                {sku}
-                              </span>
-                              {copiedSku === sku ? (
-                                <Check size={12} className="text-emerald-500 shrink-0" />
-                              ) : (
-                                <Copy size={12} className="text-slate-300 group-hover/copy:text-indigo-400 shrink-0" />
-                              )}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* ─── Col 3: Specs sidebar ─── */}
@@ -268,6 +200,71 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ─── Full Width: Size Breakdown Table ─── */}
+      {sizes.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-6">
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
+            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 uppercase tracking-widest">
+              <ArrowRightLeft size={16} className="text-indigo-500" />
+              Variant Size Breakdown
+            </h3>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Inventory:</span>
+              <span className={`text-xs font-black px-2.5 py-1 rounded-lg ${
+                totalPairs > 0 && totalPairs % 24 === 0
+                  ? "bg-emerald-50 text-emerald-600 shadow-sm"
+                  : totalPairs > 0
+                  ? "bg-indigo-50 text-indigo-600 shadow-sm"
+                  : "bg-slate-100 text-slate-500"
+              }`}>
+                {totalPairs} prs
+              </span>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className="px-6 py-3 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] whitespace-nowrap">Size</th>
+                  <th className="px-6 py-3 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] whitespace-nowrap">Available Stock</th>
+                  <th className="px-6 py-3 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] whitespace-nowrap text-right pr-12">Full Master SKU</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {sizes.map((sz) => {
+                  const qty = variant.sizeQuantities?.[sz] || 0;
+                  const sku = variant.sizeSkus[sz] || "";
+                  return (
+                    <tr key={sz} className="hover:bg-indigo-50/20 transition-all group">
+                      <td className="px-6 py-4.5">
+                        <span className="text-base font-bold text-slate-800">{sz}</span>
+                      </td>
+                      <td className="px-6 py-4.5">
+                        <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full ${
+                          qty > 0 ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-50 text-slate-400 border border-slate-100"
+                        }`}>
+                          <div className={`w-1.5 h-1.5 rounded-full ${qty > 0 ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />
+                          {qty} prs
+                        </span>
+                      </td>
+                      <td className="px-6 py-4.5 text-right pr-12">
+                        {sku ? (
+                          <code className="font-mono text-sm font-bold text-indigo-600 bg-indigo-50/50 px-3 py-1.5 rounded-lg border border-indigo-100/50 whitespace-nowrap tracking-tight inline-block">
+                            {sku}
+                          </code>
+                        ) : (
+                          <span className="text-xs text-slate-300 italic font-medium">Not defined</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

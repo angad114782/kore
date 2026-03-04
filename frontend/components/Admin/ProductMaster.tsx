@@ -1181,36 +1181,18 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
                                 <th className="px-3 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider whitespace-nowrap">
                                   <div className="flex flex-col gap-0.5">
                                     Cost Price (₹)
-                                    <button
-                                      type="button"
-                                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-indigo-50 transition-colors flex items-center gap-3 border-b border-slate-50"
-                                      onClick={() =>
-                                        copyToAll("costPrice", range)
-                                      }
-                                    >
-                                      <Copy size={9} /> Copy Range
-                                    </button>
                                   </div>
                                 </th>
                                 <th className="px-3 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider whitespace-nowrap">
                                   <div className="flex flex-col gap-0.5">
                                     Selling Price (₹)
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        copyToAll("sellingPrice", range)
-                                      }
-                                      className="text-[9px] text-indigo-400 hover:text-indigo-600 font-bold uppercase flex items-center gap-1 transition-colors"
-                                    >
-                                      <Copy size={9} /> Copy Range
-                                    </button>
                                   </div>
                                 </th>
                                 {/* Dynamic size columns for THIS range only */}
                                 {rangeSizes.map((size) => (
                                   <th
                                     key={size}
-                                    className="px-2 py-3 text-[10px] font-bold text-emerald-600 uppercase tracking-wider text-center whitespace-nowrap min-w-20"
+                                    className="px-2 py-3 text-[10px] font-bold text-emerald-600 uppercase tracking-wider text-center whitespace-nowrap min-w-[120px]"
                                   >
                                     <div className="flex flex-col">
                                       <span>Size {size}</span>
@@ -1221,13 +1203,6 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
                                 <th className="px-3 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider whitespace-nowrap">
                                   <div className="flex flex-col gap-0.5">
                                     MRP (₹)
-                                    <button
-                                      type="button"
-                                      onClick={() => copyToAll("mrp", range)}
-                                      className="text-[9px] text-indigo-400 hover:text-indigo-600 font-bold uppercase flex items-center gap-1 transition-colors"
-                                    >
-                                      <Copy size={9} /> Copy Range
-                                    </button>
                                   </div>
                                 </th>
                                 <th className="px-3 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider whitespace-nowrap">
@@ -1324,7 +1299,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
                                         <input
                                           type="text"
                                           placeholder="SKU"
-                                          className="w-full min-w-12.5 p-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] font-medium text-slate-600 text-center outline-none focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-300 transition-all"
+                                          className="w-full min-w-[100px] p-1.5 bg-slate-50 border border-slate-200 rounded-md text-[10px] font-medium text-slate-600 outline-none focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-300 transition-all"
                                           value={variant.sizeSkus[size] || ""}
                                           onChange={(e) =>
                                             updateVariantSizeSku(
