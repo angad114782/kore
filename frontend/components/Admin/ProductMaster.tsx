@@ -299,6 +299,36 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
     );
   };
 
+  const copySizeQtyToAll = (size: string, sizeRange: string) => {
+    const targetVariants = variants.filter((v) => v.sizeRange === sizeRange);
+    if (targetVariants.length === 0) return;
+    const firstVal = targetVariants[0].sizeQuantities[size] || 0;
+
+    setVariants((prev) =>
+      prev.map((v) => {
+        if (v.sizeRange !== sizeRange) return v;
+        return {
+          ...v,
+          sizeQuantities: { ...v.sizeQuantities, [size]: firstVal },
+        };
+      })
+    );
+  };
+
+
+  const copyHsnToAll = (sizeRange: string) => {
+    const targetVariants = variants.filter((v) => v.sizeRange === sizeRange);
+    if (targetVariants.length === 0) return;
+    const firstVal = targetVariants[0].hsnCode || "";
+
+    setVariants((prev) =>
+      prev.map((v) => {
+        if (v.sizeRange !== sizeRange) return v;
+        return { ...v, hsnCode: firstVal };
+      })
+    );
+  };
+
   const removeVariant = (id: string) => {
     setVariants((prev) => prev.filter((v) => v.id !== id));
   };
@@ -1194,9 +1224,20 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
                                     key={size}
                                     className="px-2 py-3 text-[10px] font-bold text-emerald-600 uppercase tracking-wider text-center whitespace-nowrap min-w-[120px]"
                                   >
-                                    <div className="flex flex-col">
-                                      <span>Size {size}</span>
-                                      <span className="text-[8px] text-slate-400 font-medium">Qty / SKU</span>
+                                    <div className="flex flex-col items-center gap-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[11px] font-black">Size {size}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => copySizeQtyToAll(size, range)}
+                                          title={`Apply this Qty to all Colors for Size ${size}`}
+                                          className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-100/80 hover:bg-emerald-200 rounded text-[9px] font-black text-emerald-700 transition-all border border-emerald-200 shadow-sm uppercase tracking-tighter"
+                                        >
+                                          <Copy size={8} />
+                                          Apply
+                                        </button>
+                                      </div>
+                                      <span className="text-[8px] text-slate-400 font-medium whitespace-nowrap">Qty / SKU</span>
                                     </div>
                                   </th>
                                 ))}
@@ -1206,8 +1247,17 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
                                   </div>
                                 </th>
                                 <th className="px-3 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider whitespace-nowrap">
-                                  <div className="flex flex-col gap-0.5">
-                                    HSN Code
+                                  <div className="flex flex-col items-center gap-1">
+                                    <span>HSN Code</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => copyHsnToAll(range)}
+                                      className="flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 hover:bg-indigo-100 rounded text-[9px] font-black text-indigo-600 transition-all border border-indigo-100 shadow-sm uppercase tracking-tighter"
+                                      title="Apply first HSN to all colors in this range"
+                                    >
+                                      <Copy size={8} />
+                                      Apply
+                                    </button>
                                   </div>
                                 </th>
                                 <th className="px-3 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">
