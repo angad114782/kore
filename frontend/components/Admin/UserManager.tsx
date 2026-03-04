@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner';
 import { userService } from '../../services/userService';
 import { User, UserRole } from '../../types';
+import Switch from '../ui/Switch';
 
 const UserManager: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -116,6 +117,21 @@ const UserManager: React.FC = () => {
     });
   };
 
+  const handleStatusToggle = async (user: User, newStatus: boolean) => {
+    const userId = user.id || (user as any)._id;
+    if (!userId) return;
+
+    try {
+      await userService.updateUser(userId, { isActive: newStatus });
+      setUsers(prev => prev.map(u => 
+        (u.id === userId || (u as any)._id === userId) ? { ...u, isActive: newStatus } : u
+      ));
+      toast.success(`User ${newStatus ? 'activated' : 'deactivated'} successfully`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update status');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header & Actions */}
@@ -196,13 +212,11 @@ const UserManager: React.FC = () => {
                         >
                           <Edit3 size={18} />
                         </button>
-                        <button 
-                          onClick={() => handleDeleteUser(user.id)}
-                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                          title="Delete User"
-                        >
-                          <Trash2 size={18} />
-                        </button>
+                          <Switch 
+                            checked={user.isActive !== false}
+                            onCheckedChange={(checked) => handleStatusToggle(user, checked)}
+                            className="scale-90"
+                          />
                       </>
                     )}
                   </div>
@@ -308,13 +322,11 @@ const UserManager: React.FC = () => {
                             >
                               <Edit size={18} />
                             </button>
-                            <button 
-                              onClick={() => handleDeleteUser(user.id)}
-                              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                              title="Delete User"
-                            >
-                              <Trash2 size={18} />
-                            </button>
+                            <Switch 
+                              checked={user.isActive !== false}
+                              onCheckedChange={(checked) => handleStatusToggle(user, checked)}
+                              className="scale-90"
+                            />
                           </>
                         )}
                        

@@ -29,6 +29,7 @@ import {
 import { poService } from "../../services/poService";
 import { vendorService } from "../../services/vendorService";
 import { masterCatalogService } from "../../services/masterCatalogService";
+import { exportPOToPDF } from "../../utils/exportPO";
 
 // ─── Reusable styles ───────────────────────────────────
 const inputClass =
@@ -918,6 +919,19 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
             </p>
           </div>
         </div>
+        
+        {editingPOId && (
+          <button
+            onClick={() => {
+              const currentPO = purchaseOrders.find(p => p.id === editingPOId);
+              if (currentPO) exportPOToPDF(currentPO, selectedVendor);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 text-sm font-bold rounded-xl hover:bg-indigo-100 transition-all border border-indigo-200"
+          >
+            <FileText size={16} />
+            Download PDF
+          </button>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200">

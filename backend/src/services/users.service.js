@@ -122,7 +122,7 @@ exports.getUserById = async (id) => {
   return user;
 };
 
-exports.updateUser = async (actorUserId, targetUserId, { name, email, role }) => {
+exports.updateUser = async (actorUserId, targetUserId, { name, email, role, isActive }) => {
   if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
     console.error(`[UserService] updateUser: Invalid targetUserId: "${targetUserId}"`);
     const err = new Error("Invalid user ID");
@@ -157,6 +157,10 @@ exports.updateUser = async (actorUserId, targetUserId, { name, email, role }) =>
       throw err;
     }
     update.role = cleanRole;
+  }
+
+  if (typeof isActive === "boolean") {
+    update.isActive = isActive;
   }
 
   // Protection checks

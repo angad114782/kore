@@ -21,7 +21,7 @@ export const userService = {
     return response; // { data: items[], meta: {} }
   },
 
-  updateUser: async (userId: string, userData: Partial<{ name: string; email: string; role: string }>) => {
+  updateUser: async (userId: string, userData: Partial<{ name: string; email: string; role: string; isActive: boolean }>) => {
     const response = await apiFetch(`/users/${userId}`, {
       method: "PATCH",
       body: JSON.stringify(userData),

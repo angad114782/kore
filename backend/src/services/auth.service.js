@@ -10,6 +10,12 @@ exports.login = async ({ email, password }) => {
     throw err;
   }
 
+  if (user.isActive === false) {
+    const err = new Error("Account is inactive. Please contact administrator.");
+    err.status = 403;
+    throw err;
+  }
+
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) {
     const err = new Error("Invalid credentials");

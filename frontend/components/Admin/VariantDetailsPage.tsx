@@ -168,7 +168,6 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
               {article.brand && <Badge icon={<Layers size={8} />} text={article.brand} />}
             </div>
           </div>
-
           {/* Pricing Row */}
           <div className="grid grid-cols-4 gap-2">
             <PriceBox label="MRP" value={mrp} accent="indigo" />
@@ -181,6 +180,64 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
               <p className={`text-lg font-black leading-tight ${margin > 0 ? "text-amber-600" : "text-slate-400"}`}>{margin}%</p>
             </div>
           </div>
+
+          {/* ─── Compact Size Breakdown Grid (Internal) ─── */}
+          {sizes.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 mt-2">
+              <div className="flex items-center justify-between mb-3 px-1">
+                 <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <Layers size={12} className="text-indigo-500" />
+                  Stock Breakdown
+                </h3>
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${
+                  totalPairs > 0 && totalPairs % 24 === 0
+                    ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                    : "bg-indigo-50 text-indigo-600 border border-indigo-100"
+                }`}>
+                  {totalPairs} prs Total
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {sizes.map((sz) => {
+                  const qty = variant.sizeQuantities?.[sz] || 0;
+                  const sku = variant.sizeSkus[sz] || "";
+                  
+                  let statusColor = qty === 0 ? "rose" : qty < 24 ? "amber" : "emerald";
+                  let bgClass = statusColor === "rose" ? "bg-rose-50/30 border-rose-100/50" : statusColor === "amber" ? "bg-amber-50/30 border-amber-100/50" : "bg-emerald-50/30 border-emerald-100/50";
+                  let textClass = statusColor === "rose" ? "text-rose-600" : statusColor === "amber" ? "text-amber-600" : "text-emerald-600";
+                  let dotClass = statusColor === "rose" ? "bg-rose-500" : statusColor === "amber" ? "bg-amber-500 animate-pulse" : "bg-emerald-500";
+
+                  return (
+                    <div key={sz} className={`p-2 rounded-xl border transition-all hover:bg-white hover:shadow-md flex flex-col gap-1 group relative ${bgClass}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-black text-slate-800">{sz}</span>
+                        <div className="flex items-center gap-1">
+                          <div className={`w-1 h-1 rounded-full ${dotClass}`} />
+                          <span className={`text-[10px] font-black ${textClass}`}>{qty}</span>
+                        </div>
+                      </div>
+                      
+                      {sku && (
+                        <div className="flex items-center justify-between gap-1 overflow-hidden">
+                          <code className="text-[8px] font-mono font-medium text-slate-400 truncate tracking-tighter bg-white/50 px-1 py-0.5 rounded">
+                            {sku}
+                          </code>
+                          <button 
+                             onClick={() => copySku(sku)}
+                             className="p-0.5 text-slate-300 hover:text-indigo-500 transition-colors shrink-0"
+                             title="Copy SKU"
+                          >
+                            <Copy size={8} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ─── Col 3: Specs sidebar ─── */}
@@ -201,70 +258,7 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
         </div>
       </div>
 
-      {/* ─── Full Width: Size Breakdown Table ─── */}
-      {sizes.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-6">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
-            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 uppercase tracking-widest">
-              <ArrowRightLeft size={16} className="text-indigo-500" />
-              Variant Size Breakdown
-            </h3>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Inventory:</span>
-              <span className={`text-xs font-black px-2.5 py-1 rounded-lg ${
-                totalPairs > 0 && totalPairs % 24 === 0
-                  ? "bg-emerald-50 text-emerald-600 shadow-sm"
-                  : totalPairs > 0
-                  ? "bg-indigo-50 text-indigo-600 shadow-sm"
-                  : "bg-slate-100 text-slate-500"
-              }`}>
-                {totalPairs} prs
-              </span>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="px-6 py-3 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] whitespace-nowrap">Size</th>
-                  <th className="px-6 py-3 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] whitespace-nowrap">Available Stock</th>
-                  <th className="px-6 py-3 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] whitespace-nowrap text-right pr-12">Full Master SKU</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {sizes.map((sz) => {
-                  const qty = variant.sizeQuantities?.[sz] || 0;
-                  const sku = variant.sizeSkus[sz] || "";
-                  return (
-                    <tr key={sz} className="hover:bg-indigo-50/20 transition-all group">
-                      <td className="px-6 py-4.5">
-                        <span className="text-base font-bold text-slate-800">{sz}</span>
-                      </td>
-                      <td className="px-6 py-4.5">
-                        <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full ${
-                          qty > 0 ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-slate-50 text-slate-400 border border-slate-100"
-                        }`}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${qty > 0 ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />
-                          {qty} prs
-                        </span>
-                      </td>
-                      <td className="px-6 py-4.5 text-right pr-12">
-                        {sku ? (
-                          <code className="font-mono text-sm font-bold text-indigo-600 bg-indigo-50/50 px-3 py-1.5 rounded-lg border border-indigo-100/50 whitespace-nowrap tracking-tight inline-block">
-                            {sku}
-                          </code>
-                        ) : (
-                          <span className="text-xs text-slate-300 italic font-medium">Not defined</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 };
