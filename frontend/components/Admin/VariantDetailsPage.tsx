@@ -218,45 +218,64 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                 </span>
               </div>
               
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {sizes.map((sz) => {
-                  const data = currentSizeMap[sz];
-                  const qty = typeof data === 'object' ? (data?.qty || 0) : (Number(data) || 0);
-                  const sku = (typeof data === 'object' ? data?.sku : variant.sizeSkus?.[sz]) || "";
-                  
-                  let statusColor = qty === 0 ? "rose" : qty < 24 ? "amber" : "emerald";
-                  let bgClass = statusColor === "rose" ? "bg-rose-50/30 border-rose-100/50" : statusColor === "amber" ? "bg-amber-50/30 border-amber-100/50" : "bg-emerald-50/30 border-emerald-100/50";
-                  let textClass = statusColor === "rose" ? "text-rose-600" : statusColor === "amber" ? "text-amber-600" : "text-emerald-600";
-                  let dotClass = statusColor === "rose" ? "bg-rose-500" : statusColor === "amber" ? "bg-amber-500 animate-pulse" : "bg-emerald-500";
+<div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+  {sizes.map((sz) => {
+    const data = currentSizeMap[sz];
+    const qty = typeof data === "object" ? data?.qty || 0 : Number(data) || 0;
+    const sku =
+      (typeof data === "object" ? data?.sku : variant.sizeSkus?.[sz]) || "";
 
-                  return (
-                    <div key={sz} className={`p-2 rounded-xl border transition-all hover:bg-white hover:shadow-md flex flex-col gap-1 group relative ${bgClass}`}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-black text-slate-800">{sz}</span>
-                        <div className="flex items-center gap-1">
-                          <div className={`w-1 h-1 rounded-full ${dotClass}`} />
-                          <span className={`text-[10px] font-black ${textClass}`}>{qty}</span>
-                        </div>
-                      </div>
-                      
-                      {sku && (
-                        <div className="flex items-center justify-between gap-1 overflow-hidden">
-                          <code className="text-[8px] font-mono font-medium text-slate-400 truncate tracking-tighter bg-white/50 px-1 py-0.5 rounded">
-                            {sku}
-                          </code>
-                          <button 
-                             onClick={() => copySku(sku)}
-                             className="p-0.5 text-slate-300 hover:text-indigo-500 transition-colors shrink-0"
-                             title="Copy SKU"
-                          >
-                            <Copy size={8} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+    let statusColor =
+      qty === 0 ? "rose" : qty < 24 ? "amber" : "emerald";
+
+    let bgClass =
+      statusColor === "rose"
+        ? "bg-rose-50/40 border-rose-100"
+        : statusColor === "amber"
+        ? "bg-amber-50/40 border-amber-100"
+        : "bg-emerald-50/40 border-emerald-100";
+
+    let qtyClass =
+      statusColor === "rose"
+        ? "text-rose-600"
+        : statusColor === "amber"
+        ? "text-amber-600"
+        : "text-emerald-600";
+
+    return (
+      <div
+        key={sz}
+        className={`p-3 rounded-xl border transition-all hover:bg-white hover:shadow-md flex flex-col gap-1 ${bgClass}`}
+      >
+        {/* SIZE */}
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+          Size {sz}
+        </span>
+
+        {/* BIG QUANTITY */}
+        <div className={`text-2xl font-black leading-none ${qtyClass}`}>
+          {qty}
+        </div>
+
+        {/* SKU */}
+        {sku && (
+          <div className="flex items-center justify-between gap-1 overflow-hidden">
+            <code className="text-[9px] font-mono text-slate-400 truncate bg-white/60 px-1 py-0.5 rounded">
+              {sku}
+            </code>
+
+            <button
+              onClick={() => copySku(sku)}
+              className="p-0.5 text-slate-300 hover:text-indigo-500 transition-colors shrink-0"
+            >
+              <Copy size={10} />
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  })}
+</div>
             </div>
           )}
         </div>
