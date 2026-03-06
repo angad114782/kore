@@ -25,6 +25,7 @@ jobs:
             cd /var/www/kore
 
             echo "Pulling latest code..."
+            export GIT_SSH_COMMAND='ssh -i /root/.ssh/kore_deploy_key -o StrictHostKeyChecking=no'
             git fetch origin main
             git reset --hard origin/main
 
