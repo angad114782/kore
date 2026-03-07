@@ -26,9 +26,18 @@ exports.createPO = async (req, res) => {
 exports.listPOs = async (req, res) => {
   try {
     const result = await service.list(req.query);
+
     return res.json({
       data: result.items,
-      meta: { total: result.total, page: result.page, limit: result.limit },
+      meta: {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
+        hasNextPage: result.hasNextPage,
+        hasPrevPage: result.hasPrevPage,
+        pageSizeOptions: result.pageSizeOptions,
+      },
     });
   } catch (err) {
     return sendError(res, err);

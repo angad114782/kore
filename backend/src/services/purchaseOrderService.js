@@ -1,8 +1,30 @@
 const mongoose = require("mongoose");
 const PurchaseOrder = require("../models/PurchaseOrder");
-const Vendor = require("../models/Vendor"); // assume already exists
+const Vendor = require("../models/Vendor");
+
+const ALLOWED_PAGE_LIMITS = [10, 20, 30, 50, 100, 200, 500, 1000];
 
 const round2 = (n) => Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100;
+
+const normalizePage = (page) => {
+  const parsed = Number(page);
+  if (!Number.isInteger(parsed) || parsed < 1) return 1;
+  return parsed;
+};
+
+const normalizeLimit = (limit) => {
+  const parsed = Number(limit);
+  if (ALLOWED_PAGE_LIMITS.includes(parsed)) return parsed;
+  return 10;
+};
+
+const ensureValidId = (id, name = "ID") => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    const err = new Error(`Invalid ${name}`);
+    err.statusCode = 400;
+    throw err;
+  }
+};
 
 const computeItem = (it) => {
   const base = Number(it.basePrice || 0);
@@ -26,33 +48,43 @@ const computeTotals = (items, discountPercent) => {
   const computed = items.map(computeItem);
 
   const subTotal = round2(
-    computed.reduce((sum, it) => sum + Number(it.basePrice || 0) * Number(it.quantity || 0), 0)
+    computed.reduce(
+      (sum, it) => sum + Number(it.basePrice || 0) * Number(it.quantity || 0),
+      0
+    )
   );
 
   const discPct = Math.min(100, Math.max(0, Number(discountPercent || 0)));
   const discountAmount = round2((subTotal * discPct) / 100);
 
   const totalTax = round2(
-    computed.reduce((sum, it) => sum + Number(it.taxPerItem || 0) * Number(it.quantity || 0), 0)
+    computed.reduce(
+      (sum, it) => sum + Number(it.taxPerItem || 0) * Number(it.quantity || 0),
+      0
+    )
   );
 
   const total = round2(subTotal - discountAmount + totalTax);
 
-  return { items: computed, subTotal, discountPercent: discPct, discountAmount, totalTax, total };
-};
-
-const ensureValidId = (id, name = "ID") => {
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    const err = new Error(`Invalid ${name}`);
-    err.statusCode = 400;
-    throw err;
-  }
+  return {
+    items: computed,
+    subTotal,
+    discountPercent: discPct,
+    discountAmount,
+    totalTax,
+    total,
+  };
 };
 
 exports.generateNextPONumber = async () => {
-  const last = await PurchaseOrder.findOne({ isDeleted: false }).sort({ createdAt: -1 }).lean();
+  const last = await PurchaseOrder.findOne({ isDeleted: false })
+    .sort({ createdAt: -1 })
+    .select("poNumber")
+    .lean();
+
   const lastNum = last?.poNumber?.match(/PO-(\d+)/)?.[1];
   const next = (lastNum ? parseInt(lastNum, 10) : 0) + 1;
+
   return `PO-${String(next).padStart(5, "0")}`;
 };
 
@@ -143,11 +175,24 @@ exports.create = async (body) => {
 };
 
 exports.list = async (query) => {
-  const { q, status, vendorId, page = 1, limit = 20, from, to } = query;
+  const {
+    q,
+    status,
+    vendorId,
+    page = 1,
+    limit = 10,
+    from,
+    to,
+  } = query;
+
+  const normalizedPage = normalizePage(page);
+  const normalizedLimit = normalizeLimit(limit);
+  const skip = (normalizedPage - 1) * normalizedLimit;
 
   const filter = { isDeleted: false };
 
   if (status) filter.status = status;
+
   if (vendorId) {
     ensureValidId(vendorId, "vendorId");
     filter.vendorId = vendorId;
@@ -167,14 +212,27 @@ exports.list = async (query) => {
     ];
   }
 
-  const skip = (Number(page) - 1) * Number(limit);
-
   const [items, total] = await Promise.all([
-    PurchaseOrder.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)).lean(),
+    PurchaseOrder.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(normalizedLimit)
+      .lean(),
     PurchaseOrder.countDocuments(filter),
   ]);
 
-  return { items, total, page: Number(page), limit: Number(limit) };
+  const totalPages = Math.ceil(total / normalizedLimit) || 1;
+
+  return {
+    items,
+    total,
+    page: normalizedPage,
+    limit: normalizedLimit,
+    totalPages,
+    hasNextPage: normalizedPage < totalPages,
+    hasPrevPage: normalizedPage > 1,
+    pageSizeOptions: ALLOWED_PAGE_LIMITS,
+  };
 };
 
 exports.getById = async (id) => {
@@ -186,6 +244,7 @@ exports.getById = async (id) => {
     err.statusCode = 404;
     throw err;
   }
+
   return doc;
 };
 
@@ -199,7 +258,6 @@ exports.update = async (id, body) => {
     throw err;
   }
 
-  // allow update header fields
   const patch = {
     vendorId: body.vendorId,
     vendorName: body.vendorName,
@@ -214,7 +272,6 @@ exports.update = async (id, body) => {
     status: body.status,
   };
 
-  // vendor change validation
   if (patch.vendorId !== undefined) {
     ensureValidId(patch.vendorId, "vendorId");
     const vendor = await Vendor.findById(patch.vendorId).lean();
@@ -227,18 +284,25 @@ exports.update = async (id, body) => {
     doc.vendorName = patch.vendorName || vendor.displayName || vendor.companyName || "";
   }
 
-  // header fields
-  ["poNumber","referenceNumber","paymentTerms","shipmentPreference","notes","termsAndConditions"].forEach((k) => {
+  [
+    "poNumber",
+    "referenceNumber",
+    "paymentTerms",
+    "shipmentPreference",
+    "notes",
+    "termsAndConditions",
+  ].forEach((k) => {
     if (patch[k] !== undefined) doc[k] = patch[k];
   });
+
   if (patch.date !== undefined) doc.date = patch.date;
   if (patch.deliveryDate !== undefined) doc.deliveryDate = patch.deliveryDate;
   if (patch.status !== undefined) doc.status = patch.status === "SENT" ? "SENT" : "DRAFT";
 
-  // items replace + totals recompute (only if provided)
   if (body.items !== undefined) {
     const rawItems = Array.isArray(body.items) ? body.items : [];
     const filtered = rawItems.filter((it) => it.articleId || it.itemName || it.sku);
+
     if (filtered.length === 0) {
       const err = new Error("At least one item is required");
       err.statusCode = 400;
@@ -272,7 +336,6 @@ exports.update = async (id, body) => {
     doc.totalTax = totals.totalTax;
     doc.total = totals.total;
   } else if (body.discountPercent !== undefined) {
-    // discount changed but items not provided
     const totals = computeTotals(doc.items, body.discountPercent);
     doc.discountPercent = totals.discountPercent;
     doc.discountAmount = totals.discountAmount;
@@ -305,6 +368,7 @@ exports.softDelete = async (id) => {
     err.statusCode = 404;
     throw err;
   }
+
   doc.isDeleted = true;
   await doc.save();
   return true;
