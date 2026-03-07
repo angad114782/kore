@@ -1356,9 +1356,9 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
                   <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider w-[50px]">
                     Image
                   </th>
-                  <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                  {/* <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
                     SKU
-                  </th>
+                  </th> */}
                   {/* <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
                     SKU Company
                   </th> */}
@@ -1530,11 +1530,11 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
                     </td>
 
                     {/* SKU */}
-                    <td className="px-2 py-3">
+                    {/* <td className="px-2 py-3">
                       <span className="text-xs font-mono text-slate-600">
                         {item.sku || "—"}
                       </span>
-                    </td>
+                    </td> */}
 
                     {/* SKU Company */}
                     {/* <td className="px-2 py-3">
