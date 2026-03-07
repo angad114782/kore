@@ -11,7 +11,7 @@ export const authService = {
 
   getMe: async () => {
     const response = await apiFetch('/auth/me');
-    return response.data; // user object
+    return response.data.user; // Extract user from nested response
   },
 
   logout: async () => {

@@ -22,7 +22,9 @@ const getRedirectModule = (role) => {
 
 exports.login = async (req, res, next) => {
   try {
-    const email = String(req.body?.email || "").trim().toLowerCase();
+    const email = String(req.body?.email || "")
+      .trim()
+      .toLowerCase();
     const password = String(req.body?.password || "");
 
     if (!email || !password) {
