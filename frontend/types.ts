@@ -22,6 +22,9 @@ export interface User {
   paymentTerms?: string;
   discountPercentage?: number;
   creditLimit?: number;
+  loginEmail?: string;
+  loginPassword?: string;
+  loginEnabled?: boolean;
 }
 
 export enum AssortmentType {

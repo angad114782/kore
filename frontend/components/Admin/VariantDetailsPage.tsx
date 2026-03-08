@@ -20,6 +20,8 @@ interface VariantDetailsPageProps {
   onDelete: (id: string) => void;
 }
 
+const BASE_URL = import.meta.env.VITE_API_BASE_URL.replace("/api", "");
+
 const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
   article,
   variant,
@@ -32,16 +34,18 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
 
   const imgSrc = (url: string | undefined) => {
     if (!url) return "";
-    return url.startsWith("http") ? url : `http://localhost:5005${url}`;
+    return url.startsWith("http") ? url : `${BASE_URL}${url}`;
   };
 
   const allImages = [
     article.imageUrl,
-    ...((article.secondaryImages || []) as any[]).map((img: any) => img.url || img),
+    ...((article.secondaryImages || []) as any[]).map(
+      (img: any) => img.url || img
+    ),
   ].filter(Boolean);
 
   const variantName = variant.itemName || `${article.name} – ${variant.color}`;
-  
+
   const parseSizeRange = (range: string) => {
     const cleaned = range.trim().replace(/\s/g, "");
     const m = cleaned.match(/^(\d+)-(\d+)$/);
@@ -55,9 +59,10 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
     return out;
   };
 
-  const sizes = Object.keys(variant.sizeSkus || {}).length > 0
-    ? Object.keys(variant.sizeSkus)
-    : parseSizeRange(variant.sizeRange || article.sizeRange || "");
+  const sizes =
+    Object.keys(variant.sizeSkus || {}).length > 0
+      ? Object.keys(variant.sizeSkus)
+      : parseSizeRange(variant.sizeRange || article.sizeRange || "");
 
   const currentSizeMap = variant.sizeMap || variant.sizeQuantities || {};
   const currentBookingMap = variant.bookingMap || {};
@@ -70,7 +75,7 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
   const totalBooked = Object.values(currentBookingMap).reduce((s, v) => {
     return s + (Number(v) || 0);
   }, 0);
-  
+
   // Clear identity: Variant SKU or Article SKU, no auto-generated strings
   const primarySku = variant.sku || article.sku || "";
 
@@ -83,7 +88,10 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
   const mrp = variant.mrp || article.mrp || 0;
   const selling = variant.sellingPrice || 0;
   const cost = variant.costPrice || 0;
-  const margin = selling > 0 && cost > 0 ? Math.round(((selling - cost) / selling) * 100) : 0;
+  const margin =
+    selling > 0 && cost > 0
+      ? Math.round(((selling - cost) / selling) * 100)
+      : 0;
 
   return (
     <div className="max-w-full mx-auto space-y-4">
@@ -93,7 +101,10 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
           onClick={onBack}
           className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-indigo-600 transition-colors group"
         >
-          <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
+          <ArrowLeft
+            size={16}
+            className="group-hover:-translate-x-0.5 transition-transform"
+          />
           Catalogue
         </button>
         <div className="flex items-center gap-1.5">
@@ -105,7 +116,8 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
           </button>
           <button
             onClick={() => {
-              if (window.confirm(`Delete "${article.name}"?`)) onDelete(article.id);
+              if (window.confirm(`Delete "${article.name}"?`))
+                onDelete(article.id);
             }}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
           >
@@ -149,7 +161,11 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                         : "border-slate-200 hover:border-slate-300 opacity-60 hover:opacity-100"
                     }`}
                   >
-                    <img src={imgSrc(img)} alt="" className="w-full h-full object-cover" />
+                    <img
+                      src={imgSrc(img)}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
                   </button>
                 ))}
               </div>
@@ -163,9 +179,14 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h1 className="text-lg font-bold text-slate-900 leading-snug truncate">{variantName}</h1>
+                <h1 className="text-lg font-bold text-slate-900 leading-snug truncate">
+                  {variantName}
+                </h1>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Master: <span className="font-medium text-slate-500">{article.name}</span>
+                  Master:{" "}
+                  <span className="font-medium text-slate-500">
+                    {article.name}
+                  </span>
                 </p>
               </div>
               <span
@@ -185,12 +206,23 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                 onClick={() => copySku(primarySku)}
                 className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 hover:bg-indigo-100 transition-colors"
               >
-                {copiedSku === primarySku ? <Check size={11} /> : <Copy size={11} />}
+                {copiedSku === primarySku ? (
+                  <Check size={11} />
+                ) : (
+                  <Copy size={11} />
+                )}
                 {primarySku}
               </button>
               <Badge icon={<Tag size={8} />} text={article.category} />
-              {article.productCategory && <Badge icon={<Package size={8} />} text={article.productCategory} />}
-              {article.brand && <Badge icon={<Layers size={8} />} text={article.brand} />}
+              {article.productCategory && (
+                <Badge
+                  icon={<Package size={8} />}
+                  text={article.productCategory}
+                />
+              )}
+              {article.brand && (
+                <Badge icon={<Layers size={8} />} text={article.brand} />
+              )}
             </div>
           </div>
 
@@ -205,16 +237,35 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
         {/* ─── Col 3: Specs sidebar ─── */}
         <div className="lg:col-span-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-0">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Specifications</h3>
-            <SpecRow label="Color" value={variant.color || "—"} dot={variant.color} />
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+              Specifications
+            </h3>
+            <SpecRow
+              label="Color"
+              value={variant.color || "—"}
+              dot={variant.color}
+            />
             <SpecRow label="Sole Color" value={article.soleColor || "—"} />
             <SpecRow label="HSN Code" value={variant.hsnCode || "—"} mono />
-            <SpecRow label="Total Pairs" value={String(totalPairs)} badge={totalPairs > 0 && totalPairs % 24 === 0 ? "emerald" : undefined} />
-            <SpecRow label="Size Range" value={article.selectedSizes?.join(", ") || "—"} />
+            <SpecRow
+              label="Total Pairs"
+              value={String(totalPairs)}
+              badge={
+                totalPairs > 0 && totalPairs % 24 === 0 ? "emerald" : undefined
+              }
+            />
+            <SpecRow
+              label="Size Range"
+              value={article.selectedSizes?.join(", ") || "—"}
+            />
             <SpecRow label="Manufacturer" value={article.manufacturer || "—"} />
             <SpecRow label="Unit" value={article.unit || "—"} />
             {article.status === "WISHLIST" && (
-              <SpecRow label="Expected Date" value={article.expectedDate || "Required"} badge={!article.expectedDate ? "rose" : undefined} />
+              <SpecRow
+                label="Expected Date"
+                value={article.expectedDate || "Required"}
+                badge={!article.expectedDate ? "rose" : undefined}
+              />
             )}
           </div>
         </div>
@@ -232,15 +283,25 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
-                <span className="text-xs font-medium text-slate-600">Stock: <span className="font-bold text-indigo-600">{totalPairs} pairs</span></span>
+                <span className="text-xs font-medium text-slate-600">
+                  Stock:{" "}
+                  <span className="font-bold text-indigo-600">
+                    {totalPairs} pairs
+                  </span>
+                </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                <span className="text-xs font-medium text-slate-600">Booked: <span className="font-bold text-emerald-600">{totalBooked} pairs</span></span>
+                <span className="text-xs font-medium text-slate-600">
+                  Booked:{" "}
+                  <span className="font-bold text-emerald-600">
+                    {totalBooked} pairs
+                  </span>
+                </span>
               </div>
             </div>
           </div>
-          
+
           {/* Two-column grid for size and booking */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Left Column - Size Stock Breakdown */}
@@ -249,33 +310,48 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                 <h4 className="text-xs font-black text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
                   <Package size={14} /> Size Stock
                 </h4>
-                <span className="text-[10px] font-bold text-slate-400">with SKU</span>
+                <span className="text-[10px] font-bold text-slate-400">
+                  with SKU
+                </span>
               </div>
-              
+
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {sizes.map((sz) => {
                   const data = currentSizeMap[sz];
                   const qty = 0; // Forced to 0 as PO quantities are not GRN inventory
-                  const sku = (typeof data === "object" ? data?.sku : variant.sizeSkus?.[sz]) || "";
+                  const sku =
+                    (typeof data === "object"
+                      ? data?.sku
+                      : variant.sizeSkus?.[sz]) || "";
 
-                  let statusColor = qty === 0 ? "rose" : qty < 24 ? "amber" : "emerald";
-                  let bgClass = statusColor === "rose"
-                    ? "bg-rose-50/60 border-rose-200"
-                    : statusColor === "amber"
-                    ? "bg-amber-50/60 border-amber-200"
-                    : "bg-emerald-50/60 border-emerald-200";
+                  let statusColor =
+                    qty === 0 ? "rose" : qty < 24 ? "amber" : "emerald";
+                  let bgClass =
+                    statusColor === "rose"
+                      ? "bg-rose-50/60 border-rose-200"
+                      : statusColor === "amber"
+                      ? "bg-amber-50/60 border-amber-200"
+                      : "bg-emerald-50/60 border-emerald-200";
 
-                  let qtyClass = statusColor === "rose"
-                    ? "text-rose-600"
-                    : statusColor === "amber"
-                    ? "text-amber-600"
-                    : "text-emerald-600";
+                  let qtyClass =
+                    statusColor === "rose"
+                      ? "text-rose-600"
+                      : statusColor === "amber"
+                      ? "text-amber-600"
+                      : "text-emerald-600";
 
                   return (
-                    <div key={sz} className={`p-3 rounded-xl border transition-all hover:shadow-md ${bgClass}`}>
+                    <div
+                      key={sz}
+                      className={`p-3 rounded-xl border transition-all hover:shadow-md ${bgClass}`}
+                    >
                       <div className="flex flex-col items-start justify-between mb-1">
-                        <span className="text-xs font-bold text-slate-500">Size {sz}</span>
-                        <div className={`text-xl font-black leading-none ${qtyClass}`}>
+                        <span className="text-xs font-bold text-slate-500">
+                          Size {sz}
+                        </span>
+                        <div
+                          className={`text-xl font-black leading-none ${qtyClass}`}
+                        >
                           {qty}
                         </div>
                       </div>
@@ -291,29 +367,39 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                 <h4 className="text-xs font-black text-emerald-600 uppercase tracking-wider flex items-center gap-1.5">
                   <ShoppingBag size={14} /> Booked Quantity
                 </h4>
-                <span className="text-[10px] font-bold text-slate-400">per size</span>
+                <span className="text-[10px] font-bold text-slate-400">
+                  per size
+                </span>
               </div>
-              
+
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {sizes.map((sz) => {
                   const bookedQty = currentBookingMap[sz] || 0;
                   const statusColor = bookedQty === 0 ? "slate" : "emerald";
-                  
+
                   return (
-                    <div key={sz} className={`p-3 rounded-xl border transition-all hover:shadow-md ${
-                      statusColor === "emerald"
-                        ? "bg-emerald-50/60 border-emerald-200"
-                        : "bg-slate-50/60 border-slate-200"
-                    }`}>
+                    <div
+                      key={sz}
+                      className={`p-3 rounded-xl border transition-all hover:shadow-md ${
+                        statusColor === "emerald"
+                          ? "bg-emerald-50/60 border-emerald-200"
+                          : "bg-slate-50/60 border-slate-200"
+                      }`}
+                    >
                       <div className="flex flex-col items-start justify-between">
-                        <span className="text-xs font-bold text-slate-500">Size {sz}</span>
-                        <div className={`text-xl font-black leading-none ${
-                          bookedQty > 0 ? "text-emerald-600" : "text-slate-300"
-                        }`}>
+                        <span className="text-xs font-bold text-slate-500">
+                          Size {sz}
+                        </span>
+                        <div
+                          className={`text-xl font-black leading-none ${
+                            bookedQty > 0
+                              ? "text-emerald-600"
+                              : "text-slate-300"
+                          }`}
+                        >
                           {bookedQty}
                         </div>
                       </div>
-                      
                     </div>
                   );
                 })}
@@ -330,7 +416,10 @@ export default VariantDetailsPage;
 
 /* ── Sub-components ── */
 
-const Badge: React.FC<{ icon: React.ReactNode; text: string }> = ({ icon, text }) => (
+const Badge: React.FC<{ icon: React.ReactNode; text: string }> = ({
+  icon,
+  text,
+}) => (
   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-50 text-slate-500 rounded text-[9px] font-bold uppercase tracking-wider border border-slate-200">
     {icon} {text}
   </span>
@@ -342,14 +431,32 @@ const PriceBox: React.FC<{
   accent: "indigo" | "emerald" | "slate";
 }> = ({ label, value, accent }) => {
   const c = {
-    indigo: { bg: "bg-indigo-50 border-indigo-100", label: "text-indigo-400", val: "text-indigo-700" },
-    emerald: { bg: "bg-emerald-50 border-emerald-100", label: "text-emerald-400", val: "text-emerald-700" },
-    slate: { bg: "bg-slate-50 border-slate-200", label: "text-slate-400", val: "text-slate-700" },
+    indigo: {
+      bg: "bg-indigo-50 border-indigo-100",
+      label: "text-indigo-400",
+      val: "text-indigo-700",
+    },
+    emerald: {
+      bg: "bg-emerald-50 border-emerald-100",
+      label: "text-emerald-400",
+      val: "text-emerald-700",
+    },
+    slate: {
+      bg: "bg-slate-50 border-slate-200",
+      label: "text-slate-400",
+      val: "text-slate-700",
+    },
   }[accent];
   return (
     <div className={`rounded-xl border p-3 ${c.bg}`}>
-      <p className={`text-[9px] font-black uppercase tracking-wider ${c.label}`}>{label}</p>
-      <p className={`text-lg font-black leading-tight ${c.val}`}>₹{value.toLocaleString()}</p>
+      <p
+        className={`text-[9px] font-black uppercase tracking-wider ${c.label}`}
+      >
+        {label}
+      </p>
+      <p className={`text-lg font-black leading-tight ${c.val}`}>
+        ₹{value.toLocaleString()}
+      </p>
     </div>
   );
 };
@@ -370,13 +477,15 @@ const SpecRow: React.FC<{
           style={{ backgroundColor: dot.toLowerCase() }}
         />
       )}
-      <span className={`text-sm font-semibold ${
-        badge === "emerald"
-          ? "text-emerald-600"
-          : badge === "rose"
-          ? "text-rose-500"
-          : "text-slate-700"
-      } ${mono ? "font-mono text-xs" : ""}`}>
+      <span
+        className={`text-sm font-semibold ${
+          badge === "emerald"
+            ? "text-emerald-600"
+            : badge === "rose"
+            ? "text-rose-500"
+            : "text-slate-700"
+        } ${mono ? "font-mono text-xs" : ""}`}
+      >
         {value}
       </span>
     </div>

@@ -47,6 +47,8 @@ interface CatalogueManagerProps {
   setExpandedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
 }
 
+const BASE_URL = import.meta.env.VITE_API_BASE_URL.replace("/api", "");
+
 const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   articles,
   addArticle,
@@ -343,7 +345,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   // ---------- Render helpers ----------
   const imgSrc = (url: string | undefined) => {
     if (!url) return "https://picsum.photos/seed/kore/200/200";
-    return url.startsWith("http") ? url : `http://localhost:5005${url}`;
+    return url.startsWith("http") ? url : `${BASE_URL}${url}`;
   };
 
   return (
