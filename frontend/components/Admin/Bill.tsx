@@ -9,7 +9,11 @@ import {
   Loader2,
 } from "lucide-react";
 import { type Bill, billService } from "../../services/billService";
+import { vendorService } from "../../services/vendorService";
 import BillDetails from "./BillDetails";
+import { exportPOToPDF, exportOrderToExcel } from "../../utils/exportPO";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const Bill: React.FC = () => {
   const [bills, setBills] = useState<Bill[]>([]);
@@ -55,6 +59,121 @@ const Bill: React.FC = () => {
     );
   });
 
+  // helpers to export list view
+  const exportListToExcel = (list: Bill[]) => {
+    const rows: string[][] = [];
+    rows.push(["Date", "PO Number", "Vendor", "Total", "Status", "Remark"]);
+    list.forEach((b) => {
+      rows.push([
+        new Date(b.date).toLocaleDateString("en-IN"),
+        b.poNumber,
+        b.vendorName,
+        b.total?.toString() || "",
+        b.billStatus,
+        b.billRemark || "",
+      ]);
+    });
+    const csv = rows
+      .map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(","))
+      .join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bills-list.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportListToPDF = (list: Bill[]) => {
+    const COMPANY_INFO = {
+      name: "INNOVATIVE LIFESTYLE TECHNOLOGY PRIVATE LIMITED",
+      cin: "U511909DL2020PTC3711873",
+      gst: "07AAFC18644A1ZP",
+      brand: "YOHO",
+    };
+
+    const doc = new jsPDF("portrait", "pt", "a4");
+
+    // Title and company info
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("Bills List Report", 40, 40);
+
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.text(COMPANY_INFO.name, 40, 60);
+    doc.text(`GST: ${COMPANY_INFO.gst} | CIN: ${COMPANY_INFO.cin}`, 40, 72);
+
+    // Summary info
+    const dateFrom =
+      list.length > 0
+        ? new Date(list[list.length - 1].date).toLocaleDateString("en-IN")
+        : "—";
+    const dateTo =
+      list.length > 0
+        ? new Date(list[0].date).toLocaleDateString("en-IN")
+        : "—";
+    const totalAmount = list.reduce((sum, b) => sum + (b.total || 0), 0);
+
+    doc.setFont("helvetica", "bold");
+    doc.text(`Period: ${dateFrom} to ${dateTo}`, 40, 90);
+    doc.text(`Total Bills: ${list.length}`, 40, 102);
+    doc.text(
+      `Total Amount: ₹${totalAmount.toLocaleString("en-IN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`,
+      40,
+      114
+    );
+
+    // Table
+    const body = list.map((b) => [
+      new Date(b.date).toLocaleDateString("en-IN"),
+      b.poNumber,
+      b.vendorName,
+      b.total?.toLocaleString("en-IN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }) || "",
+      b.billStatus,
+      b.billRemark || "—",
+    ]);
+
+    autoTable(doc, {
+      startY: 130,
+      margin: { left: 40, right: 40 },
+      head: [
+        ["Date", "Bill Number", "Vendor", "Total Amount", "Status", "Remark"],
+      ],
+      body,
+      theme: "grid",
+      styles: {
+        fontSize: 8,
+        cellPadding: 4,
+        textColor: [0, 0, 0],
+        lineColor: [0, 0, 0],
+        lineWidth: 0.5,
+      },
+      headStyles: {
+        fillColor: [240, 245, 240],
+        fontStyle: "bold",
+        halign: "center",
+      },
+      columnStyles: {
+        0: { cellWidth: 50 },
+        1: { cellWidth: 60 },
+        2: { cellWidth: 80 },
+        3: { cellWidth: 70, halign: "right" },
+        4: { cellWidth: 50, halign: "center" },
+        5: { cellWidth: "auto" },
+      },
+    });
+
+    doc.save("bills-list.pdf");
+  };
+
   if (selectedBill) {
     return (
       <BillDetails
@@ -78,13 +197,27 @@ const Bill: React.FC = () => {
         <div className="p-2.5 bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-600/20">
           <FileText size={22} />
         </div>
-        <div>
+        <div className="flex flex-col">
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">
             Bills
           </h2>
           <p className="text-slate-500 text-xs font-medium">
             Manage bill approvals and rejections
           </p>
+        </div>
+        <div className="ml-auto flex gap-2">
+          <button
+            onClick={() => exportListToPDF(filteredBills)}
+            className="flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-semibold hover:bg-emerald-100 transition-all"
+          >
+            <FileText size={14} /> List PDF
+          </button>
+          <button
+            onClick={() => exportListToExcel(filteredBills)}
+            className="flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-semibold hover:bg-emerald-100 transition-all"
+          >
+            XLS
+          </button>
         </div>
       </div>
 
@@ -147,6 +280,9 @@ const Bill: React.FC = () => {
                   <th className="px-6 py-3.5 text-[10px] font-bold text-emerald-600 uppercase tracking-wider text-center">
                     Status
                   </th>
+                  <th className="px-6 py-3.5 text-[10px] font-bold text-emerald-600 uppercase tracking-wider text-center">
+                    Export
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -193,6 +329,50 @@ const Bill: React.FC = () => {
                         )}
                         {bill.billStatus}
                       </span>
+                    </td>
+                    <td
+                      className="px-6 py-4 text-center"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex gap-1 justify-center">
+                        <button
+                          onClick={async () => {
+                            let v;
+                            try {
+                              const res = await vendorService.getVendor(
+                                bill.vendorId
+                              );
+                              v = res.data;
+                            } catch {
+                              v = undefined;
+                            }
+                            exportPOToPDF(bill, v, { isBill: true });
+                          }}
+                          className="p-2 text-emerald-600 hover:bg-emerald-100 rounded-xl transition-all inline-flex items-center gap-1 font-semibold text-xs"
+                          title="Download PDF"
+                        >
+                          <FileText size={16} />
+                          PDF
+                        </button>
+                        <button
+                          onClick={async () => {
+                            let v;
+                            try {
+                              const res = await vendorService.getVendor(
+                                bill.vendorId
+                              );
+                              v = res.data;
+                            } catch {
+                              v = undefined;
+                            }
+                            exportOrderToExcel(bill, v);
+                          }}
+                          className="p-2 text-emerald-600 hover:bg-emerald-100 rounded-xl transition-all inline-flex items-center gap-1 font-semibold text-xs"
+                          title="Download Excel"
+                        >
+                          XLS
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -36,7 +36,7 @@ import { poService } from "../../services/poService";
 import { vendorService } from "../../services/vendorService";
 import { masterCatalogService } from "../../services/masterCatalogService";
 import { billService } from "../../services/billService";
-import { exportPOToPDF } from "../../utils/exportPO";
+import { exportPOToPDF, exportOrderToExcel } from "../../utils/exportPO";
 
 // ─── Reusable styles ───────────────────────────────────
 const inputClass =
@@ -1696,19 +1696,33 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
         </div>
 
         {editingPOId ? (
-          <button
-            onClick={() => {
-              const currentPO = purchaseOrders.find(
-                (p) => p.id === editingPOId
-              );
-              if (currentPO)
-                exportPOToPDF({ ...currentPO, items }, selectedVendor);
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 text-sm font-bold rounded-xl hover:bg-indigo-100 transition-all border border-indigo-200"
-          >
-            <FileText size={16} />
-            Download PDF
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                const currentPO = purchaseOrders.find(
+                  (p) => p.id === editingPOId
+                );
+                if (currentPO)
+                  exportPOToPDF({ ...currentPO, items }, selectedVendor);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 text-sm font-bold rounded-xl hover:bg-indigo-100 transition-all border border-indigo-200"
+            >
+              <FileText size={16} />
+              Download PDF
+            </button>
+            <button
+              onClick={() => {
+                const currentPO = purchaseOrders.find(
+                  (p) => p.id === editingPOId
+                );
+                if (currentPO)
+                  exportOrderToExcel({ ...currentPO, items }, selectedVendor);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 text-sm font-bold rounded-xl hover:bg-indigo-100 transition-all border border-indigo-200"
+            >
+              XLS
+            </button>
+          </div>
         ) : (
           <button
             onClick={() => {

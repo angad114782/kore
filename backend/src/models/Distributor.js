@@ -19,6 +19,8 @@ const DistributorSchema = new mongoose.Schema(
     location: { type: String, trim: true, default: "" },
 
     // login mapping
+    // actual credentials live only on the User record; distributor holds
+    // a reference and a flag indicating whether login is enabled.
     loginEnabled: { type: Boolean, default: false },
     userId: {
       type: mongoose.Schema.Types.ObjectId,

@@ -10,8 +10,10 @@ import {
   Clock,
   Send,
 } from "lucide-react";
+import { exportPOToPDF, exportOrderToExcel } from "../../utils/exportPO";
 import { type Bill } from "../../services/billService";
 import { billService } from "../../services/billService";
+import { vendorService } from "../../services/vendorService";
 
 const labelClass =
   "block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2";
@@ -108,13 +110,47 @@ const BillDetails: React.FC<BillDetailsProps> = ({
           </div>
         </div>
 
-        <div
-          className={`px-4 py-2 rounded-lg border flex items-center gap-2 ${
-            statusColor[bill.billStatus]
-          }`}
-        >
-          {statusIcon[bill.billStatus]}
-          {bill.billStatus}
+        <div className="flex items-center gap-4">
+          <div
+            className={`px-4 py-2 rounded-lg border flex items-center gap-2 ${
+              statusColor[bill.billStatus]
+            }`}
+          >
+            {statusIcon[bill.billStatus]}
+            {bill.billStatus}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={async () => {
+                let v;
+                try {
+                  const res = await vendorService.getVendor(bill.vendorId);
+                  v = res.data;
+                } catch {
+                  v = undefined;
+                }
+                exportPOToPDF(bill, v, { isBill: true });
+              }}
+              className="flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-semibold hover:bg-emerald-100 transition-all"
+            >
+              <FileText size={14} /> PDF
+            </button>
+            <button
+              onClick={async () => {
+                let v;
+                try {
+                  const res = await vendorService.getVendor(bill.vendorId);
+                  v = res.data;
+                } catch {
+                  v = undefined;
+                }
+                exportOrderToExcel(bill, v);
+              }}
+              className="flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-semibold hover:bg-emerald-100 transition-all"
+            >
+              XLS
+            </button>
+          </div>
         </div>
       </div>
 

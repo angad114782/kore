@@ -199,9 +199,17 @@ const App: React.FC = () => {
     }));
   });
 
-  const [cart, setCart] = useState<{ articleId: string; cartons: number }[]>(
-    []
-  );
+  // Cart items now track variants and size breakdowns instead of simple carton counts
+  type CartItem = {
+    articleId: string;
+    variantId?: string;
+    sizeQuantities?: Record<string, number>;
+    cartonCount: number;
+    pairCount: number;
+    price: number;
+  };
+
+  const [cart, setCart] = useState<CartItem[]>([]);
 
   // PERSISTENCE
   useEffect(() => {
@@ -239,14 +247,12 @@ const App: React.FC = () => {
 
   // DERIVED STATE
   const cartTotal = useMemo(() => {
-    return cart.reduce((total, item) => {
-      const article = articles.find((a) => a.id === item.articleId);
-      return total + (article ? article.pricePerPair * 24 * item.cartons : 0);
-    }, 0);
-  }, [cart, articles]);
+    return cart.reduce((total, item) => total + item.price, 0);
+  }, [cart]);
 
   const cartItemsCount = useMemo(() => {
-    return cart.reduce((sum, item) => sum + item.cartons, 0);
+    // show total pairs in cart for badge/checkout button
+    return cart.reduce((sum, item) => sum + item.pairCount, 0);
   }, [cart]);
 
   // ACTIONS
@@ -287,32 +293,76 @@ const App: React.FC = () => {
     });
   };
 
-  const addToCart = (articleId: string) => {
+  // add given sizeQuantities for a particular variant
+  const addToCart = (
+    articleId: string,
+    variantId: string | undefined,
+    sizeQuantities: Record<string, number>
+  ) => {
+    const pairCount = Object.values(sizeQuantities).reduce(
+      (s, v) => s + Number(v || 0),
+      0
+    );
+    if (pairCount === 0 || pairCount % 24 !== 0) {
+      toast.error("Total pairs must be a positive multiple of 24");
+      return;
+    }
+    const cartonCount = pairCount / 24;
+
     setCart((prev) => {
-      const existing = prev.find((i) => i.articleId === articleId);
+      const existing = prev.find(
+        (i) => i.articleId === articleId && i.variantId === variantId
+      );
       if (existing) {
+        const newPairs = existing.pairCount + pairCount;
         return prev.map((i) =>
-          i.articleId === articleId ? { ...i, cartons: i.cartons + 1 } : i
+          i.articleId === articleId && i.variantId === variantId
+            ? {
+                ...i,
+                cartonCount: i.cartonCount + cartonCount,
+                pairCount: newPairs,
+                price:
+                  newPairs *
+                  (articles.find((a) => a.id === articleId)?.pricePerPair || 0),
+                sizeQuantities: {
+                  ...(existing.sizeQuantities || {}),
+                  ...sizeQuantities,
+                },
+              }
+            : i
         );
       }
-      return [...prev, { articleId, cartons: 1 }];
+      return [
+        ...prev,
+        {
+          articleId,
+          variantId,
+          sizeQuantities,
+          cartonCount,
+          pairCount,
+          price:
+            pairCount *
+            (articles.find((a) => a.id === articleId)?.pricePerPair || 0),
+        },
+      ];
     });
   };
 
-  const removeFromCart = (articleId: string) => {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.articleId === articleId);
-      if (existing?.cartons === 1) {
-        return prev.filter((i) => i.articleId !== articleId);
-      }
-      return prev.map((i) =>
-        i.articleId === articleId ? { ...i, cartons: i.cartons - 1 } : i
-      );
-    });
+  // remove an entire variant entry from cart
+  const removeFromCart = (articleId: string, variantId?: string) => {
+    setCart((prev) =>
+      prev.filter(
+        (i) => !(i.articleId === articleId && i.variantId === variantId)
+      )
+    );
   };
 
-  const clearCartItem = (articleId: string) => {
-    setCart((prev) => prev.filter((i) => i.articleId !== articleId));
+  const clearCartItem = (articleId: string, variantId?: string) => {
+    setCart((prev) =>
+      prev.filter(
+        (i) => !(i.articleId === articleId && i.variantId === variantId)
+      )
+    );
   };
 
   const handleInwardStock = (articleId: string, cartons: number) => {
@@ -360,14 +410,14 @@ const App: React.FC = () => {
         const article = articles.find((a) => a.id === item.articleId)!;
         return {
           articleId: item.articleId,
-          cartonCount: item.cartons,
-          pairCount: item.cartons * 24,
-          price: article.pricePerPair * 24 * item.cartons,
+          cartonCount: item.cartonCount,
+          pairCount: item.pairCount,
+          price: item.price,
         };
       }),
       totalAmount: cartTotal,
-      totalCartons: cartItemsCount,
-      totalPairs: cartItemsCount * 24,
+      totalCartons: cart.reduce((sum, i) => sum + i.cartonCount, 0),
+      totalPairs: cart.reduce((sum, i) => sum + i.pairCount, 0),
     };
 
     setOrders((prev) => [newOrder, ...prev]);
@@ -377,7 +427,7 @@ const App: React.FC = () => {
       prev.map((inv) => {
         const cartItem = cart.find((ci) => ci.articleId === inv.articleId);
         if (cartItem) {
-          const newReserved = inv.reservedStock + cartItem.cartons;
+          const newReserved = inv.reservedStock + cartItem.cartonCount;
           return {
             ...inv,
             reservedStock: newReserved,
@@ -623,8 +673,6 @@ const App: React.FC = () => {
           <Cart
             articles={articles}
             cart={cart}
-            addToCart={addToCart}
-            removeFromCart={removeFromCart}
             clearCartItem={clearCartItem}
             onCheckout={placeOrder}
             total={cartTotal}

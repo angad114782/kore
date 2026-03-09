@@ -162,21 +162,49 @@ export const useKoreStore = () => {
     localStorage.removeItem("kore_token");
   };
 
-  const addToCart = (articleId: string, cartons: number) => {
+  /**
+   * Add a variant/size breakdown to the cart.  `sizeQuantities` should list
+   * pairs for each size (e.g. {"5":12,"6":12}).  The total pairs must be
+   * a multiple of 24; the helper will compute cartonCount automatically.
+   */
+  const addToCart = (
+    articleId: string,
+    variantId: string | undefined,
+    sizeQuantities: Record<string, number>
+  ) => {
     const article = articles.find((a) => a.id === articleId);
     if (!article) return;
 
+    const pairCount = Object.values(sizeQuantities).reduce(
+      (sum, v) => sum + Number(v || 0),
+      0
+    );
+
+    // validation: must be multiple of 24 pairs
+    if (pairCount === 0 || pairCount % 24 !== 0) {
+      toast.error("Total pairs must be a positive multiple of 24");
+      return;
+    }
+
+    const cartonCount = pairCount / 24;
+
     setCart((prev) => {
-      const existing = prev.find((item) => item.articleId === articleId);
+      const existing = prev.find(
+        (item) => item.articleId === articleId && item.variantId === variantId
+      );
       if (existing) {
+        const newPair = existing.pairCount + pairCount;
         return prev.map((item) =>
-          item.articleId === articleId
+          item.articleId === articleId && item.variantId === variantId
             ? {
                 ...item,
-                cartonCount: item.cartonCount + cartons,
-                // Fix: totalPairs renamed to pairCount
-                pairCount: (item.cartonCount + cartons) * 24,
-                price: (item.cartonCount + cartons) * 24 * article.pricePerPair,
+                cartonCount: item.cartonCount + cartonCount,
+                pairCount: newPair,
+                price: newPair * article.pricePerPair,
+                sizeQuantities: {
+                  ...(existing.sizeQuantities || {}),
+                  ...sizeQuantities,
+                },
               }
             : item
         );
@@ -185,10 +213,11 @@ export const useKoreStore = () => {
         ...prev,
         {
           articleId,
-          cartonCount: cartons,
-          // Fix: totalPairs renamed to pairCount
-          pairCount: cartons * 24,
-          price: cartons * 24 * article.pricePerPair,
+          variantId,
+          sizeQuantities,
+          cartonCount,
+          pairCount,
+          price: pairCount * article.pricePerPair,
         },
       ];
     });

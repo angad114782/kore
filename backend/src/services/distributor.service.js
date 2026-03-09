@@ -205,7 +205,7 @@ exports.listDistributors = async ({
     ];
   }
 
-  const [items, total] = await Promise.all([
+  let [items, total] = await Promise.all([
     Distributor.find(q)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
@@ -213,6 +213,20 @@ exports.listDistributors = async ({
       .lean(),
     Distributor.countDocuments(q),
   ]);
+
+  // fetch associated users' emails in a single query
+  const userIds = items.filter((d) => d.userId).map((d) => d.userId);
+  if (userIds.length) {
+    const users = await User.find({ _id: { $in: userIds } }, "email").lean();
+    const emailMap = users.reduce((m, u) => {
+      m[u._id.toString()] = u.email;
+      return m;
+    }, {});
+    items = items.map((d) => {
+      if (d.userId) d.loginEmail = emailMap[d.userId.toString()] || "";
+      return d;
+    });
+  }
 
   return {
     items,
@@ -241,6 +255,11 @@ exports.getDistributorById = async (id) => {
     throw err;
   }
 
+  if (distributor.userId) {
+    const user = await User.findById(distributor.userId, "email").lean();
+    distributor.loginEmail = user?.email || "";
+  }
+
   return distributor;
 };
 
@@ -267,21 +286,69 @@ exports.updateDistributor = async (id, body) => {
   }
 
   const payload = sanitizePayload(body);
+  // keep track of previous loginEnabled/user state so we can react later
+  const hadUser = !!distributor.userId;
+
   Object.keys(payload).forEach((k) => {
     distributor[k] = payload[k];
   });
 
   await distributor.save();
 
-  // sync linked user basic fields
+  // if login has been enabled and there is no user yet, create one
+  if (distributor.loginEnabled && !hadUser) {
+    const loginEmail = body.loginEmail || distributor.email;
+    const loginPassword = body.loginPassword;
+    if (!loginEmail || !loginPassword) {
+      const err = new Error(
+        "loginEmail and loginPassword are required when enabling login"
+      );
+      err.status = 400;
+      throw err;
+    }
+    const userPayload = await buildUserPayload({
+      name: distributor.name,
+      email: loginEmail,
+      password: loginPassword,
+      distributorId: distributor._id,
+      isActive: distributor.isActive,
+    });
+    const user = await User.create(userPayload);
+    distributor.userId = user._id;
+    await distributor.save();
+  }
+
+  // sync linked user basic fields and credentials
   if (distributor.userId) {
     const userPatch = {};
     if (body.name !== undefined) userPatch.name = String(body.name).trim();
-    if (body.email !== undefined) userPatch.email = normalizeEmail(body.email);
+
+    // email is either directly supplied or derived from distributor email
+    if (body.loginEmail !== undefined) {
+      userPatch.email = normalizeEmail(body.loginEmail);
+    } else if (body.email !== undefined) {
+      userPatch.email = normalizeEmail(body.email);
+    }
+
+    if (body.loginPassword !== undefined) {
+      userPatch.password = await bcrypt.hash(
+        String(body.loginPassword),
+        SALT_ROUNDS
+      );
+    }
+
     if (typeof payload.isActive === "boolean")
-      userPatch.isActive = payload.isActive;
+      userPatch.isActive = payload.isActive && distributor.loginEnabled;
+
+    // also reflect loginEnabled toggling
+    if (body.loginEnabled !== undefined && distributor.userId) {
+      userPatch.isActive =
+        distributor.loginEnabled &&
+        (userPatch.isActive ?? distributor.isActive);
+    }
 
     if (Object.keys(userPatch).length) {
+      // if updating email we must avoid conflicts
       if (userPatch.email) {
         const exists = await User.findOne({
           email: userPatch.email,

@@ -22,7 +22,12 @@ export interface User {
   paymentTerms?: string;
   discountPercentage?: number;
   creditLimit?: number;
-  loginEmail?: string;
+  loginEmail?: string; // populated from linked `User` record
+  /**
+   * password is never returned from the server – only used transiently when
+   * creating/updating a distributor. the UI will display a placeholder and
+   * offer a reset action instead of reading this field.
+   */
   loginPassword?: string;
   loginEnabled?: boolean;
 }
@@ -107,6 +112,11 @@ export enum OrderStatus {
 
 export interface OrderItem {
   articleId: string;
+  /** optional variant selected by the user (color + size range) */
+  variantId?: string;
+  /** detailed breakdown: pairs per size (e.g. {"5":12, "6":12}) */
+  sizeQuantities?: Record<string, number>;
+
   cartonCount: number;
   pairCount: number;
   price: number;
