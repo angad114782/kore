@@ -405,28 +405,21 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
     });
   };
 
-  const addSizeRange = () => {
-    const trimmed = sizeRangeInput.trim();
-    // Regex for start-end format (e.g., 5-7, 10-12)
-    const rangeRegex = /^\d+-\d+$/;
-    if (trimmed && rangeRegex.test(trimmed)) {
-      if (sizeRanges.includes(trimmed)) {
-        return toast.error("Size range already exists");
-      }
+ const addSizeRange = () => {
+  const trimmed = sizeRangeInput.trim();
 
-      // Check for overlapping sizes
-      const newSizes = parseSizeRange(trimmed);
-      const existingSizes = new Set(getAllSizesFromRanges());
-      const overlapping = newSizes.filter(s => existingSizes.has(s));
+  // Regex for start-end format (e.g., 5-7, 10-12)
+  const rangeRegex = /^\d+-\d+$/;
 
-      if (overlapping.length > 0) {
-        return toast.error(`Overlapping sizes detected: ${overlapping.join(", ")}`);
-      }
-
-      setSizeRanges([...sizeRanges, trimmed]);
-      setSizeRangeInput("");
+  if (trimmed && rangeRegex.test(trimmed)) {
+    if (sizeRanges.includes(trimmed)) {
+      return toast.error("Size range already exists");
     }
-  };
+
+    setSizeRanges([...sizeRanges, trimmed]);
+    setSizeRangeInput("");
+  }
+};
 
   const removeSizeRange = (range: string) => {
     setSizeRanges(sizeRanges.filter((r) => r !== range));
@@ -582,16 +575,18 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
     data.append("sizeRanges", JSON.stringify(sizeRanges));
 
     // Normalize variants for backend
-    const normalizedVariants = variants.map(v => ({
-      itemName: v.itemName,
-      costPrice: v.costPrice,
-      mrp: v.mrp,
-      hsnCode: v.hsnCode,
-      color: v.color,
-      sizeRange: v.sizeRange,
-      sizeQuantities: v.sizeQuantities,
-      imageCount: colorMedia[v.color]?.images.length || 0,
-    }));
+   const normalizedVariants = variants.map((v) => ({
+  itemName: v.itemName,
+  costPrice: v.costPrice,
+  sellingPrice: v.sellingPrice || 0,
+  mrp: v.mrp,
+  hsnCode: v.hsnCode,
+  color: v.color,
+  sizeRange: v.sizeRange,
+  sizeQuantities: v.sizeQuantities || {},
+  sizeSkus: v.sizeSkus || {},
+  imageCount: colorMedia[v.color]?.images.length || 0,
+}));
     data.append("variants", JSON.stringify(normalizedVariants));
 
     // Append all images per color

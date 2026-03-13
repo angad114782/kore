@@ -37,12 +37,23 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
     return url.startsWith("http") ? url : `${BASE_URL}${url}`;
   };
 
-  const allImages = [
-    article.imageUrl,
-    ...((article.secondaryImages || []) as any[]).map(
-      (img: any) => img.url || img
-    ),
-  ].filter(Boolean);
+ const colorMediaList = (article as any).colorMedia || [];
+
+const matchedColorMedia = colorMediaList.find(
+  (cm: any) =>
+    (cm?.color || "").trim().toLowerCase() ===
+    (variant.color || "").trim().toLowerCase()
+);
+
+const allImages =
+  matchedColorMedia?.images?.length > 0
+    ? matchedColorMedia.images.map((img: any) => img.url || img).filter(Boolean)
+    : [
+        (article as any).imageUrl,
+        ...(((article as any).secondaryImages || []) as any[]).map(
+          (img: any) => img.url || img
+        ),
+      ].filter(Boolean);
 
   const variantName = variant.itemName || `${article.name} – ${variant.color}`;
 
@@ -287,10 +298,10 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                 totalPairs > 0 && totalPairs % 24 === 0 ? "emerald" : undefined
               }
             />
-            <SpecRow
-              label="Size Range"
+            {/* <SpecRow
+              label="Size Range1"
               value={article.selectedSizes?.join(", ") || "—"}
-            />
+            /> */}
             <SpecRow label="Manufacturer" value={article.manufacturer || "—"} />
             <SpecRow label="Unit" value={article.unit || "—"} />
             {article.status === "WISHLIST" && (

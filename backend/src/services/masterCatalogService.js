@@ -13,60 +13,6 @@ const parseMaybeJson = (val, fallback) => {
   }
 };
 
-const makeFileUrl = (req, filePath) => {
-  const base = `${req.protocol}://${req.get("host")}`;
-  return `${base}/${filePath.replace(/\\/g, "/")}`;
-};
-
-const buildImagesPayload = (req) => {
-  const body = req.body || {};
-
-  let primaryImage = null;
-
-  if (req.files?.primaryImage?.[0]) {
-    const f = req.files.primaryImage[0];
-    primaryImage = { url: makeFileUrl(req, f.path), key: f.path };
-  } else if (body.primaryImageUrl) {
-    primaryImage = { url: body.primaryImageUrl };
-  }
-
-  const secondaryImages = [];
-
-  if (req.files?.secondaryImages?.length) {
-    for (const f of req.files.secondaryImages) {
-      secondaryImages.push({ url: makeFileUrl(req, f.path), key: f.path });
-    }
-  }
-
-  const secondaryImageUrls = parseMaybeJson(body.secondaryImageUrls, []);
-  if (Array.isArray(secondaryImageUrls)) {
-    for (const u of secondaryImageUrls) {
-      secondaryImages.push({ url: u });
-    }
-  }
-
-  return { primaryImage, secondaryImages };
-};
-
-const normalizeVariants = (variantsRaw) => {
-  const variants = Array.isArray(variantsRaw) ? variantsRaw : [];
-
-  return variants.map((v) => {
-    const sizeMap = parseMaybeJson(v.sizeMap, v.sizeMap || {});
-    return {
-      itemName: v.itemName,
-      color: v.color || "",
-      sizeRange: v.sizeRange || "",
-      costPrice: Number(v.costPrice || 0),
-      sellingPrice: Number(v.sellingPrice || 0),
-      mrp: Number(v.mrp || 0),
-      hsnCode: v.hsnCode || "",
-      sizeMap: sizeMap || {},
-      isActive: parseBoolean(v.isActive, true),
-    };
-  });
-};
-
 const parseBoolean = (value, fallback = undefined) => {
   if (value === undefined || value === null || value === "") return fallback;
   if (typeof value === "boolean") return value;
@@ -83,7 +29,7 @@ const parseBoolean = (value, fallback = undefined) => {
 const normalizeLimit = (limit) => {
   const parsed = Number(limit);
   if (ALLOWED_PAGE_LIMITS.includes(parsed)) return parsed;
-  return 10; // default
+  return 10;
 };
 
 const normalizePage = (page) => {
@@ -92,21 +38,116 @@ const normalizePage = (page) => {
   return parsed;
 };
 
+const makeFileUrl = (req, filePath) => {
+  const base = `${req.protocol}://${req.get("host")}`;
+  return `${base}/${filePath.replace(/\\/g, "/")}`;
+};
+
+// ✅ frontend dynamic field names: images_Red, images_Black ...
+const buildColorMediaPayload = (req, productColors = []) => {
+  const files = Array.isArray(req.files) ? req.files : [];
+  const colorMedia = [];
+
+  for (const color of productColors) {
+    const fieldName = `images_${color}`;
+    const colorFiles = files.filter((f) => f.fieldname === fieldName);
+
+    if (!colorFiles.length) continue;
+
+    const images = colorFiles.map((f, idx) => ({
+      url: makeFileUrl(req, f.path),
+      key: f.path,
+      isCover: idx === 0,
+    }));
+
+    colorMedia.push({
+      color,
+      images,
+    });
+  }
+
+  return colorMedia;
+};
+
+// listing compatibility: first image = primary, rest = secondary
+const buildFlatImagesFromColorMedia = (colorMedia = []) => {
+  const allImages = [];
+
+  colorMedia.forEach((cm) => {
+    cm.images.forEach((img) => {
+      allImages.push({
+        url: img.url,
+        key: img.key || "",
+      });
+    });
+  });
+
+  return {
+    primaryImage: allImages[0] || { url: "", key: "" },
+    secondaryImages: allImages.slice(1),
+  };
+};
+
+const normalizeVariants = (variantsRaw) => {
+  const variants = Array.isArray(variantsRaw) ? variantsRaw : [];
+
+  return variants.map((v) => {
+    const sizeMap = {};
+
+    // frontend format: sizeQuantities + optional sizeSkus
+    if (v.sizeQuantities && typeof v.sizeQuantities === "object") {
+      Object.keys(v.sizeQuantities).forEach((size) => {
+        sizeMap[size] = {
+          qty: Number(v.sizeQuantities[size] || 0),
+          sku: v.sizeSkus?.[size] || "",
+        };
+      });
+    }
+
+    // agar direct sizeMap aa jaye to bhi handle kar lo
+    if (v.sizeMap && typeof v.sizeMap === "object") {
+      Object.keys(v.sizeMap).forEach((size) => {
+        const cell = v.sizeMap[size] || {};
+        sizeMap[size] = {
+          qty: Number(cell.qty || 0),
+          sku: cell.sku || "",
+        };
+      });
+    }
+
+    return {
+      itemName: v.itemName,
+      color: v.color || "",
+      sizeRange: v.sizeRange || "",
+      costPrice: Number(v.costPrice || 0),
+      sellingPrice: Number(v.sellingPrice || 0),
+      mrp: Number(v.mrp || 0),
+      hsnCode: v.hsnCode || "",
+      sizeMap,
+      isActive: parseBoolean(v.isActive, true),
+    };
+  });
+};
+
 exports.create = async (req) => {
   const body = req.body || {};
-  const { primaryImage, secondaryImages } = buildImagesPayload(req);
-
-  if (!primaryImage?.url) {
-    const err = new Error(
-      "primaryImage is required (upload file or send primaryImageUrl)"
-    );
-    err.statusCode = 400;
-    throw err;
-  }
 
   const productColors = parseMaybeJson(body.productColors, []);
   const sizeRanges = parseMaybeJson(body.sizeRanges, []);
   const variants = normalizeVariants(parseMaybeJson(body.variants, []));
+
+  const colorMedia = buildColorMediaPayload(
+    req,
+    Array.isArray(productColors) ? productColors : []
+  );
+
+  const { primaryImage, secondaryImages } = buildFlatImagesFromColorMedia(colorMedia);
+
+  if (!primaryImage?.url) {
+    const err = new Error("At least one product image is required");
+    err.statusCode = 400;
+    throw err;
+  }
 
   const doc = await MasterCatalog.create({
     articleName: body.articleName,
@@ -124,6 +165,7 @@ exports.create = async (req) => {
     isActive: parseBoolean(body.isActive, true),
     primaryImage,
     secondaryImages,
+    colorMedia,
     variants,
   });
 
@@ -183,7 +225,6 @@ exports.list = async (query) => {
     ];
   }
 
-  // ✅ only requested page data
   const items = await MasterCatalog.find(filter)
     .populate("categoryId", "name")
     .populate("brandId", "name")
@@ -194,7 +235,6 @@ exports.list = async (query) => {
     .limit(normalizedLimit)
     .lean();
 
-  // ✅ total count alag se pagination ke liye
   const total = await MasterCatalog.countDocuments(filter);
 
   return {
@@ -228,8 +268,6 @@ exports.getById = async (id) => {
 
 exports.update = async (req, id) => {
   const body = req.body || {};
-  const isJsonRequest =
-    req.headers["content-type"] === "application/json" || !req.files;
 
   const doc = await MasterCatalog.findOne({ _id: id, isDeleted: false });
   if (!doc) {
@@ -266,18 +304,46 @@ exports.update = async (req, id) => {
     doc.sizeRanges = Array.isArray(sizeRanges) ? sizeRanges : [];
   }
 
-  const replaceSecondary =
-    body.replaceSecondary === "true" || body.replaceSecondary === true;
-  if (replaceSecondary) doc.secondaryImages = [];
-
-  const { primaryImage, secondaryImages } = buildImagesPayload(req);
-
-  if (primaryImage?.url) doc.primaryImage = primaryImage;
-  if (secondaryImages?.length) doc.secondaryImages.push(...secondaryImages);
-
   if (body.variants !== undefined) {
     const variantsRaw = parseMaybeJson(body.variants, []);
     doc.variants = normalizeVariants(variantsRaw);
+  }
+
+  // ✅ dynamic color images replace logic
+  const hasNewColorImages =
+    Array.isArray(req.files) &&
+    req.files.some((f) => f.fieldname && f.fieldname.startsWith("images_"));
+
+  const replaceColorMedia =
+    body.replaceColorMedia === "true" || body.replaceColorMedia === true;
+
+  if (hasNewColorImages) {
+    const incomingColorMedia = buildColorMediaPayload(req, doc.productColors);
+
+    if (replaceColorMedia) {
+      doc.colorMedia = incomingColorMedia;
+    } else {
+      const existingMap = new Map(
+        (doc.colorMedia || []).map((cm) => [cm.color, cm.images || []])
+      );
+
+      incomingColorMedia.forEach((cm) => {
+        const oldImages = existingMap.get(cm.color) || [];
+        existingMap.set(cm.color, [...oldImages, ...cm.images]);
+      });
+
+      doc.colorMedia = Array.from(existingMap.entries()).map(([color, images]) => ({
+        color,
+        images: images.map((img, idx) => ({
+          ...img,
+          isCover: idx === 0,
+        })),
+      }));
+    }
+
+    const { primaryImage, secondaryImages } = buildFlatImagesFromColorMedia(doc.colorMedia);
+    doc.primaryImage = primaryImage;
+    doc.secondaryImages = secondaryImages;
   }
 
   await doc.save();

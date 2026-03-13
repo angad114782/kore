@@ -1,10 +1,27 @@
 const mongoose = require("mongoose");
 
-// Size cell: har size ke andar qty + sku aata hai
+// हर size ke andar qty + sku
 const SizeCellSchema = new mongoose.Schema(
   {
     qty: { type: Number, default: 0, min: 0 },
     sku: { type: String, trim: true, default: "" },
+  },
+  { _id: false }
+);
+
+const ImageItemSchema = new mongoose.Schema(
+  {
+    url: { type: String, required: true },
+    key: { type: String, default: "" },
+    isCover: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
+const ColorMediaSchema = new mongoose.Schema(
+  {
+    color: { type: String, trim: true, required: true },
+    images: { type: [ImageItemSchema], default: [] },
   },
   { _id: false }
 );
@@ -26,6 +43,7 @@ const VariantSchema = new mongoose.Schema(
       of: SizeCellSchema,
       default: {},
     },
+
     isActive: { type: Boolean, default: true },
   },
   { _id: true }
@@ -33,7 +51,6 @@ const VariantSchema = new mongoose.Schema(
 
 const MasterCatalogSchema = new mongoose.Schema(
   {
-    // ---------- PART 1 ----------
     articleName: { type: String, required: true, trim: true },
     soleColor: { type: String, trim: true, default: "" },
     mrp: { type: Number, required: true, min: 0 },
@@ -54,7 +71,6 @@ const MasterCatalogSchema = new mongoose.Schema(
       ref: "Brand",
       required: true,
     },
-
     manufacturerCompanyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Manufacturer",
@@ -76,29 +92,34 @@ const MasterCatalogSchema = new mongoose.Schema(
     },
     expectedAvailableDate: { type: Date },
 
-    // ✅ new active/inactive toggle field
-    isActive: { type: Boolean, default: true, index: true },
-
     primaryImage: {
-      url: { type: String, required: true },
-      key: { type: String },
+      url: { type: String, default: "" },
+      key: { type: String, default: "" },
     },
     secondaryImages: [
       {
-        url: { type: String },
-        key: { type: String },
+        url: { type: String, default: "" },
+        key: { type: String, default: "" },
       },
     ],
 
-    // ---------- PART 2 ----------
-    variants: { type: [VariantSchema], default: [] },
+    colorMedia: {
+      type: [ColorMediaSchema],
+      default: [],
+    },
 
-    isActive: { type: Boolean, default: true },
+    variants: {
+      type: [VariantSchema],
+      default: [],
+    },
+
+    isActive: { type: Boolean, default: true, index: true },
     isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
 );
 
+// ✅ next hata diya
 MasterCatalogSchema.pre("validate", function () {
   if (this.stage === "WISHLIST" && !this.expectedAvailableDate) {
     this.invalidate(

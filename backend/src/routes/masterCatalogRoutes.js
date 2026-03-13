@@ -2,14 +2,15 @@ const router = require("express").Router();
 const { upload } = require("../middlewares/upload");
 const ctrl = require("../controllers/masterCatalogController");
 
-const catalogUpload = upload.fields([
-  { name: "primaryImage", maxCount: 1 },
-  { name: "secondaryImages", maxCount: 10 },
-]);
+// ✅ dynamic fields allow:
+// images_Red, images_Black, images_White ...
+const catalogUpload = upload.any();
 
 const maybeUpload = (req, res, next) => {
   const ct = req.headers["content-type"] || "";
-  if (ct.includes("multipart/form-data")) return catalogUpload(req, res, next);
+  if (ct.includes("multipart/form-data")) {
+    return catalogUpload(req, res, next);
+  }
   return next();
 };
 
@@ -18,9 +19,7 @@ router.get("/", ctrl.getMasterCatalogList);
 router.get("/:id", ctrl.getMasterCatalogById);
 router.put("/:id", maybeUpload, ctrl.updateMasterCatalog);
 
-// ✅ active / inactive toggle
 router.patch("/:id/toggle-status", ctrl.toggleMasterCatalogStatus);
-
 router.delete("/:id", ctrl.deleteMasterCatalog);
 
 module.exports = router;
