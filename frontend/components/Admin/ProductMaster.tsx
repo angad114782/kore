@@ -55,9 +55,12 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
     wishlistDate: "",
     manufacturer: "",
     unit: "Pairs",
+    unitId: "",
     category: "",
     brand: "",
   });
+
+  const [units, setUnits] = useState<any[]>([]);
 
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
@@ -81,14 +84,16 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
   const fetchTaxonomy = async () => {
     try {
       setLoading(true);
-      const [catRes, brandRes, manufacturerRes] = await Promise.all([
+      const [catRes, brandRes, manufacturerRes, unitRes] = await Promise.all([
         masterCatalogService.listCategories(),
         masterCatalogService.listBrands(),
         masterCatalogService.listManufacturers(),
+        masterCatalogService.listUnits(),
       ]);
       setCategories(catRes.data || []);
       setBrands(brandRes.data || []);
       setManufacturers(manufacturerRes.data || []);
+      setUnits(unitRes.data || (Array.isArray(unitRes) ? unitRes : []));
     } catch (err) {
       console.error("Failed to fetch taxonomy", err);
     } finally {
@@ -121,12 +126,24 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
           wishlistDate: item.expectedAvailableDate ? new Date(item.expectedAvailableDate).toISOString().split('T')[0] : "",
           manufacturer: item.manufacturerCompanyId?.name || item.manufacturerCompanyId || "",
           unit: item.unitId?.name || item.unitId || "Pairs",
+          unitId: item.unitId?._id || item.unitId || "",
           category: item.categoryId?.name || item.categoryId || "",
           brand: item.brandId?.name || item.brandId || "",
         });
 
         if (item.productColors) setSelectedColors(item.productColors);
         if (item.sizeRanges) setSizeRanges(item.sizeRanges);
+
+        if (item.colorMedia && item.colorMedia.length > 0) {
+          const mediaMap: Record<string, { images: File[]; previews: string[] }> = {};
+          item.colorMedia.forEach((cm: any) => {
+            mediaMap[cm.color] = {
+              images: [], // We don't have the File objects for existing images
+              previews: cm.images?.map((img: any) => img.url) || [],
+            };
+          });
+          setColorMedia(mediaMap);
+        }
         
         if (item.variants && item.variants.length > 0) {
           const mappedVariants = item.variants.map((v: any) => {
@@ -166,7 +183,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
     };
 
     loadArticle();
-  }, [editingId, categories, brands, manufacturers]);
+  }, [editingId, categories, brands, manufacturers, units]);
 
   // --- Size Range Helpers ---
   const parseSizeRange = (range: string): string[] => {
@@ -504,6 +521,32 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
     }
   };
 
+  // Handlers for Unit
+  const handleAddUnit = async (name: string) => {
+    try {
+      const res = await masterCatalogService.createUnit(name);
+      const newUnit = res.data;
+      if (newUnit && newUnit._id) {
+        setUnits(prev => [...prev, newUnit]);
+      }
+      await fetchTaxonomy();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add unit");
+    }
+  };
+
+  const handleDeleteUnit = async (name: string) => {
+    const unitDoc = units.find(u => (u.name || u) === name);
+    if (unitDoc?._id) {
+      try {
+        await masterCatalogService.deleteUnit(unitDoc._id);
+        await fetchTaxonomy();
+      } catch (err: any) {
+        toast.error(err.message || "Failed to delete unit");
+      }
+    }
+  };
+
   // Placeholder for any other taxonomy handlers
 
   const toggleSize = (size: string) => {
@@ -545,8 +588,11 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
     const foundMan = manufacturers.find(m => (m.name || m) === formData.manufacturer);
     const manufacturerId = foundMan?._id || foundMan?.id;
 
-    if (!categoryId || !brandId || !manufacturerId) {
-      return toast.error("One or more taxonomy IDs (Category/Brand/Manufacturer) were not found. Please re-select them.");
+    const foundUnit = units.find(u => (u.name || u) === formData.unit);
+    const unitId = foundUnit?._id || foundUnit?.id;
+
+    if (!categoryId || !brandId || !manufacturerId || !unitId) {
+      return toast.error("One or more taxonomy IDs (Category/Brand/Manufacturer/Unit) were not found. Please re-select them.");
     }
 
     // Multiple of 24 validation for variants
@@ -565,7 +611,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
     data.append("categoryId", categoryId);
     data.append("brandId", brandId);
     data.append("manufacturerCompanyId", manufacturerId);
-    data.append("unitId", "64f1c1e5f1b2c3d4e5f6a7b8"); // Mocking UnitId for now or fetching it
+    data.append("unitId", unitId);
     data.append("stage", formData.status);
     if (formData.status === "WISHLIST") {
       data.append("expectedAvailableDate", formData.wishlistDate);
@@ -583,18 +629,28 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
   hsnCode: v.hsnCode,
   color: v.color,
   sizeRange: v.sizeRange,
-  sizeQuantities: v.sizeQuantities || {},
-  sizeSkus: v.sizeSkus || {},
-  imageCount: colorMedia[v.color]?.images.length || 0,
-}));
+      sizeQuantities: v.sizeQuantities || {},
+      sizeSkus: v.sizeSkus || {},
+    }));
     data.append("variants", JSON.stringify(normalizedVariants));
 
     // Append all images per color
     Object.entries(colorMedia).forEach(([color, media]) => {
-      media.images.forEach((file, idx) => {
+      // Backend expects images for each color. For existing images (URLs), we might need a way to tell which ones to keep.
+      // However, the current backend `update` logic for `colorMedia` is:
+      // if hasNewColorImages AND replaceColorMedia is true -> replace all.
+      // if hasNewColorImages AND replaceColorMedia is false -> append.
+      // If no new images are uploaded for a color, it stays as is unless we send something else.
+      
+      media.images.forEach((file) => {
         data.append(`images_${color}`, file);
       });
     });
+
+    // If we are editing and want to replace images, we should send replaceColorMedia: true if any new image is added
+    if (editingId && Object.values(colorMedia).some(m => m.images.length > 0)) {
+      data.append("replaceColorMedia", "true");
+    }
 
     const savePromise = async () => {
       if (editingId) {
@@ -617,6 +673,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
           wishlistDate: "",
           manufacturer: "",
           unit: "Pairs",
+          unitId: "",
           category: "",
           brand: "",
         });
@@ -944,21 +1001,21 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                        Base Unit
-                      </label>
-                      <select
-                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium text-slate-700 transition-all cursor-pointer"
+                      <SearchableSelect
+                        label="Base Unit"
+                        options={units.map((u) => u.name || u)}
                         value={formData.unit}
-                        onChange={(e) =>
-                          setFormData({ ...formData, unit: e.target.value })
-                        }
-                      >
-                        <option>Pairs</option>
-                        <option>Pcs</option>
-                        <option>Boxes</option>
-                        <option>Cartons</option>
-                      </select>
+                        onChange={(val) => {
+                          setFormData({ 
+                            ...formData, 
+                            unit: val 
+                          });
+                        }}
+                        onAdd={handleAddUnit}
+                        onDelete={handleDeleteUnit}
+                        placeholder="Select Unit"
+                        required
+                      />
                     </div>
                   </div>
                 </div>

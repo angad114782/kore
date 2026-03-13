@@ -93,6 +93,7 @@ export interface Article {
   selectedColors?: string[];
   variants?: Variant[];
   secondaryImages?: { url: string }[];
+  colorMedia?: { color: string; images: { url: string; key?: string; isCover?: boolean }[] }[];
   sizeRange?: string;
   isActive?: boolean;
 }

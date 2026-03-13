@@ -37,23 +37,23 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
     return url.startsWith("http") ? url : `${BASE_URL}${url}`;
   };
 
- const colorMediaList = (article as any).colorMedia || [];
+  const colorMediaList = article.colorMedia || [];
 
-const matchedColorMedia = colorMediaList.find(
-  (cm: any) =>
-    (cm?.color || "").trim().toLowerCase() ===
-    (variant.color || "").trim().toLowerCase()
-);
+  const matchedColorMedia = colorMediaList.find(
+    (cm) =>
+      (cm?.color || "").trim().toLowerCase() ===
+      (variant.color || "").trim().toLowerCase()
+  );
 
-const allImages =
-  matchedColorMedia?.images?.length > 0
-    ? matchedColorMedia.images.map((img: any) => img.url || img).filter(Boolean)
-    : [
-        (article as any).imageUrl,
-        ...(((article as any).secondaryImages || []) as any[]).map(
-          (img: any) => img.url || img
-        ),
-      ].filter(Boolean);
+  const allImages =
+    matchedColorMedia && matchedColorMedia.images && matchedColorMedia.images.length > 0
+      ? matchedColorMedia.images.map((img: any) => img.url || img).filter(Boolean)
+      : [
+          article.imageUrl,
+          ...(article.secondaryImages || []).map(
+            (img: any) => img.url || img
+          ),
+        ].filter(Boolean);
 
   const variantName = variant.itemName || `${article.name} – ${variant.color}`;
 
@@ -78,12 +78,15 @@ const allImages =
   const currentSizeMap = variant.sizeMap || variant.sizeQuantities || {};
   const currentBookingMap = variant.bookingMap || {};
 
-  const totalPairs = Object.values(currentSizeMap).reduce((s, data) => {
+  // Force totalPairs to 0 as current sizeMap values reflect assortment templates, not actual stock
+  const totalPairs = 0;
+
+  const totalAssortment = Object.values(currentSizeMap).reduce((s: number, data) => {
     const qty = typeof data === "object" ? (data as any)?.qty : Number(data);
     return s + (Number(qty) || 0);
   }, 0);
 
-  const totalBooked = Object.values(currentBookingMap).reduce((s, v) => {
+  const totalBooked = Object.values(currentBookingMap).reduce((s: number, v) => {
     return s + (Number(v) || 0);
   }, 0);
 
@@ -292,11 +295,15 @@ const allImages =
             <SpecRow label="Sole Color" value={article.soleColor || "—"} />
             <SpecRow label="HSN Code" value={variant.hsnCode || "—"} mono />
             <SpecRow
-              label="Total Pairs"
-              value={String(totalPairs)}
+              label="Assortment Qty"
+              value={String(totalAssortment)}
               badge={
-                totalPairs > 0 && totalPairs % 24 === 0 ? "emerald" : undefined
+                totalAssortment > 0 && (totalAssortment as number) % 24 === 0 ? "emerald" : undefined
               }
+            />
+            <SpecRow
+              label="Current Stock"
+              value={String(totalPairs)}
             />
             {/* <SpecRow
               label="Size Range1"
@@ -362,30 +369,15 @@ const allImages =
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {sizes.map((sz) => {
                   const data = currentSizeMap[sz];
-                  const qty =
-                    typeof data === "object"
-                      ? (data as any)?.qty
-                      : Number(data) || 0;
+                  const qty = 0; // Forced to 0 for master catalog display
                   const sku =
                     (typeof data === "object"
                       ? (data as any)?.sku
                       : variant.sizeSkus?.[sz]) || "";
 
-                  let statusColor =
-                    qty === 0 ? "rose" : qty < 24 ? "amber" : "emerald";
-                  let bgClass =
-                    statusColor === "rose"
-                      ? "bg-rose-50/60 border-rose-200"
-                      : statusColor === "amber"
-                      ? "bg-amber-50/60 border-amber-200"
-                      : "bg-emerald-50/60 border-emerald-200";
-
-                  let qtyClass =
-                    statusColor === "rose"
-                      ? "text-rose-600"
-                      : statusColor === "amber"
-                      ? "text-amber-600"
-                      : "text-emerald-600";
+                  let statusColor = "rose"; // Forced to zero stock status
+                  let bgClass = "bg-rose-50/60 border-rose-200";
+                  let qtyClass = "text-rose-600";
 
                   return (
                     <div

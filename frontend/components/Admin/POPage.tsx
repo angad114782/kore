@@ -478,7 +478,13 @@ const QuantityGridModal: React.FC<{
       basePrice:
         variant.costPrice || variant.sellingPrice || article.pricePerPair || 0,
       mrp: variant.mrp || article.mrp || 0,
-      image: article.imageUrl || "",
+      image: (() => {
+        const colorMedia = article.colorMedia || [];
+        const variantColor = (variant.color || "").toLowerCase().trim();
+        const mediaMatch = colorMedia.find((m: any) => (m.color || "").toLowerCase().trim() === variantColor);
+        const imgData = mediaMatch?.images?.[0];
+        return (typeof imgData === "object" ? (imgData as any)?.url : (imgData as string)) || article.imageUrl || "";
+      })(),
       skuCompany: article.brand || "",
       itemTaxCode: variant.hsnCode || article.sku || "",
       sizeMap: sizeData, // Store the breakdown in the PO item
@@ -823,7 +829,15 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
             sku: variant.sku || article.sku,
             brand: article.brand || "",
             hsnCode: variant.hsnCode || article.sku || "",
-            image: article.imageUrl || "",
+            image: (() => {
+              const colorMedia = article.colorMedia || [];
+              const variantColor = (variant.color || "").toLowerCase().trim();
+              const mediaMatch = colorMedia.find(
+                (m: any) => (m.color || "").toLowerCase().trim() === variantColor
+              );
+              const imgData = mediaMatch?.images?.[0];
+              return (typeof imgData === "object" ? (imgData as any)?.url : (imgData as string)) || article.imageUrl || "";
+            })(),
             basePrice:
               variant.costPrice ||
               variant.sellingPrice ||

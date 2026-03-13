@@ -121,6 +121,19 @@ export const masterCatalogService = {
     return apiFetch("/units");
   },
 
+  async createUnit(name: string) {
+    return apiFetch("/units", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  async deleteUnit(id: string) {
+    return apiFetch(`/units/${id}`, {
+      method: "DELETE",
+    });
+  },
+
   async deleteMasterItem(id: string) {
     return apiFetch(`/master-catalog/${id}`, {
       method: "DELETE",

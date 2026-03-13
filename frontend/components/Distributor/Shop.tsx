@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   ShoppingCart,
   Plus,
@@ -73,55 +73,55 @@ const ArticleCard: React.FC<{
 }> = ({ group, inv, inCartPairs, addToCart }) => {
   const { article, color, variants } = group;
 
-  // Selected size ranges (IDs)
-  const [selectedRangeIds, setSelectedRangeIds] = useState<string[]>(
-    variants.length > 0 ? [variants[0].id] : []
+  // Selected variant ID (single selection)
+  const [selectedVariantId, setSelectedVariantId] = useState<string>(
+    variants.length > 0 ? variants[0].id : ""
   );
 
   // Carton multiplier
   const [cartonCount, setCartonCount] = useState(1);
 
-  const selectedVariants = variants.filter((v) =>
-    selectedRangeIds.includes(v.id)
-  );
+  const selectedVariant = variants.find((v) => v.id === selectedVariantId);
 
   // Calculate total pairs and breakdown for the selection
-  const baseBreakdown: Record<string, number> = {};
-  selectedVariants.forEach((v) => {
-    Object.entries(v.sizeQuantities || {}).forEach(([sz, qty]) => {
-      baseBreakdown[sz] = (baseBreakdown[sz] || 0) + qty;
-    });
-  });
+  const baseBreakdown = selectedVariant?.sizeQuantities || {};
 
   const totalPairsPerCarton = Object.values(baseBreakdown).reduce(
-    (a, b) => a + b,
+    (a, b) => a + (Number(b) || 0),
     0
   );
   const totalPairs = totalPairsPerCarton * cartonCount;
 
-  const toggleRange = (id: string) => {
-    setSelectedRangeIds((prev) =>
-      prev.includes(id)
-        ? prev.length > 1
-          ? prev.filter((i) => i !== id)
-          : prev
-        : [...prev, id]
+  // priority for images: colorMedia (match by color) > variant specific images > article primary/secondary images
+  const images = useMemo(() => {
+    const colorMedia = (article as any).colorMedia || [];
+    const targetColor = (color || "").toLowerCase().trim();
+    const mediaMatch = colorMedia.find(
+      (m: any) => (m.color || "").toLowerCase().trim() === targetColor
     );
-  };
 
-  // priority for images: variant specific images > article secondary images > article primary image
-  const variantImages = variants.flatMap(v => v.images || []);
-  const baseImages = variantImages.length > 0 
-    ? variantImages 
-    : [
-        article.imageUrl,
-        ...(article.secondaryImages || []).map((s) => s.url),
-      ];
+    let gallery: string[] = [];
 
-  const images =
-    baseImages.length > 1
-      ? [baseImages[baseImages.length - 1], ...baseImages, baseImages[0]]
-      : baseImages;
+    if (mediaMatch && mediaMatch.images && mediaMatch.images.length > 0) {
+      gallery = mediaMatch.images.map((img: any) =>
+        typeof img === "object" ? img.url : img
+      );
+    } else {
+      const variantImages = variants.flatMap((v) => v.images || []);
+      gallery =
+        variantImages.length > 0
+          ? variantImages
+          : ([
+              article.imageUrl,
+              ...(article.secondaryImages || []).map((s: any) => s.url),
+            ].filter(Boolean) as string[]);
+    }
+
+    if (gallery.length > 1) {
+      return [gallery[gallery.length - 1], ...gallery, gallery[0]];
+    }
+    return gallery;
+  }, [article, color, variants]);
 
   const [currentImageIndex, setCurrentImageIndex] = useState(1);
   const [transitionEnabled, setTransitionEnabled] = useState(true);
@@ -208,19 +208,16 @@ const ArticleCard: React.FC<{
   };
 
   const handleAdd = () => {
-    if (totalPairs === 0 || selectedVariants.length === 0) return;
+    if (!selectedVariant || totalPairs === 0) return;
 
     // Combine all size quantities scaled by cartons
     const finalSizeQty: Record<string, number> = {};
     Object.entries(baseBreakdown).forEach(([sz, qty]) => {
-      finalSizeQty[sz] = qty * cartonCount;
+      finalSizeQty[sz] = (Number(qty) || 0) * cartonCount;
     });
 
-    // In this color-grouped view, we consider the "primary" variant ID as the one
-    // But since it's color grouped, maybe we just pass the first one or a combined ID?
     // The current addToCart signature takes a single variantId. 
-    // Usually, color grouping means color + article is the key.
-    addToCart(article.id, selectedVariants[0].id, finalSizeQty);
+    addToCart(article.id, selectedVariant.id, finalSizeQty);
 
     setCartonCount(1);
     toast.success(`${article.name} (${color}) added to cart`);
@@ -299,31 +296,25 @@ const ArticleCard: React.FC<{
           </div>
         </div>
 
-        {/* Variant Multi-select Dropdown (Simplified as visual toggle list for now or custom select) */}
         <div className="mb-4 space-y-2">
           <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider ml-1">
-            Size Ranges
+            Size Range
           </label>
-          <div className="flex flex-wrap gap-2">
+          <select
+            value={selectedVariantId}
+            onChange={(e) => setSelectedVariantId(e.target.value)}
+            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all font-bold text-slate-700 text-xs cursor-pointer shadow-sm"
+          >
             {variants.map((v) => (
-              <button
-                key={v.id}
-                type="button"
-                onClick={() => toggleRange(v.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-                  selectedRangeIds.includes(v.id)
-                    ? "bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-200"
-                    : "bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-300"
-                }`}
-              >
+              <option key={v.id} value={v.id}>
                 {v.sizeRange}
-              </button>
+              </option>
             ))}
-          </div>
+          </select>
         </div>
 
         {/* Assortment Breakdown */}
-        {selectedVariants.length > 0 && (
+        {selectedVariant && (
           <div className="mb-6 bg-slate-50/80 rounded-2xl p-3 border border-slate-100">
             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">
               Assortment Breakdown

@@ -243,12 +243,12 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
         a.variants?.some((v) => {
           const vName = v.itemName || `${a.name} - ${v.color}`;
           if (vName.toLowerCase().includes(q)) return true;
-          if ((v.sku || "").toLowerCase().includes(q)) return true;
-          if (
-            Object.values(v.sizeSkus || {}).some((sk) =>
-              sk.toLowerCase().includes(q)
-            )
-          )
+          // if ((v.sku || "").toLowerCase().includes(q)) return true;
+          // if (
+          //   Object.values(v.sizeSkus || {}).some((sk) =>
+          //     sk.toLowerCase().includes(q)
+          //   )
+          // )
             return true;
           return false;
         })
@@ -667,20 +667,25 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                                     className="hover:bg-white cursor-pointer transition-colors"
                                   >
                                     <td className="px-6 py-3">
-                                      {v.images && v.images.length > 0 ? (
-                                        <img
-                                          src={v.images[0]}
-                                          alt={v.color}
-                                          className="w-10 h-10 rounded-lg object-cover border border-slate-100"
-                                        />
-                                      ) : (
-                                        <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center border border-slate-100">
-                                          <ImageIcon
-                                            size={16}
-                                            className="text-slate-400"
+                                      {(() => {
+                                        const colorMedia = article.colorMedia || [];
+                                        const matched = colorMedia.find(cm => cm.color.toLowerCase() === v.color.toLowerCase());
+                                        const vImg = (matched && matched.images && matched.images.length > 0) 
+                                          ? matched.images[0].url 
+                                          : article.imageUrl;
+                                        
+                                        return vImg ? (
+                                          <img
+                                            src={imgSrc(vImg)}
+                                            alt={v.color}
+                                            className="w-10 h-10 rounded-lg object-cover border border-slate-100"
                                           />
-                                        </div>
-                                      )}
+                                        ) : (
+                                          <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center border border-slate-100">
+                                            <ImageIcon size={16} className="text-slate-400" />
+                                          </div>
+                                        );
+                                      })()}
                                     </td>
                                     <td className="px-6 py-3">
                                       <p className="font-bold text-sm text-slate-800 truncate max-w-[220px]">
@@ -749,20 +754,25 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                                 className="bg-white border border-slate-200 rounded-xl p-3 cursor-pointer hover:border-indigo-200 transition-colors"
                               >
                                 <div className="flex gap-3">
-                                  {v.images && v.images.length > 0 ? (
-                                    <img
-                                      src={v.images[0]}
-                                      alt={v.color}
-                                      className="w-16 h-16 rounded-xl object-cover border border-slate-100 shrink-0"
-                                    />
-                                  ) : (
-                                    <div className="w-16 h-16 rounded-xl bg-slate-100 flex items-center justify-center border border-slate-100 shrink-0">
-                                      <ImageIcon
-                                        size={20}
-                                        className="text-slate-400"
-                                      />
-                                    </div>
-                                  )}
+                                    {(() => {
+                                      const colorMedia = article.colorMedia || [];
+                                      const matched = colorMedia.find(cm => cm.color.toLowerCase() === v.color.toLowerCase());
+                                      const vImg = (matched && matched.images && matched.images.length > 0) 
+                                        ? matched.images[0].url 
+                                        : article.imageUrl;
+
+                                      return vImg ? (
+                                        <img
+                                          src={imgSrc(vImg)}
+                                          alt={v.color}
+                                          className="w-16 h-16 rounded-xl object-cover border border-slate-100 shrink-0"
+                                        />
+                                      ) : (
+                                        <div className="w-16 h-16 rounded-xl bg-slate-100 flex items-center justify-center border border-slate-100 shrink-0">
+                                          <ImageIcon size={20} className="text-slate-400" />
+                                        </div>
+                                      );
+                                    })()}
                                   <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-start">
                                       <div>

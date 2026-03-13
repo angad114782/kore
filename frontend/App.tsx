@@ -110,6 +110,19 @@ const App: React.FC = () => {
     );
   }, [editingArticleId, viewingVariant, catalogueExpandedIds, previousTab]);
 
+  const handleTabChange = (tab: string) => {
+    // Reset sub-view states when user explicitly navigates via sidebar
+    setEditingArticleId(null);
+    setViewingVariant(null);
+    setCatalogueExpandedIds(new Set());
+    
+    // Clear major drafts from localStorage
+    localStorage.removeItem("kore_app_draft");
+    localStorage.removeItem("kore_po_draft");
+    
+    setActiveTab(tab);
+  };
+
   const handleViewVariant = (articleId: string, variantId: string) => {
     setPreviousTab("catalogue");
     setViewingVariant({ articleId, variantId });
@@ -168,6 +181,7 @@ const App: React.FC = () => {
           secondaryImages: item.secondaryImages || [],
           selectedSizes: item.sizeRanges || [],
           selectedColors: item.productColors || [],
+          colorMedia: item.colorMedia || [],
           variants: normalizedVariants,
           isActive: item.isActive !== false,
         };
@@ -251,8 +265,8 @@ const App: React.FC = () => {
   }, [cart]);
 
   const cartItemsCount = useMemo(() => {
-    // show total pairs in cart for badge/checkout button
-    return cart.reduce((sum, item) => sum + item.pairCount, 0);
+    // show total cartons in cart for badge/checkout button
+    return cart.reduce((sum, item) => sum + item.cartonCount, 0);
   }, [cart]);
 
   // ACTIONS
@@ -506,7 +520,7 @@ const App: React.FC = () => {
       <Sidebar
         user={user}
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={handleTabChange}
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
         cartItemsCount={cartItemsCount}
