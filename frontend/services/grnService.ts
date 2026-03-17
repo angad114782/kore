@@ -1,11 +1,172 @@
 import { apiFetch } from "./api";
 
+// ─── Mock PO Data for GRN (frontend-only until backend is ready) ───
+
+export type MockPORef = {
+  id: string;
+  poNo: string;
+  vendor: string;
+  article: string;
+  date: string;
+  totalQty: number;
+};
+
+export type MockSizeData = {
+  qty: number; // number of boxes for this size
+  sku: string;
+};
+
+export type MockPOItem = {
+  itemName: string; // e.g. "Urban-Red-5-7"
+  variantId: string;
+  color: string;
+  sizeRange: string;
+  sizeMap: Record<string, MockSizeData>;
+};
+
+export type MockPODetail = {
+  id: string;
+  poNo: string;
+  vendorName: string;
+  vendorCode: string;
+  poDate: string;
+  deliveryDate: string;
+  shipTo: string;
+  totalQty: number;
+  items: MockPOItem[];
+};
+
+const MOCK_PO_LIST: MockPORef[] = [
+  { id: "PO-00001", poNo: "PO-00001", vendor: "Zenith Footwear", article: "Urban", date: "2026-03-01", totalQty: 480 },
+  { id: "PO-00002", poNo: "PO-00002", vendor: "Apex Traders", article: "Classic", date: "2026-03-05", totalQty: 360 },
+  { id: "PO-00003", poNo: "PO-00003", vendor: "Nova Shoes Pvt Ltd", article: "Metro", date: "2026-03-10", totalQty: 240 },
+];
+
+const MOCK_PO_DETAILS: Record<string, MockPODetail> = {
+  "PO-00001": {
+    id: "PO-00001",
+    poNo: "PO-00001",
+    vendorName: "Zenith Footwear",
+    vendorCode: "VND-001",
+    poDate: "2026-03-01",
+    deliveryDate: "2026-03-20",
+    shipTo: "Warehouse A, Noida",
+    totalQty: 480,
+    items: [
+      {
+        itemName: "Urban-Red-5-7",
+        variantId: "v1",
+        color: "Red",
+        sizeRange: "5-7",
+        sizeMap: {
+          "5": { qty: 4, sku: "URB-RED-5-001" },
+          "6": { qty: 4, sku: "URB-RED-6-001" },
+          "7": { qty: 4, sku: "URB-RED-7-001" },
+        },
+      },
+      {
+        itemName: "Urban-Black-4-6",
+        variantId: "v2",
+        color: "Black",
+        sizeRange: "4-6",
+        sizeMap: {
+          "4": { qty: 3, sku: "URB-BLK-4-001" },
+          "5": { qty: 3, sku: "URB-BLK-5-001" },
+          "6": { qty: 3, sku: "URB-BLK-6-001" },
+        },
+      },
+      {
+        itemName: "Urban-Blue-6-8",
+        variantId: "v3",
+        color: "Blue",
+        sizeRange: "6-8",
+        sizeMap: {
+          "6": { qty: 2, sku: "URB-BLU-6-001" },
+          "7": { qty: 2, sku: "URB-BLU-7-001" },
+          "8": { qty: 2, sku: "URB-BLU-8-001" },
+        },
+      },
+    ],
+  },
+  "PO-00002": {
+    id: "PO-00002",
+    poNo: "PO-00002",
+    vendorName: "Apex Traders",
+    vendorCode: "VND-002",
+    poDate: "2026-03-05",
+    deliveryDate: "2026-03-25",
+    shipTo: "Warehouse B, Greater Noida",
+    totalQty: 360,
+    items: [
+      {
+        itemName: "Classic-Brown-6-9",
+        variantId: "v4",
+        color: "Brown",
+        sizeRange: "6-9",
+        sizeMap: {
+          "6": { qty: 3, sku: "CLS-BRN-6-001" },
+          "7": { qty: 3, sku: "CLS-BRN-7-001" },
+          "8": { qty: 3, sku: "CLS-BRN-8-001" },
+          "9": { qty: 3, sku: "CLS-BRN-9-001" },
+        },
+      },
+      {
+        itemName: "Classic-Tan-7-10",
+        variantId: "v5",
+        color: "Tan",
+        sizeRange: "7-10",
+        sizeMap: {
+          "7": { qty: 2, sku: "CLS-TAN-7-001" },
+          "8": { qty: 2, sku: "CLS-TAN-8-001" },
+          "9": { qty: 2, sku: "CLS-TAN-9-001" },
+          "10": { qty: 2, sku: "CLS-TAN-10-001" },
+        },
+      },
+    ],
+  },
+  "PO-00003": {
+    id: "PO-00003",
+    poNo: "PO-00003",
+    vendorName: "Nova Shoes Pvt Ltd",
+    vendorCode: "VND-003",
+    poDate: "2026-03-10",
+    deliveryDate: "2026-03-30",
+    shipTo: "Warehouse A, Noida",
+    totalQty: 240,
+    items: [
+      {
+        itemName: "Metro-White-5-8",
+        variantId: "v6",
+        color: "White",
+        sizeRange: "5-8",
+        sizeMap: {
+          "5": { qty: 2, sku: "MET-WHT-5-001" },
+          "6": { qty: 2, sku: "MET-WHT-6-001" },
+          "7": { qty: 2, sku: "MET-WHT-7-001" },
+          "8": { qty: 2, sku: "MET-WHT-8-001" },
+        },
+      },
+    ],
+  },
+};
+
 export const grnService = {
   async listReferences(search: string = "") {
-    const params = new URLSearchParams();
-    if (search) params.append("search", search);
-    const query = params.toString() ? `?${params.toString()}` : "";
-    return apiFetch(`/grn/references${query}`);
+    // Return mock data instead of API call
+    const filtered = MOCK_PO_LIST.filter(
+      (po) =>
+        !search ||
+        po.poNo.toLowerCase().includes(search.toLowerCase()) ||
+        po.vendor.toLowerCase().includes(search.toLowerCase()) ||
+        po.article.toLowerCase().includes(search.toLowerCase())
+    );
+    return { data: filtered };
+  },
+
+  async getReferenceDetail(poId: string) {
+    // Return mock detail
+    const detail = MOCK_PO_DETAILS[poId] || null;
+    return { data: detail };
   },
 
   async history(search: string = "") {
@@ -15,5 +176,13 @@ export const grnService = {
     return apiFetch(`/grn/history${query}`);
   },
 
-  // other methods (draft, scan, submit) can be added later if needed
+  async create(payload: any) {
+    // Mock create — just return success
+    return {
+      data: {
+        grnNo: `GRN-${Date.now()}`,
+        ...payload,
+      },
+    };
+  },
 };

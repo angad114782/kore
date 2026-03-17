@@ -6,8 +6,8 @@ interface SearchableSelectProps {
   options: string[];
   value: string;
   onChange: (value: string) => void;
-  onAdd: (newValue: string) => Promise<void>;
-  onDelete: (valueToDelete: string) => void;
+  onAdd?: (newValue: string) => Promise<void>;
+  onDelete?: (valueToDelete: string) => void;
   placeholder?: string;
   required?: boolean;
 }
@@ -105,17 +105,19 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                   <span className={`text-sm ${value === opt ? 'text-indigo-600 font-bold' : 'text-slate-700'}`}>
                     {opt}
                   </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onDelete(opt);
-                    }}
-                    className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {onDelete && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onDelete(opt);
+                      }}
+                      className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               ))
             ) : (
@@ -125,61 +127,63 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             )}
           </div>
 
-          <div className="p-2 border-t border-slate-100 bg-slate-50/50">
-            {isAdding ? (
-              <div className="flex items-center gap-2 p-1" onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder="Enter new name..."
-                  className="flex-1 p-2 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
-                  value={newValue}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setNewValue(val.charAt(0).toUpperCase() + val.slice(1));
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+          {onAdd && (
+            <div className="p-2 border-t border-slate-100 bg-slate-50/50">
+              {isAdding ? (
+                <div className="flex items-center gap-2 p-1" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Enter new name..."
+                    className="flex-1 p-2 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    value={newValue}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewValue(val.charAt(0).toUpperCase() + val.slice(1));
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleAddNew(e);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddNew}
+                    className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-sm"
+                  >
+                    <Plus size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      handleAddNew(e);
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={handleAddNew}
-                  className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-sm"
-                >
-                  <Plus size={16} />
-                </button>
+                      setIsAdding(false);
+                    }}
+                    className="p-2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : (
                 <button
                   type="button"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    setIsAdding(false);
+                    setIsAdding(true);
                   }}
-                  className="p-2 text-slate-400 hover:text-slate-600"
+                  className="w-full flex items-center justify-center gap-2 p-2.5 text-indigo-600 hover:bg-indigo-50 rounded-xl font-bold text-sm transition"
                 >
-                  <X size={16} />
+                  <Plus size={16} />
+                  Add New
                 </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsAdding(true);
-                }}
-                className="w-full flex items-center justify-center gap-2 p-2.5 text-indigo-600 hover:bg-indigo-50 rounded-xl font-bold text-sm transition"
-              >
-                <Plus size={16} />
-                Add New
-              </button>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
