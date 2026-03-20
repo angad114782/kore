@@ -21,6 +21,10 @@ import {
   ChevronRight,
   RotateCcw,
   MapPin,
+  ArrowLeft,
+  Activity,
+  Calendar,
+  PackageSearch,
 } from "lucide-react";
 import {
   grnService,
@@ -44,8 +48,12 @@ type GRNForm = {
 };
 
 type GRNHistoryItem = {
+  grnId: string;
   grnNo: string;
   refId: string;
+  vendorName: string;
+  articleName: string;
+  totalPairs: number;
   cartons: number;
   createdAt: string;
 };
@@ -110,6 +118,10 @@ const GRN: React.FC = () => {
 
   const [submitting, setSubmitting] = useState(false);
 
+  /* ── History Details View ── */
+  const [viewingGRN, setViewingGRN] = useState<any | null>(null);
+  const [loadingHistoryDetail, setLoadingHistoryDetail] = useState(false);
+
   /* ── Load PO list ── */
   useEffect(() => {
     grnService.listReferences("").then((res) => {
@@ -124,15 +136,31 @@ const GRN: React.FC = () => {
       .then((res) => {
         setGrnHistory(
           (res.data || []).map((h: any) => ({
+            grnId: h.grnId,
             grnNo: h.grnNo,
             refId: h.refId,
+            vendorName: h.vendorName,
+            articleName: h.articleName,
+            totalPairs: h.totalPairs,
             cartons: h.cartons,
             createdAt: h.createdAt,
           }))
         );
       })
       .catch(() => {});
-  }, []);
+  }, [activeTab]);
+
+  const viewGRNDetail = async (grnId: string) => {
+    setLoadingHistoryDetail(true);
+    try {
+      const res = await grnService.getGRNDetail(grnId);
+      setViewingGRN(res.data);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load GRN details");
+    } finally {
+      setLoadingHistoryDetail(false);
+    }
+  };
 
   /* ── Load PO detail when selected ── */
   useEffect(() => {
@@ -389,18 +417,22 @@ const GRN: React.FC = () => {
 
       setGrnHistory((prev) => [
         {
-          grnNo: res.data?.grnNo || `GRN-${Date.now()}`,
-          refId: poDetail.id,
-          cartons: overallProgress.scanned,
-          createdAt: new Date().toISOString(),
+          grnId: res.data._id,
+          grnNo: res.data.grnNo,
+          refId: poDetail.poNo,
+          vendorName: poDetail.vendorName,
+          articleName: poDetail.items[0]?.itemName || "",
+          totalPairs: overallProgress.scanned,
+          cartons: res.data.cartons?.length || 0,
+          createdAt: res.data.submittedAt || new Date().toISOString(),
         },
         ...prev,
       ]);
 
       toast.success("GRN submitted successfully");
       resetAll();
-    } catch {
-      toast.error("Failed to submit GRN");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to submit GRN");
     } finally {
       setSubmitting(false);
     }
@@ -461,7 +493,7 @@ const GRN: React.FC = () => {
             <SectionCard
               icon={<Hash size={18} className="text-indigo-600" />}
               title="1. Select Purchase Order"
-              className="z-[60]" // For dropdown visibility
+              className="z-60" // For dropdown visibility
               action={
                 selectedPOId ? (
                   <button
@@ -815,61 +847,69 @@ const GRN: React.FC = () => {
                       title="All Items Status"
                     >
                       <div className="space-y-3">
-                        {poDetail.items.map((item) => {
-                          const prog = getItemProgress(item.itemName);
-                          const pct =
-                            prog.total > 0
-                              ? (prog.scanned / prog.total) * 100
-                              : 0;
-                          const isDone =
-                            prog.scanned === prog.total && prog.total > 0;
-                          const isActive =
-                            item.itemName === selectedItemName;
+                        {poDetail.items.flatMap((item) => {
+                          return Array.from({
+                            length: item.cartonCount || 1,
+                          }).map((_, cIdx) => {
+                            const prog = getCartonProgress(
+                              item.itemName,
+                              cIdx
+                            );
+                            const isDone = prog.scanned >= 24;
+                            const isActive =
+                              item.itemName === selectedItemName &&
+                              cIdx === currentCartonIdx;
 
-                          return (
-                            <button
-                              key={item.itemName}
-                              type="button"
-                              onClick={() => {
-                                setSelectedItemName(item.itemName);
-                                setCurrentCartonIdx(0);
-                              }}
-                              className={`w-full rounded-2xl border p-4 text-left transition ${
-                                isActive
-                                  ? "border-emerald-300 bg-emerald-50"
-                                  : isDone
-                                  ? "border-slate-200 bg-slate-50"
-                                  : "border-slate-200 bg-white hover:border-indigo-200 hover:bg-indigo-50/30"
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <p className="font-bold text-slate-900">
-                                    {item.itemName}
-                                  </p>
-                                  <p className="text-xs text-slate-500">
-                                    {item.color} •{" "}
-                                    {Object.keys(item.sizeMap).join(", ")}
-                                  </p>
+                            return (
+                              <button
+                                key={`${item.itemName}-${cIdx}`}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedItemName(item.itemName);
+                                  setCurrentCartonIdx(cIdx);
+                                }}
+                                className={`w-full rounded-2xl border p-4 text-left transition ${
+                                  isActive
+                                    ? "border-emerald-300 bg-emerald-50 shadow-md"
+                                    : isDone
+                                    ? "border-slate-200 bg-slate-50"
+                                    : "border-slate-200 bg-white hover:border-indigo-200 hover:bg-indigo-50/30"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <div>
+                                    <p className="font-bold text-slate-900">
+                                      {item.itemName} — Carton {cIdx + 1}
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                      {item.color} •{" "}
+                                      {Object.keys(item.sizeMap).join(", ")}
+                                    </p>
+                                  </div>
+                                  <div className="text-right">
+                                    {isDone ? (
+                                      <StatusPill label="DONE" tone="emerald" />
+                                    ) : isActive ? (
+                                      <StatusPill
+                                        label="ACTIVE"
+                                        tone="indigo"
+                                      />
+                                    ) : prog.scanned > 0 ? (
+                                      <StatusPill
+                                        label="PARTIAL"
+                                        tone="amber"
+                                      />
+                                    ) : (
+                                      <StatusPill label="OPEN" tone="slate" />
+                                    )}
+                                    <p className="mt-1 text-xs font-bold text-slate-600">
+                                      {prog.scanned}/{prog.total} pairs
+                                    </p>
+                                  </div>
                                 </div>
-                                <div className="text-right">
-                                  {isDone ? (
-                                    <StatusPill label="DONE" tone="emerald" />
-                                  ) : isActive ? (
-                                    <StatusPill
-                                      label="ACTIVE"
-                                      tone="indigo"
-                                    />
-                                  ) : (
-                                    <StatusPill label="OPEN" tone="slate" />
-                                  )}
-                                  <p className="mt-1 text-xs font-bold text-slate-600">
-                                    {prog.scanned}/{prog.total} boxes
-                                  </p>
-                                </div>
-                              </div>
-                            </button>
-                          );
+                              </button>
+                            );
+                          });
                         })}
                       </div>
                     </SectionCard>
@@ -938,70 +978,209 @@ const GRN: React.FC = () => {
 
         {/* ═══ HISTORY TAB ═══ */}
         {activeTab === "history" && (
-          <div className="p-4 sm:p-6">
-            <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-              <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
-                <div className="flex items-center gap-2">
-                  <Package className="text-indigo-600" size={18} />
-                  <p className="font-black text-slate-900">GRN History</p>
+          <div className="p-4 sm:p-6 transition-all duration-300">
+            {viewingGRN ? (
+              /* ── History Detail View ── */
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="flex items-center justify-between gap-4">
+                  <button
+                    onClick={() => setViewingGRN(null)}
+                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+                  >
+                    <ArrowLeft size={16} />
+                    Back to History
+                  </button>
+                  <p className="text-sm font-black uppercase tracking-widest text-slate-400">
+                    ID: {viewingGRN._id}
+                  </p>
                 </div>
-                <div className="text-xs font-black uppercase tracking-widest text-slate-400">
-                  Total{" "}
-                  <span className="text-slate-800">{grnHistory.length}</span>
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                  {/* Summary Card */}
+                  <SectionCard
+                    icon={<Activity size={18} className="text-indigo-600" />}
+                    title="GRN Summary"
+                  >
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-1 p-3 rounded-2xl bg-indigo-50/50 border border-indigo-100">
+                        <p className="text-xs font-bold text-indigo-400 uppercase tracking-tight">GRN NUMBER</p>
+                        <p className="text-xl font-black text-indigo-900">{viewingGRN.grnNo}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-tight">Reference</p>
+                          <p className="font-black text-slate-900">{viewingGRN.refId}</p>
+                        </div>
+                        <div className="flex flex-col gap-1 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-tight">Status</p>
+                          <StatusPill label={viewingGRN.status} tone="emerald" />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                        <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-white border border-slate-200">
+                          <Calendar size={18} className="text-slate-400" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-tight">Received On</p>
+                          <p className="font-black text-slate-900">{formatDateTime(viewingGRN.submittedAt)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </SectionCard>
+
+                  {/* Metadata Card */}
+                  <SectionCard
+                    icon={<Package size={18} className="text-emerald-600" />}
+                    title="Contents Content"
+                  >
+                    <div className="space-y-4">
+                      <div className="p-3 rounded-2xl bg-emerald-50/50 border border-emerald-100">
+                        <p className="text-xs font-bold text-emerald-400 uppercase tracking-tight">VENDOR</p>
+                        <p className="font-black text-slate-900">{viewingGRN.vendorName || "Not Specified"}</p>
+                      </div>
+                      <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-tight">MAIN ARTICLE</p>
+                        <p className="font-black text-slate-900">{viewingGRN.articleName || "Not Specified"}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-tight">Boxes</p>
+                          <p className="font-black text-slate-900">{viewingGRN.cartons?.length || 0}</p>
+                        </div>
+                        <div className="flex flex-col gap-1 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-tight">Total Pairs</p>
+                          <p className="font-black text-slate-900">{viewingGRN.totalPairs || 0}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </SectionCard>
+
+                  {/* Carton Breakdown */}
+                  <div className="lg:col-span-1">
+                    <SectionCard
+                      icon={<PackageSearch size={18} className="text-amber-600" />}
+                      title={`Cartons (${viewingGRN.cartons?.length || 0})`}
+                    >
+                      <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                        {viewingGRN.cartons?.map((carton: any, idx: number) => (
+                          <div key={idx} className="p-4 rounded-2xl border border-slate-200 bg-white hover:border-amber-200 transition">
+                            <div className="flex justify-between items-center mb-2">
+                              <p className="text-sm font-black text-slate-900">BOX #{idx + 1}</p>
+                              <StatusPill label={`${carton.pairBarcodes?.length} Pairs`} tone="amber" />
+                            </div>
+                            <p className="text-[10px] font-mono text-slate-400 break-all bg-slate-50 p-2 rounded-lg border border-slate-100 mb-2">
+                              {carton.cartonBarcode}
+                            </p>
+                            <div className="flex flex-wrap gap-1">
+                              {/* Show count per unique SKU in this carton */}
+                              {Object.entries(
+                                (carton.pairBarcodes || []).reduce((acc: any, b: string) => {
+                                  acc[b] = (acc[b] || 0) + 1;
+                                  return acc;
+                                }, {})
+                              ).map(([sku, count]: any) => (
+                                <div key={sku} className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-2 py-1 border border-indigo-100">
+                                  <span className="text-[10px] font-black text-indigo-600">{sku}</span>
+                                  <span className="h-4 w-4 flex items-center justify-center rounded-md bg-white text-[10px] font-black text-indigo-900 border border-indigo-200">
+                                    {count}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </SectionCard>
+                  </div>
                 </div>
               </div>
+            ) : (
+              /* ── History List View ── */
+              <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 bg-slate-50/50">
+                  <div className="flex items-center gap-2">
+                    <Package className="text-indigo-600" size={18} />
+                    <p className="font-black text-slate-900">GRN History</p>
+                  </div>
+                  <div className="text-xs font-black uppercase tracking-widest text-slate-400">
+                    Logs Found: <span className="text-slate-800">{grnHistory.length}</span>
+                  </div>
+                </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[600px] text-left">
-                  <thead className="border-b border-slate-200 bg-slate-50">
-                    <tr>
-                      <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">
-                        GRN No
-                      </th>
-                      <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">
-                        Reference
-                      </th>
-                      <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">
-                        Boxes
-                      </th>
-                      <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">
-                        Date
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-slate-100">
-                    {grnHistory.map((h) => (
-                      <tr key={h.grnNo} className="hover:bg-slate-50/70">
-                        <td className="px-5 py-4 font-black text-slate-900">
-                          {h.grnNo}
-                        </td>
-                        <td className="px-5 py-4">
-                          <StatusPill label={h.refId} tone="indigo" />
-                        </td>
-                        <td className="px-5 py-4">
-                          <StatusPill
-                            label={String(h.cartons)}
-                            tone="emerald"
-                          />
-                        </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">
-                          {formatDateTime(h.createdAt)}
-                        </td>
-                      </tr>
-                    ))}
-
-                    {grnHistory.length === 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[800px] text-left">
+                    <thead className="border-b border-slate-200 bg-white">
                       <tr>
-                        <td colSpan={4} className="px-6 py-12">
-                          <EmptyState label="No GRN history yet." />
-                        </td>
+                        <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">GRN Info</th>
+                        <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">Vendor & Article</th>
+                        <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500 text-center">Receipt Stats</th>
+                        <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">Date Received</th>
+                        <th className="px-5 py-4 text-right"></th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100">
+                      {grnHistory.map((h) => (
+                        <tr key={h.grnId} className="hover:bg-indigo-50/30 transition-colors group">
+                          <td className="px-5 py-5">
+                            <div className="flex flex-col gap-1">
+                              <p className="text-sm font-black text-slate-900 group-hover:text-indigo-600 transition-colors">
+                                {h.grnNo}
+                              </p>
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                                <span className="bg-slate-100 px-1.5 py-0.5 rounded uppercase">Ref</span> {h.refId}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-5 py-5">
+                            <div className="flex flex-col gap-0.5">
+                              <p className="text-sm font-bold text-slate-800">{h.vendorName || "—"}</p>
+                              <p className="text-xs text-slate-500">{h.articleName || "—"}</p>
+                            </div>
+                          </td>
+                          <td className="px-5 py-5">
+                            <div className="flex items-center justify-center gap-2">
+                              <div className="flex flex-col items-center">
+                                <span className="text-xs font-black text-slate-900">{h.cartons}</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Boxes</span>
+                              </div>
+                              <div className="h-6 w-px bg-slate-200" />
+                              <div className="flex flex-col items-center">
+                                <span className="text-xs font-black text-emerald-600">{h.totalPairs}</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Pairs</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-5 py-5 whitespace-nowrap">
+                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                              <Calendar size={14} className="text-slate-400" />
+                              {formatDateTime(h.createdAt)}
+                            </div>
+                          </td>
+                          <td className="px-5 py-5 text-right">
+                            <button
+                              onClick={() => viewGRNDetail(h.grnId)}
+                              disabled={loadingHistoryDetail}
+                              className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white transition hover:bg-indigo-600 disabled:opacity-50"
+                            >
+                              {loadingHistoryDetail ? "..." : "View Details"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {grnHistory.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-12">
+                            <EmptyState label="No GRN history discovered yet." />
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

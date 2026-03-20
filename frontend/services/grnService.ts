@@ -1,9 +1,8 @@
 import { apiFetch } from "./api";
 
-// ─── Mock PO Data for GRN (frontend-only until backend is ready) ───
-
+// Types matching frontend expectations
 export type MockPORef = {
-  id: string;
+  id: string; // Internal PO ID or poNumber
   poNo: string;
   vendor: string;
   article: string;
@@ -12,12 +11,12 @@ export type MockPORef = {
 };
 
 export type MockSizeData = {
-  qty: number; // number of boxes for this size
+  qty: number;
   sku: string;
 };
 
 export type MockPOItem = {
-  itemName: string; // e.g. "Urban-Red-5-7"
+  itemName: string;
   variantId: string;
   color: string;
   sizeRange: string;
@@ -26,7 +25,7 @@ export type MockPOItem = {
 };
 
 export type MockPODetail = {
-  id: string;
+  id: string; // The MongoDB _id
   poNo: string;
   vendorName: string;
   vendorCode: string;
@@ -37,142 +36,80 @@ export type MockPODetail = {
   items: MockPOItem[];
 };
 
-const MOCK_PO_LIST: MockPORef[] = [
-  { id: "PO-00001", poNo: "PO-00001", vendor: "Zenith Footwear", article: "Urban", date: "2026-03-01", totalQty: 480 },
-  { id: "PO-00002", poNo: "PO-00002", vendor: "Apex Traders", article: "Classic", date: "2026-03-05", totalQty: 360 },
-  { id: "PO-00003", poNo: "PO-00003", vendor: "Nova Shoes Pvt Ltd", article: "Metro", date: "2026-03-10", totalQty: 240 },
-];
-
-const MOCK_PO_DETAILS: Record<string, MockPODetail> = {
-  "PO-00001": {
-    id: "PO-00001",
-    poNo: "PO-00001",
-    vendorName: "Zenith Footwear",
-    vendorCode: "VND-001",
-    poDate: "2026-03-01",
-    deliveryDate: "2026-03-20",
-    shipTo: "Warehouse A, Noida",
-    totalQty: 72, // (20+15+10) * 24 = 45 * 24 = 1080
-    items: [
-      {
-        itemName: "Urban-Red-5-7",
-        variantId: "v1",
-        color: "Red",
-        sizeRange: "5-7",
-        cartonCount: 1, // 480 total / 24 = 20 cartons (if single item)
-        sizeMap: {
-          "5": { qty: 8, sku: "URB-RED-5-001" },
-          "6": { qty: 8, sku: "URB-RED-6-001" },
-          "7": { qty: 8, sku: "URB-RED-7-001" },
-        },
-      },
-      {
-        itemName: "Urban-Black-4-6",
-        variantId: "v2",
-        color: "Black",
-        sizeRange: "4-6",
-        cartonCount: 1,
-        sizeMap: {
-          "4": { qty: 8, sku: "URB-BLK-4-001" },
-          "5": { qty: 8, sku: "URB-BLK-5-001" },
-          "6": { qty: 8, sku: "URB-BLK-6-001" },
-        },
-      },
-      {
-        itemName: "Urban-Blue-6-8",
-        variantId: "v3",
-        color: "Blue",
-        sizeRange: "6-8",
-        cartonCount: 1,
-        sizeMap: {
-          "6": { qty: 8, sku: "URB-BLU-6-001" },
-          "7": { qty: 8, sku: "URB-BLU-7-001" },
-          "8": { qty: 8, sku: "URB-BLU-8-001" },
-        },
-      },
-    ],
-  },
-  "PO-00002": {
-    id: "PO-00002",
-    poNo: "PO-00002",
-    vendorName: "Apex Traders",
-    vendorCode: "VND-002",
-    poDate: "2026-03-05",
-    deliveryDate: "2026-03-25",
-    shipTo: "Warehouse B, Greater Noida",
-    totalQty: 72, // (10+5) * 24 = 15 * 24 = 360. Wait, already correct?
-    items: [
-      {
-        itemName: "Classic-Brown-6-9",
-        variantId: "v4",
-        color: "Brown",
-        sizeRange: "6-9",
-        cartonCount: 2,
-        sizeMap: {
-          "6": { qty: 6, sku: "CLS-BRN-6-001" },
-          "7": { qty: 6, sku: "CLS-BRN-7-001" },
-          "8": { qty: 6, sku: "CLS-BRN-8-001" },
-          "9": { qty: 6, sku: "CLS-BRN-9-001" },
-        },
-      },
-      {
-        itemName: "Classic-Tan-7-10",
-        variantId: "v5",
-        color: "Tan",
-        sizeRange: "7-10",
-        cartonCount: 1,
-        sizeMap: {
-          "7": { qty: 2, sku: "CLS-TAN-7-001" },
-          "8": { qty: 8, sku: "CLS-TAN-8-001" },
-          "9": { qty: 4, sku: "CLS-TAN-9-001" },
-          "10": { qty: 10, sku: "CLS-TAN-10-001" },
-        },
-      },
-    ],
-  },
-  "PO-00003": {
-    id: "PO-00003",
-    poNo: "PO-00003",
-    vendorName: "Nova Shoes Pvt Ltd",
-    vendorCode: "VND-003",
-    poDate: "2026-03-10",
-    deliveryDate: "2026-03-30",
-    shipTo: "Warehouse A, Noida",
-    totalQty: 96, // 10 * 24 = 240. Correct.
-    items: [
-      {
-        itemName: "Metro-White-5-8",
-        variantId: "v6",
-        color: "White",
-        sizeRange: "5-8",
-        cartonCount: 4,
-        sizeMap: {
-          "5": { qty: 6, sku: "MET-WHT-5-001" },
-          "6": { qty: 6, sku: "MET-WHT-6-001" },
-          "7": { qty: 6, sku: "MET-WHT-7-001" },
-          "8": { qty: 6, sku: "MET-WHT-8-001" },
-        },
-      },
-    ],
-  },
+export type GRNHistoryItem = {
+  grnId: string;
+  grnNo: string;
+  refId: string;
+  vendorName: string;
+  articleName: string;
+  totalPairs: number;
+  cartons: number;
+  createdAt: string;
 };
 
 export const grnService = {
   async listReferences(search: string = "") {
-    // Return mock data instead of API call
-    const filtered = MOCK_PO_LIST.filter(
-      (po) =>
-        !search ||
-        po.poNo.toLowerCase().includes(search.toLowerCase()) ||
-        po.vendor.toLowerCase().includes(search.toLowerCase()) ||
-        po.article.toLowerCase().includes(search.toLowerCase())
-    );
-    return { data: filtered };
+    const params = new URLSearchParams();
+    if (search) params.append("search", search);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    const res = await apiFetch(`/grn/references${query}`);
+    
+    const mapped: MockPORef[] = (res.data || []).map((ref: any) => ({
+      id: ref.id,
+      poNo: ref.id,
+      vendor: ref.party,
+      article: ref.article,
+      date: "",
+      totalQty: 0,
+    }));
+    
+    return { data: mapped };
   },
 
   async getReferenceDetail(poId: string) {
-    // Return mock detail
-    const detail = MOCK_PO_DETAILS[poId] || null;
+    let poDoc: any = null;
+    try {
+      const listRes = await apiFetch(`/purchase-orders?q=${encodeURIComponent(poId)}`);
+      poDoc = (listRes.data || []).find((p: any) => p.poNumber === poId);
+      if (!poDoc) throw new Error("PO not found");
+    } catch (err) {
+      throw err;
+    }
+
+    let totalQty = 0;
+    const items: MockPOItem[] = (poDoc.items || []).map((it: any) => {
+      let itemTotalQty = 0;
+      const sizeMapData = it.sizeMap || {};
+      if (typeof sizeMapData === "object") {
+        Object.values(sizeMapData).forEach((v: any) => {
+          itemTotalQty += Number(v?.qty || 0);
+        });
+      }
+      const itemCartons = Number(it.cartonCount || 0);
+      totalQty += (itemTotalQty * (itemCartons > 0 ? itemCartons : 1));
+
+      return {
+        itemName: it.itemName || "",
+        variantId: it.variantId || "",
+        color: it.skuCompany || "",
+        sizeRange: "Variable",
+        cartonCount: itemCartons,
+        sizeMap: sizeMapData,
+      };
+    });
+
+    const detail: MockPODetail = {
+      id: poDoc._id,
+      poNo: poDoc.poNumber,
+      vendorName: poDoc.vendorName,
+      vendorCode: "", 
+      poDate: poDoc.date,
+      deliveryDate: poDoc.deliveryDate,
+      shipTo: poDoc.shipmentPreference || "",
+      totalQty,
+      items,
+    };
+
     return { data: detail };
   },
 
@@ -183,13 +120,50 @@ export const grnService = {
     return apiFetch(`/grn/history${query}`);
   },
 
+  async getGRNDetail(grnId: string) {
+    return apiFetch(`/grn/${grnId}`);
+  },
+
   async create(payload: any) {
-    // Mock create — just return success
-    return {
-      data: {
-        grnNo: `GRN-${Date.now()}`,
-        ...payload,
-      },
-    };
+    const { poId, scanState } = payload;
+    const listRes = await apiFetch(`/purchase-orders/${poId}`);
+    if (!listRes.data) throw new Error("Purchase Order details not found");
+    const poDoc = listRes.data;
+    
+    const draftRes = await apiFetch("/grn/drafts", {
+      method: "POST",
+      body: JSON.stringify({ refType: "PO", refId: poDoc.poNumber })
+    });
+    if (!draftRes.data || !draftRes.data._id) throw new Error("Failed to create GRN Draft");
+    const draftId = draftRes.data._id;
+    
+    const pairBarcodes: string[] = [];
+    Object.keys(scanState).forEach((itemName) => {
+      const cartons = scanState[itemName];
+      const poItem = poDoc.items.find((it: any) => it.itemName === itemName);
+      if (!poItem || !poItem.sizeMap) return;
+      
+      cartons.forEach((carton: any) => {
+        Object.keys(carton).forEach((size) => {
+          const count = carton[size];
+          const sku = poItem.sizeMap[size]?.sku;
+          if (sku) {
+            for (let i = 0; i < count; i++) pairBarcodes.push(sku);
+          }
+        });
+      });
+    });
+    
+    if (pairBarcodes.length > 0) {
+      await apiFetch(`/grn/drafts/${draftId}/bulk-scan`, {
+        method: "POST",
+        body: JSON.stringify({ pairBarcodes })
+      });
+    }
+    
+    const submitRes = await apiFetch(`/grn/drafts/${draftId}/submit`, {
+      method: "POST"
+    });
+    return submitRes;
   },
 };

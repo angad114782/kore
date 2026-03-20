@@ -27,6 +27,11 @@ const GRNDraftSchema = new mongoose.Schema(
 
     submittedAt: { type: Date, default: null },
     grnNo: { type: String, default: null },
+
+    // metadata for history
+    vendorName: { type: String, default: "" },
+    articleName: { type: String, default: "" },
+    totalPairs: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

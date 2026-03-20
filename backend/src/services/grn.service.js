@@ -18,8 +18,10 @@ const makeCartonBarcode = (refType, refNo, serial) => {
   )}`;
 };
 
-const makeGRNNo = () => {
-  return `GRN-${todayYYYYMMDD()}-${Math.floor(Math.random() * 900 + 100)}`;
+const makeGRNNo = (articleName, poNo) => {
+  const cleanArticle = (articleName || "ITEM").split("-")[0].toUpperCase();
+  const cleanPO = (poNo || "PO").replace(/[^a-zA-Z0-9]/g, "");
+  return `GRN-${cleanArticle}-${cleanPO}-${todayYYYYMMDD()}`;
 };
 
 // when running in production we want to return actual PO and catalogue references
@@ -110,10 +112,6 @@ exports.listReferences = async (search = "") => {
 exports.createDraft = async ({ refType, refId }) => {
   if (!refType || !refId) throw new Error("refType and refId required");
 
-  // optional: verify ref exists
-  const exists = demoRefs.find((r) => r.id === refId && r.refType === refType);
-  if (!exists) throw new Error("Invalid reference");
-
   // create fresh draft
   const draft = await GRNDraft.create({
     refType,
@@ -142,12 +140,6 @@ exports.scanPair = async (draftId, pairBarcodeRaw) => {
   if (!draft) throw new Error("Draft not found");
   if (draft.status !== "DRAFT") throw new Error("GRN already submitted");
 
-  // duplicate rules
-  if (draft.currentPairs.includes(pairBarcode))
-    throw new Error("Duplicate in current carton not allowed");
-  if (draft.scannedSet.includes(pairBarcode))
-    throw new Error("Duplicate in this GRN not allowed");
-
   // add
   draft.currentPairs.push(pairBarcode);
   draft.scannedSet.push(pairBarcode);
@@ -173,6 +165,43 @@ exports.scanPair = async (draftId, pairBarcodeRaw) => {
 
   await draft.save();
 
+  return draft;
+};
+
+exports.bulkScan = async (draftId, pairBarcodesRaw) => {
+  if (!Array.isArray(pairBarcodesRaw)) throw new Error("pairBarcodes must be an array");
+
+  const draft = await GRNDraft.findById(draftId);
+  if (!draft) throw new Error("Draft not found");
+  if (draft.status !== "DRAFT") throw new Error("GRN already submitted");
+
+  let modified = false;
+  for (const rawCode of pairBarcodesRaw) {
+    const pairBarcode = (rawCode || "").trim();
+    if (!pairBarcode) continue;
+
+    draft.currentPairs.push(pairBarcode);
+    draft.scannedSet.push(pairBarcode);
+    modified = true;
+
+    if (draft.currentPairs.length === PAIRS_PER_CARTON) {
+      const refNo = String(draft.refId).split("-")[1] || draft.refId;
+      const cartonBarcode = makeCartonBarcode(draft.refType, refNo, draft.cartonSerial);
+
+      draft.cartons.unshift({
+        cartonBarcode,
+        pairBarcodes: [...draft.currentPairs],
+        lockedAt: new Date(),
+      });
+
+      draft.cartonSerial += 1;
+      draft.currentPairs = [];
+    }
+  }
+
+  if (modified) {
+    await draft.save();
+  }
   return draft;
 };
 
@@ -224,13 +253,30 @@ exports.submitDraft = async (draftId) => {
   }
   if (draft.cartons.length === 0) throw new Error("Add at least 1 carton");
 
-  // TODO: Stock entry carton-wise create here
-  // For each carton: create Stock model entry
-  // Use transaction if needed.
+  // Fetch PO for metadata
+  let vendorName = "";
+  let articleName = "";
+  if (draft.refType === "PO") {
+    const po = await PurchaseOrder.findOne({ poNumber: draft.refId }).lean();
+    if (po) {
+      vendorName = po.vendorName || "";
+      articleName = (po.items && po.items[0]?.itemName) || "";
+    }
+  } else if (draft.refType === "CAT") {
+    const cat = await MasterCatalog.findById(draft.refId.replace("CAT-", "")).lean();
+    if (cat) {
+      articleName = cat.articleName || "";
+    }
+  }
+
+  const totalPairs = draft.cartons.reduce((sum, c) => sum + c.pairBarcodes.length, 0);
 
   draft.status = "SUBMITTED";
   draft.submittedAt = new Date();
-  draft.grnNo = makeGRNNo();
+  draft.grnNo = makeGRNNo(articleName, draft.refId);
+  draft.vendorName = vendorName;
+  draft.articleName = articleName;
+  draft.totalPairs = totalPairs;
 
   await draft.save();
   return draft;
@@ -248,6 +294,9 @@ exports.getHistory = async (search = "") => {
     grnId: d._id,
     grnNo: d.grnNo,
     refId: d.refId,
+    vendorName: d.vendorName,
+    articleName: d.articleName,
+    totalPairs: d.totalPairs,
     cartons: d.cartons.length,
     createdAt: d.submittedAt,
   }));

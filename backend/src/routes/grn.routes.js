@@ -10,6 +10,7 @@ router.post("/drafts", grn.createDraft);
 router.get("/drafts/:draftId", grn.getDraft);
 
 router.post("/drafts/:draftId/scan", grn.scanPair);
+router.post("/drafts/:draftId/bulk-scan", grn.bulkScan);
 router.post("/drafts/:draftId/rescan-current", grn.rescanCurrent);
 router.delete("/drafts/:draftId/cartons/:cartonBarcode", grn.removeCarton);
 

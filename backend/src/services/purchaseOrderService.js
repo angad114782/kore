@@ -192,6 +192,7 @@ exports.create = async (body) => {
 
           quantity: it.quantity,
           taxRate: it.taxRate,
+          cartonCount: Number(it.cartonCount || 0),
           taxType: it.taxType || "GST",
           basePrice: it.basePrice,
           mrp: it.mrp || 0,
@@ -472,6 +473,7 @@ exports.update = async (id, body) => {
         skuCompany: it.skuCompany || "",
         itemTaxCode: it.itemTaxCode || "",
         quantity: it.quantity,
+        cartonCount: Number(it.cartonCount || 0),
         taxRate: it.taxRate,
         taxType: it.taxType || "GST",
         basePrice: it.basePrice,

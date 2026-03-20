@@ -37,6 +37,15 @@ exports.scanPair = async (req, res) => {
   }
 };
 
+exports.bulkScan = async (req, res) => {
+  try {
+    const data = await grnService.bulkScan(req.params.draftId, req.body.pairBarcodes);
+    return ok(res, { message: "Bulk Scanned", data });
+  } catch (e) {
+    return fail(res, { message: e.message });
+  }
+};
+
 exports.rescanCurrent = async (req, res) => {
   try {
     const data = await grnService.rescanCurrent(req.params.draftId);
