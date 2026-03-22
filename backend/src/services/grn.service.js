@@ -2,32 +2,45 @@ const GRNDraft = require("../models/grn.model");
 
 const PAIRS_PER_CARTON = 24;
 
-const todayYYYYMMDD = () => {
+const todayYYMMDD = () => {
   const d = new Date();
-  const yyyy = d.getFullYear();
+  const yy = String(d.getFullYear()).slice(-2);
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}${mm}${dd}`;
+  return `${yy}${mm}${dd}`;
 };
 
 const makeCartonBarcode = (refType, refNo, serial) => {
   // refNo: "1023" from "PO-1023"
-  return `CTN-${todayYYYYMMDD()}-${refType}-${refNo}-${String(serial).padStart(
+  const dateStr = todayYYMMDD();
+  return `CTN-${dateStr}-${refType}-${refNo}-${String(serial).padStart(
     3,
     "0"
   )}`;
 };
 
-const makeGRNNo = (articleName, poNo) => {
-  const cleanArticle = (articleName || "ITEM").split("-")[0].toUpperCase();
-  const cleanPO = (poNo || "PO").replace(/[^a-zA-Z0-9]/g, "");
-  return `GRN-${cleanArticle}-${cleanPO}-${todayYYYYMMDD()}`;
+const makeGRNNo = (articleName, poNo, sequence) => {
+  const cleanArticle = (articleName || "ITEM").split("-")[0].substring(0, 3).toUpperCase();
+  const cleanPO = (poNo || "PO").split("-").pop().slice(-5).toUpperCase();
+  const dateStr = todayYYMMDD();
+  return `GRN-${cleanArticle}-${cleanPO}-${dateStr}-${String(sequence).padStart(3, "0")}`;
 };
 
 // when running in production we want to return actual PO and catalogue references
 const PurchaseOrder = require("../models/PurchaseOrder");
 const MasterCatalog = require("../models/MasterCatalog");
 const Brand = require("../models/Brand");
+const Counter = require("../models/Counter");
+
+// helper to get next sequence
+const getNextSequence = async (name) => {
+  const counter = await Counter.findOneAndUpdate(
+    { id: name },
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true }
+  );
+  return counter.seq;
+};
 
 // helper to build regex for search
 const makeRegex = (str) => {
@@ -40,7 +53,7 @@ exports.listReferences = async (search = "") => {
   const regex = makeRegex(q);
 
   // fetch PO docs matching search (po number or vendor name)
-  const poFilter = { isDeleted: false };
+  const poFilter = { isDeleted: false, billStatus: "APPROVED" };
   if (regex) {
     poFilter.$or = [
       { poNumber: regex },
@@ -271,9 +284,10 @@ exports.submitDraft = async (draftId) => {
 
   const totalPairs = draft.cartons.reduce((sum, c) => sum + c.pairBarcodes.length, 0);
 
+  const sequence = await getNextSequence("grn_no");
   draft.status = "SUBMITTED";
   draft.submittedAt = new Date();
-  draft.grnNo = makeGRNNo(articleName, draft.refId);
+  draft.grnNo = makeGRNNo(articleName, draft.refId, sequence);
   draft.vendorName = vendorName;
   draft.articleName = articleName;
   draft.totalPairs = totalPairs;

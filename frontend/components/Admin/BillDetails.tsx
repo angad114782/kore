@@ -246,8 +246,8 @@ const BillDetails: React.FC<BillDetailsProps> = ({
                   <th className="px-2 py-3 text-[10px] font-bold text-emerald-600 uppercase tracking-wider">
                     Tax Code
                   </th>
-                  <th className="px-2 py-3 text-[10px] font-bold text-emerald-600 uppercase tracking-wider w-[70px]">
-                    Qty
+                  <th className="px-2 py-3 text-[10px] font-bold text-emerald-600 uppercase tracking-wider w-[100px]">
+                    Qty (Ctn)
                   </th>
                   <th className="px-2 py-3 text-[10px] font-bold text-emerald-600 uppercase tracking-wider w-[70px]">
                     Tax Rate %
@@ -310,7 +310,7 @@ const BillDetails: React.FC<BillDetailsProps> = ({
                     {/* Quantity */}
                     <td className="px-2 py-3 text-center">
                       <div className="text-sm font-semibold text-slate-900">
-                        {item.quantity}
+                        {item.cartonCount || Math.floor((item.quantity || 0) / 24) || 0}
                       </div>
                     </td>
 

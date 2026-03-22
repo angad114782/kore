@@ -26,7 +26,7 @@ const GRNDraftSchema = new mongoose.Schema(
     status: { type: String, enum: ["DRAFT", "SUBMITTED"], default: "DRAFT" },
 
     submittedAt: { type: Date, default: null },
-    grnNo: { type: String, default: null },
+    grnNo: { type: String },
 
     // metadata for history
     vendorName: { type: String, default: "" },
