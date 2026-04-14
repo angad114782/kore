@@ -432,9 +432,9 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
   const rangeRegex = /^\d+-\d+$/;
 
   if (trimmed && rangeRegex.test(trimmed)) {
-    if (sizeRanges.includes(trimmed)) {
-      return toast.error("Size range already exists");
-    }
+    // if (sizeRanges.includes(trimmed)) {
+    //   return toast.error("Size range already exists");
+    // }
 
     setSizeRanges([...sizeRanges, trimmed]);
     setSizeRangeInput("");
