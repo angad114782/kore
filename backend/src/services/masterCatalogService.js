@@ -39,11 +39,9 @@ const normalizePage = (page) => {
 };
 
 const makeFileUrl = (req, filePath) => {
-  // Return relative path for dynamic hosting
   return filePath.replace(/\\/g, "/");
 };
 
-// ✅ frontend dynamic field names: images_Red, images_Black ...
 const buildColorMediaPayload = (req, productColors = []) => {
   const files = Array.isArray(req.files) ? req.files : [];
   const colorMedia = [];
@@ -69,7 +67,6 @@ const buildColorMediaPayload = (req, productColors = []) => {
   return colorMedia;
 };
 
-// listing compatibility: first image = primary, rest = secondary
 const buildFlatImagesFromColorMedia = (colorMedia = []) => {
   const allImages = [];
 
@@ -94,7 +91,6 @@ const normalizeVariants = (variantsRaw) => {
   return variants.map((v) => {
     const sizeMap = {};
 
-    // frontend format: sizeQuantities + optional sizeSkus
     if (v.sizeQuantities && typeof v.sizeQuantities === "object") {
       Object.keys(v.sizeQuantities).forEach((size) => {
         sizeMap[size] = {
@@ -104,7 +100,6 @@ const normalizeVariants = (variantsRaw) => {
       });
     }
 
-    // agar direct sizeMap aa jaye to bhi handle kar lo
     if (v.sizeMap && typeof v.sizeMap === "object") {
       Object.keys(v.sizeMap).forEach((size) => {
         const cell = v.sizeMap[size] || {};
@@ -120,6 +115,7 @@ const normalizeVariants = (variantsRaw) => {
       itemName: v.itemName,
       color: v.color || "",
       sizeRange: v.sizeRange || "",
+      sizeRangeId: v.sizeRangeId || "",
       costPrice: Number(v.costPrice || 0),
       sellingPrice: Number(v.sellingPrice || 0),
       mrp: Number(v.mrp || 0),
@@ -128,6 +124,18 @@ const normalizeVariants = (variantsRaw) => {
       isActive: parseBoolean(v.isActive, true),
     };
   });
+};
+
+const makeCompositeKey = (v) => {
+  return `${(v.color || "").trim().toLowerCase()}|${(v.sizeRange || "")
+    .trim()
+    .toLowerCase()}|${(v.sizeRangeId || "").trim()}`;
+};
+
+const makeLegacyFallbackKey = (v) => {
+  return `${(v.itemName || "").trim().toLowerCase()}|${(v.color || "")
+    .trim()
+    .toLowerCase()}|${(v.sizeRange || "").trim().toLowerCase()}`;
 };
 
 exports.create = async (req) => {
@@ -224,6 +232,7 @@ exports.list = async (query) => {
       { "variants.itemName": { $regex: q, $options: "i" } },
       { "variants.color": { $regex: q, $options: "i" } },
       { "variants.hsnCode": { $regex: q, $options: "i" } },
+      { "variants.sizeRange": { $regex: q, $options: "i" } },
     ];
   }
 
@@ -310,19 +319,16 @@ exports.update = async (req, id) => {
     const variantsRaw = parseMaybeJson(body.variants, []);
     const normalized = normalizeVariants(variantsRaw);
 
-    // Convert current variants to a map for ID-based lookup
     const existingById = new Map(
       doc.variants.map((v) => [v._id.toString(), v])
     );
 
-    // Create a secondary map for name+color based lookup as fallback
-    const existingByNameColor = new Map(
-      doc.variants.map((v) => [
-        `${v.itemName.trim().toLowerCase()}|${(v.color || "")
-          .trim()
-          .toLowerCase()}`,
-        v,
-      ])
+    const existingByComposite = new Map(
+      doc.variants.map((v) => [makeCompositeKey(v), v])
+    );
+
+    const existingByLegacyFallback = new Map(
+      doc.variants.map((v) => [makeLegacyFallbackKey(v), v])
     );
 
     const newVariants = [];
@@ -330,25 +336,32 @@ exports.update = async (req, id) => {
     normalized.forEach((v) => {
       let matched = null;
 
-      // 1. Primary Match: By ID
+      // 1. Primary match by DB _id
       if (v._id && existingById.has(v._id.toString())) {
         matched = existingById.get(v._id.toString());
       }
-      // 2. Secondary Match: By Name + Color (Fallback if ID is missing or mismatched)
-      else {
-        const key = `${v.itemName.trim().toLowerCase()}|${(v.color || "")
-          .trim()
-          .toLowerCase()}`;
-        if (existingByNameColor.has(key)) {
-          matched = existingByNameColor.get(key);
+
+      // 2. Secondary match by color + sizeRange + sizeRangeId
+      if (!matched && v.sizeRangeId) {
+        const compositeKey = makeCompositeKey(v);
+        if (existingByComposite.has(compositeKey)) {
+          matched = existingByComposite.get(compositeKey);
+        }
+      }
+
+      // 3. Legacy fallback for old data
+      if (!matched) {
+        const fallbackKey = makeLegacyFallbackKey(v);
+        if (existingByLegacyFallback.has(fallbackKey)) {
+          matched = existingByLegacyFallback.get(fallbackKey);
         }
       }
 
       if (matched) {
-        // Update existing variant fields
         matched.itemName = v.itemName;
         matched.color = v.color;
         matched.sizeRange = v.sizeRange;
+        matched.sizeRangeId = v.sizeRangeId || matched.sizeRangeId || "";
         matched.costPrice = v.costPrice;
         matched.sellingPrice = v.sellingPrice;
         matched.mrp = v.mrp;
@@ -356,28 +369,21 @@ exports.update = async (req, id) => {
         matched.sizeMap = v.sizeMap;
         matched.isActive = v.isActive;
 
-        // Remove from both maps to prevent double matching or accidental deletion
         existingById.delete(matched._id.toString());
-        existingByNameColor.delete(
-          `${matched.itemName.trim().toLowerCase()}|${(matched.color || "")
-            .trim()
-            .toLowerCase()}`
-        );
+        existingByComposite.delete(makeCompositeKey(matched));
+        existingByLegacyFallback.delete(makeLegacyFallbackKey(matched));
 
         newVariants.push(matched);
       } else {
-        // 3. No match: Treat as new variant
         const vCopy = { ...v };
-        delete vCopy._id; // Let Mongoose generate a new unique ID
+        delete vCopy._id;
         newVariants.push(vCopy);
       }
     });
 
-    // Replace the variants array with the updated list (preserving matched ones and adding new ones)
     doc.variants = newVariants;
   }
 
-  // ✅ dynamic color images replace logic
   const hasNewColorImages =
     Array.isArray(req.files) &&
     req.files.some((f) => f.fieldname && f.fieldname.startsWith("images_"));
@@ -453,13 +459,13 @@ exports.getVariantStock = async (variantId) => {
   const GRNDraft = require("../models/grn.model");
   const MasterCatalog = require("../models/MasterCatalog");
 
-  // 1. Find the parent catalog and the variant to get the SKUs
   const catalog = await MasterCatalog.findOne({ "variants._id": variantId });
   if (!catalog) {
     const err = new Error("Variant not found");
     err.statusCode = 404;
     throw err;
   }
+
   const variant = catalog.variants.id(variantId);
   if (!variant) {
     const err = new Error("Variant not found in catalog");
@@ -467,7 +473,6 @@ exports.getVariantStock = async (variantId) => {
     throw err;
   }
 
-  // 1a. Normalize sizeMap (support Map + plain object + legacy sizeQuantities/sizeSkus)
   let normalizedSizeMap = new Map();
 
   const setSizeCell = (size, cell) => {
@@ -506,9 +511,7 @@ exports.getVariantStock = async (variantId) => {
     .map((sz) => (normalizedSizeMap.get(sz) || {}).sku)
     .filter((v) => typeof v === "string" && v.trim().length > 0);
 
-  // 1b. If variant lacks SKUs, try to fetch them from related PO
   if (skus.length === 0) {
-    const PurchaseOrder = require("../models/PurchaseOrder");
     const posWithSkus = await PurchaseOrder.find({
       isDeleted: false,
       $or: [
@@ -539,7 +542,6 @@ exports.getVariantStock = async (variantId) => {
           }
         }
 
-        // Recalculate skus after fetching from PO
         skus = Array.from(normalizedSizeMap.values())
           .map((cell) => (cell && cell.sku ? cell.sku : ""))
           .filter((v) => typeof v === "string" && v.trim().length > 0);
@@ -547,12 +549,6 @@ exports.getVariantStock = async (variantId) => {
     }
   }
 
-  console.log(
-    `[getVariantStock] variantId: ${variantId}, name: ${variant.itemName}, sizes: ${sizes}, skus: ${skus}`
-  );
-
-  // 2. Calculate PO Quantity (Sum of cartonCount * sizeMap[size].qty)
-  // Match by both ID and Name to handle inconsistent storage
   const poFilter = {
     isDeleted: false,
     $or: [
@@ -566,8 +562,6 @@ exports.getVariantStock = async (variantId) => {
   }
 
   const pos = await PurchaseOrder.find(poFilter).lean();
-
-  console.log(`[getVariantStock] found ${pos.length} matched POs`);
 
   const poMap = {};
   sizes.forEach((sz) => {
@@ -592,22 +586,16 @@ exports.getVariantStock = async (variantId) => {
 
   const poNumbers = pos.map((p) => p.poNumber).filter(Boolean);
 
-  // 3. Find GRNs that reference those POs and accumulate live stock
   const grns = await GRNDraft.find({
     status: "SUBMITTED",
     refId: { $in: poNumbers },
   }).lean();
-
-  console.log(
-    `[getVariantStock] found ${grns.length} submitted GRNs for refIds: ${poNumbers}`
-  );
 
   const liveStockMap = {};
   sizes.forEach((sz) => {
     liveStockMap[sz] = 0;
   });
 
-  // Build SKU-to-size mapping from the actual POs (source of truth)
   const skuToSizeFromPO = {};
   pos.forEach((po) => {
     (po.items || []).forEach((item) => {
@@ -616,7 +604,6 @@ exports.getVariantStock = async (variantId) => {
         item.itemName === variant.itemName ||
         (variant.sku && item.sku === variant.sku)
       ) {
-        // Extract SKU to size mapping from this PO item
         if (item.sizeMap) {
           for (const [size, cell] of Object.entries(item.sizeMap)) {
             if (cell && cell.sku) {
@@ -628,7 +615,6 @@ exports.getVariantStock = async (variantId) => {
     });
   });
 
-  // Also include variants SKUs as fallback
   const skuToSize = { ...skuToSizeFromPO };
   sizes.forEach((sz) => {
     const entry = normalizedSizeMap.get(sz);
@@ -637,14 +623,11 @@ exports.getVariantStock = async (variantId) => {
     }
   });
 
-  // Process GRNs and accumulate stock using the SKU-to-size mapping
   grns.forEach((grn) => {
     (grn.cartons || []).forEach((carton) => {
       (carton.pairBarcodes || []).forEach((barcode) => {
-        // First try direct SKU match (most reliable)
         let sz = skuToSize[barcode];
 
-        // Fallback: try pattern matching if barcode follows {itemName}-{size} format
         if (!sz && variant.itemName && typeof barcode === "string") {
           const fallbackPrefix = `${variant.itemName}-`;
           if (barcode.startsWith(fallbackPrefix)) {
@@ -653,20 +636,12 @@ exports.getVariantStock = async (variantId) => {
           }
         }
 
-        // Increment stock if size found and valid
         if (sz && liveStockMap[sz] !== undefined) {
           liveStockMap[sz] += 1;
         }
       });
     });
   });
-
-  console.log(
-    `[getVariantStock] PO-based SKU mapping:`,
-    skuToSizeFromPO,
-    `liveStockMap:`,
-    liveStockMap
-  );
 
   return { poMap, liveStockMap };
 };

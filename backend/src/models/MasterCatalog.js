@@ -38,6 +38,9 @@ const VariantSchema = new mongoose.Schema(
     color: { type: String, trim: true, default: "" },
     sizeRange: { type: String, trim: true, default: "" },
 
+    // ✅ duplicate same sizeRange support ke liye
+    sizeRangeId: { type: String, trim: true, default: "" },
+
     sizeMap: {
       type: Map,
       of: SizeCellSchema,
@@ -119,7 +122,6 @@ const MasterCatalogSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ✅ next hata diya
 MasterCatalogSchema.pre("validate", function () {
   if (this.stage === "WISHLIST" && !this.expectedAvailableDate) {
     this.invalidate(

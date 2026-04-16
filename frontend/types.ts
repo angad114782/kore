@@ -53,6 +53,10 @@ export interface Variant {
   sizeSkus: Record<string, string>;
   color: string;
   sizeRange: string;
+
+  // ✅ duplicate same sizeRange support
+  sizeRangeId?: string;
+
   costPrice: number;
   sellingPrice: number;
   mrp: number;
@@ -97,7 +101,10 @@ export interface Article {
   selectedColors?: string[];
   variants?: Variant[];
   secondaryImages?: { url: string }[];
-  colorMedia?: { color: string; images: { url: string; key?: string; isCover?: boolean }[] }[];
+  colorMedia?: {
+    color: string;
+    images: { url: string; key?: string; isCover?: boolean }[];
+  }[];
   sizeRange?: string;
   isActive?: boolean;
 }
