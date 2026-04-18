@@ -43,7 +43,7 @@ exports.login = async (req, res, next) => {
       const dist = await Distributor.findById(user.distributorId).lean();
       if (dist) {
         const pendingOrders = await Order.aggregate([
-          { $match: { distributorId: user._id, status: { $ne: "DELIVERED" } } },
+          { $match: { distributorId: user._id, status: { $ne: "RECEIVED" } } },
           { $group: { _id: null, totalPending: { $sum: { $ifNull: ["$finalAmount", "$totalAmount"] } } } }
         ]);
         const pendingValue = pendingOrders[0]?.totalPending || 0;
@@ -110,7 +110,7 @@ exports.me = async (req, res, next) => {
       const dist = await Distributor.findById(user.distributorId).lean();
       if (dist) {
         const pendingOrders = await Order.aggregate([
-          { $match: { distributorId: user._id, status: { $ne: "DELIVERED" } } },
+          { $match: { distributorId: user._id, status: { $ne: "RECEIVED" } } },
           { $group: { _id: null, totalPending: { $sum: { $ifNull: ["$finalAmount", "$totalAmount"] } } } }
         ]);
         const pendingValue = pendingOrders[0]?.totalPending || 0;

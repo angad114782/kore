@@ -258,6 +258,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
       creditLimit: 0,
       loginEmail: "",
       loginPassword: "",
+      loginEnabled: true,
     }
   );
 
@@ -359,7 +360,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
         creditLimit: Number(formData.creditLimit) || 0,
         loginEmail: formData.loginEmail || "",
         loginPassword: formData.loginPassword || "",
-        loginEnabled: !!(formData.loginEmail && formData.loginPassword),
+        loginEnabled: editingId ? formData.loginEnabled : !!(formData.loginEmail && formData.loginPassword),
         isActive: true,
       };
 
@@ -465,6 +466,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
       // password is stored only on the User model; show blank so admin must
       // re-enter if they want to change it
       loginPassword: "",
+      loginEnabled: dist.loginEnabled !== false,
     });
     setShowPasswordEdit(false);
     setView("CREATE");
@@ -536,6 +538,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                   creditLimit: 0,
                   loginEmail: "",
                   loginPassword: "",
+                  loginEnabled: true,
                 });
                 localStorage.removeItem("kore_distributor_draft");
               }}
@@ -856,6 +859,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                     creditLimit: 0,
                     loginEmail: "",
                     loginPassword: "",
+                    loginEnabled: true,
                   });
                   localStorage.removeItem("kore_distributor_draft");
                 }}
@@ -1190,6 +1194,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                 creditLimit: 0,
                 loginEmail: "",
                 loginPassword: "",
+                loginEnabled: true,
               });
               setView("CREATE");
             }}

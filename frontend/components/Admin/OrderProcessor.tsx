@@ -11,7 +11,9 @@ import {
   X,
   User,
   ChevronRight,
-  Loader2
+  Loader2,
+  FileText,
+  ImageIcon
 } from 'lucide-react';
 import { Order, OrderStatus, Article } from '../../types';
 import OrderDetail from '../Distributor/OrderDetail';
@@ -37,6 +39,11 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, updateStatus,
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(false);
 
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDesc, setSortDesc] = useState(true);
+
   const fetchOrders = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
@@ -45,6 +52,10 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, updateStatus,
         limit: 10,
         q: searchQuery,
         status: statusFilter === 'ALL' ? undefined : statusFilter,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        sortBy,
+        sortDesc
       });
       setOrders(res.items);
       setMeta(res.meta);
@@ -54,7 +65,7 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, updateStatus,
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [currentPage, searchQuery, statusFilter]);
+  }, [currentPage, searchQuery, statusFilter, startDate, endDate, sortBy, sortDesc]);
 
   // Refetch when dependencies change
   useEffect(() => {
@@ -108,18 +119,52 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, updateStatus,
 
       {/* Filters - Compact */}
       <div className="bg-white px-4 py-3 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
-        <div className="relative w-full md:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-          <input 
-            type="text" 
-            placeholder="Search #OR-00002 or distributor..." 
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1); // Reset to first page on search
-            }}
-            className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 border-none focus:ring-1 focus:ring-indigo-500 transition-all font-medium text-xs text-slate-900"
-          />
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="relative w-full md:w-48">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <input 
+              type="text" 
+              placeholder="Search..." 
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 border-none focus:ring-1 focus:ring-indigo-500 transition-all font-medium text-xs text-slate-900"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }}
+              className="px-2 py-1.5 rounded-xl bg-slate-50 border-none focus:ring-1 focus:ring-indigo-500 text-xs font-medium text-slate-600 outline-none"
+            />
+            <span className="text-slate-300 text-xs">-</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }}
+              className="px-2 py-1.5 rounded-xl bg-slate-50 border-none focus:ring-1 focus:ring-indigo-500 text-xs font-medium text-slate-600 outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={`${sortBy}-${sortDesc}`}
+              onChange={(e) => {
+                const [val, desc] = e.target.value.split('-');
+                setSortBy(val);
+                setSortDesc(desc === 'true');
+                setCurrentPage(1);
+              }}
+              className="px-2 py-1.5 rounded-xl bg-slate-50 border-none focus:ring-1 focus:ring-indigo-500 text-xs font-medium text-slate-600 outline-none cursor-pointer"
+            >
+              <option value="createdAt-true">Newest First</option>
+              <option value="createdAt-false">Oldest First</option>
+              <option value="finalAmount-true">Amount: High to Low</option>
+              <option value="finalAmount-false">Amount: Low to High</option>
+            </select>
+          </div>
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 w-full md:w-auto scrollbar-hide">
@@ -169,11 +214,10 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, updateStatus,
                       <StatusBadge status={order.status} />
                     </div>
                     
-                    {/* Interactive Progress Timeline */}
-                    <div className="mb-2 hidden md:block" onClick={(e) => e.stopPropagation()}>
+                    {/* Non-Interactive Progress Timeline */}
+                    <div className="mb-2 hidden md:block">
                       <OrderProgress 
                         status={order.status} 
-                        onUpdate={(newStatus) => updateStatus(order.id, newStatus)}
                       />
                     </div>
 
@@ -192,35 +236,37 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, updateStatus,
                   
                   <div className="flex gap-2">
                     {order.status === OrderStatus.BOOKED && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); updateStatus(order.id, OrderStatus.PENDING); }}
-                        className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg font-bold text-[10px] uppercase hover:bg-indigo-600 hover:text-white transition-all tracking-wider"
-                      >
-                        Process
-                      </button>
+                      <span className="px-3 py-1.5 bg-slate-50 text-slate-400 rounded-lg font-bold text-[9px] uppercase tracking-wider border border-slate-100 flex items-center gap-1.5">
+                        <Loader2 size={10} className="animate-spin" /> Allocation Required
+                      </span>
                     )}
-                    {order.status === OrderStatus.PENDING && (
+                    {order.status === OrderStatus.PFD && (
                       <button 
-                        onClick={(e) => { e.stopPropagation(); updateStatus(order.id, OrderStatus.READY_FOR_DISPATCH); }}
+                        onClick={(e) => { e.stopPropagation(); updateStatus(order.id, OrderStatus.RFD); }}
                         className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-600 hover:text-white transition-all tracking-wider"
                       >
-                        Mark Ready
+                        Mark Ready for Delivery
                       </button>
                     )}
-                    {order.status === OrderStatus.READY_FOR_DISPATCH && (
+                    {order.status === OrderStatus.RFD && (
                       <button 
-                        onClick={(e) => { e.stopPropagation(); updateStatus(order.id, OrderStatus.DISPATCHED); }}
+                        onClick={(e) => { e.stopPropagation(); updateStatus(order.id, OrderStatus.OFD); }}
                         className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg font-bold text-[10px] uppercase hover:bg-emerald-600 hover:text-white transition-all tracking-wider"
                       >
-                        Dispatch
+                        Out for Delivery
                       </button>
                     )}
-                    {order.status === OrderStatus.DISPATCHED && (
+                    {order.status === OrderStatus.RECEIVED && order.billUrl && (
                       <button 
-                        onClick={(e) => { e.stopPropagation(); updateStatus(order.id, OrderStatus.DELIVERED); }}
-                        className="px-3 py-1.5 bg-slate-900 text-white rounded-lg font-bold text-[10px] uppercase hover:bg-slate-800 transition-all tracking-wider flex items-center gap-1.5"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5005/api';
+                          window.open(`${baseUrl.replace('/api', '')}${order.billUrl}`, '_blank');
+                        }}
+                        className="px-3 py-1.5 bg-violet-50 text-violet-600 rounded-lg font-bold text-[10px] uppercase hover:bg-violet-600 hover:text-white transition-all tracking-wider flex items-center gap-1.5"
                       >
-                        <CheckCircle2 size={12} /> Deliver
+                        <FileText size={12} /> View Bill
                       </button>
                     )}
                   </div>
@@ -252,33 +298,40 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, updateStatus,
   );
 };
 
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  [OrderStatus.BOOKED]: 'Booked',
+  [OrderStatus.PFD]: 'Prepare for Delivery',
+  [OrderStatus.RFD]: 'Ready for Delivery',
+  [OrderStatus.OFD]: 'Out for Delivery',
+  [OrderStatus.RECEIVED]: 'Received',
+};
+
 const StatusBadge: React.FC<{ status: OrderStatus }> = ({ status }) => {
   const config = {
     [OrderStatus.BOOKED]: { color: 'bg-indigo-50 text-indigo-500 border-indigo-100' },
-    [OrderStatus.PENDING]: { color: 'bg-amber-50 text-amber-500 border-amber-100' },
-    [OrderStatus.READY_FOR_DISPATCH]: { color: 'bg-blue-50 text-blue-500 border-blue-100' },
-    [OrderStatus.DISPATCHED]: { color: 'bg-emerald-50 text-emerald-500 border-emerald-100' },
-    [OrderStatus.DELIVERED]: { color: 'bg-slate-50 text-slate-500 border-slate-100' },
+    [OrderStatus.PFD]: { color: 'bg-amber-50 text-amber-500 border-amber-100' },
+    [OrderStatus.RFD]: { color: 'bg-blue-50 text-blue-500 border-blue-100' },
+    [OrderStatus.OFD]: { color: 'bg-emerald-50 text-emerald-500 border-emerald-100' },
+    [OrderStatus.RECEIVED]: { color: 'bg-slate-50 text-slate-500 border-slate-100' },
   };
 
-  const { color } = config[status];
+  const { color } = config[status] || { color: 'bg-gray-50 text-gray-500 border-gray-100' };
   return (
     <span className={`inline-flex px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border ${color}`}>
-      {status.replace(/_/g, ' ')}
+      {STATUS_LABELS[status] || status}
     </span>
   );
 };
 
 const OrderProgress: React.FC<{ 
   status: OrderStatus;
-  onUpdate?: (status: OrderStatus) => void;
-}> = ({ status, onUpdate }) => {
+}> = ({ status }) => {
   const stages = [
     OrderStatus.BOOKED,
-    OrderStatus.PENDING,
-    OrderStatus.READY_FOR_DISPATCH,
-    OrderStatus.DISPATCHED,
-    OrderStatus.DELIVERED
+    OrderStatus.PFD,
+    OrderStatus.RFD,
+    OrderStatus.OFD,
+    OrderStatus.RECEIVED
   ];
   
   const currentIndex = stages.indexOf(status);
@@ -288,22 +341,19 @@ const OrderProgress: React.FC<{
       {stages.map((s, idx) => {
         const isCompleted = idx <= currentIndex;
         const isActive = idx === currentIndex;
-        const isNext = idx === currentIndex + 1;
         
         return (
           <React.Fragment key={s}>
-            <button
-              onClick={() => onUpdate && onUpdate(s)}
-              disabled={!onUpdate || idx <= currentIndex}
+            <div
               className={`h-1.5 rounded-full flex-1 transition-all duration-300 relative group/step ${
-                isCompleted ? 'bg-indigo-600' : 'bg-slate-100 hover:bg-slate-200'
-              } ${isActive ? 'ring-2 ring-indigo-500/20' : ''} ${isNext ? 'ring-1 ring-indigo-200 ring-offset-1' : ''}`}
+                isCompleted ? 'bg-indigo-600' : 'bg-slate-100'
+              } ${isActive ? 'ring-2 ring-indigo-500/20' : ''}`}
             >
               {/* Tooltip */}
               <span className="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[8px] font-black uppercase px-2 py-1 rounded opacity-0 group-hover/step:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                {s.replace(/_/g, ' ')}
+                {STATUS_LABELS[s] || s}
               </span>
-            </button>
+            </div>
             {idx < stages.length - 1 && (
               <div className={`w-0.5 h-0.5 rounded-full ${idx < currentIndex ? 'bg-indigo-600' : 'bg-slate-200'}`} />
             )}

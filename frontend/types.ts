@@ -118,10 +118,10 @@ export interface Inventory {
 
 export enum OrderStatus {
   BOOKED = "BOOKED",
-  PENDING = "PENDING",
-  READY_FOR_DISPATCH = "READY_FOR_DISPATCH",
-  DISPATCHED = "DISPATCHED",
-  DELIVERED = "DELIVERED",
+  PFD = "PFD",       // Processing for Delivery
+  RFD = "RFD",       // Ready for Delivery
+  OFD = "OFD",       // Out for Delivery
+  RECEIVED = "RECEIVED",
 }
 
 export interface OrderItem {
@@ -130,9 +130,12 @@ export interface OrderItem {
   variantId?: string;
   /** detailed breakdown: pairs per size (e.g. {"5":12, "6":12}) */
   sizeQuantities?: Record<string, number>;
+  allocatedSizeQuantities?: Record<string, number>;
 
   cartonCount: number;
+  allocatedCartonCount?: number;
   pairCount: number;
+  allocatedPairCount?: number;
   price: number;
 }
 
@@ -150,6 +153,7 @@ export interface Order {
   discountPercentage?: number;
   discountAmount?: number;
   finalAmount?: number;
+  billUrl?: string;
 }
 
 export interface MovementRecord {

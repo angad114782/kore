@@ -3,6 +3,7 @@ const router = express.Router();
 const OrderController = require("../controllers/order.controller");
 const auth = require("../middlewares/auth.middleware");
 const role = require("../middlewares/role.middleware");
+const { billUpload } = require("../middlewares/billUpload");
 
 // All order routes require authentication
 router.use(auth);
@@ -13,6 +14,19 @@ router.get("/my-orders", role(["distributor"]), OrderController.getDistributorOr
 
 // Admin routes
 router.get("/", role(["admin", "superadmin"]), OrderController.getAllOrders);
-router.patch("/:id/status", role(["admin", "superadmin"]), OrderController.updateOrderStatus);
+
+// Status update — admin can set any status, distributor can mark as RECEIVED with bill
+router.patch(
+  "/:id/status",
+  role(["admin", "superadmin", "distributor"]),
+  billUpload.single("bill"),
+  OrderController.updateOrderStatus
+);
+
+router.post(
+  "/return",
+  role(["admin", "superadmin"]),
+  OrderController.processReturn
+);
 
 module.exports = router;

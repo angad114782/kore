@@ -39,6 +39,7 @@ import VariantDetailsPage from "./components/Admin/VariantDetailsPage";
 import UserManager from "./components/Admin/UserManager";
 import DistributorManager from "./components/Admin/DistributorManager";
 import ProfilePage from "./components/Admin/ProfilePage";
+import Returns from "./components/Admin/Returns";
 import { masterCatalogService } from "./services/masterCatalogService";
 
 // ✅ NEW: Sidebar component (create this file separately)
@@ -262,10 +263,12 @@ const App: React.FC = () => {
       if (!u) return;
 
       const isDistributor = u.role === UserRole.DISTRIBUTOR;
-      const isMyOrder = String(data.distributorId) === String(u.id);
+      const isMyOrder = String(data.distributorId) === String(u.id) || String(data.distributorId) === String(u.distributorId);
 
       // Distributors only care about their own orders
       if (isDistributor && !isMyOrder) return;
+      
+      toast.success(`Real-time update received for Order ${data.orderId}`);
 
       // Re-fetch orders for data consistency
       fetchOrdersRef.current?.(true);
@@ -629,8 +632,8 @@ const App: React.FC = () => {
           if (o.id === orderId || (o as any)._id === orderId) {
             // dispatch: deduct actual + release reserved (only once)
             if (
-              status === OrderStatus.DISPATCHED &&
-              o.status !== OrderStatus.DISPATCHED
+              status === OrderStatus.OFD &&
+              o.status !== OrderStatus.OFD
             ) {
               setInventory((invs) =>
                 invs.map((inv) => {
@@ -843,6 +846,10 @@ const App: React.FC = () => {
             />
           ))}
 
+        {activeTab === "returns" && user.role !== UserRole.DISTRIBUTOR && (
+          <Returns orders={orders} articles={articles} />
+        )}
+
         {activeTab === "shop" && user.role === UserRole.DISTRIBUTOR && (
           <Shop
             articles={articles}
@@ -898,10 +905,10 @@ const DistributorDashboard: React.FC<{
 }> = ({ user, orders, cartCount, goToCart }) => {
   const userOrders = orders.filter((o) => o.distributorId === user.id);
   const pending = userOrders.filter(
-    (o) => o.status === OrderStatus.BOOKED || o.status === OrderStatus.PENDING
+    (o) => o.status === OrderStatus.BOOKED || o.status === OrderStatus.PFD || o.status === OrderStatus.RFD
   ).length;
   const dispatched = userOrders.filter(
-    (o) => o.status === OrderStatus.DISPATCHED
+    (o) => o.status === OrderStatus.OFD || o.status === OrderStatus.RECEIVED
   ).length;
 
   return (
@@ -966,12 +973,12 @@ const DistributorDashboard: React.FC<{
                   <div className="flex items-center gap-4">
                     <div
                       className={`p-2.5 rounded-xl ${
-                        order.status === OrderStatus.DISPATCHED
+                        order.status === OrderStatus.OFD || order.status === OrderStatus.RECEIVED
                           ? "bg-emerald-100 text-emerald-600"
                           : "bg-indigo-100 text-indigo-600"
                       }`}
                     >
-                      {order.status === OrderStatus.DISPATCHED ? (
+                      {order.status === OrderStatus.OFD || order.status === OrderStatus.RECEIVED ? (
                         <Truck size={20} />
                       ) : (
                         <Clock size={20} />
@@ -991,7 +998,7 @@ const DistributorDashboard: React.FC<{
                     </p>
                     <p
                       className={`text-[10px] font-bold uppercase tracking-widest ${
-                        order.status === OrderStatus.DISPATCHED
+                        order.status === OrderStatus.OFD || order.status === OrderStatus.RECEIVED
                           ? "text-emerald-600"
                           : "text-indigo-600"
                       }`}

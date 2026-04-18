@@ -37,6 +37,11 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, isLoading: global
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(false);
 
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortDesc, setSortDesc] = useState(true);
+
   const fetchOrders = useCallback(async (silent = false) => {
     try {
       if (!silent) setLoading(true);
@@ -45,6 +50,10 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, isLoading: global
         limit: 10,
         q: searchQuery,
         status: statusFilter === 'ALL' ? undefined : statusFilter,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        sortBy,
+        sortDesc
       });
       setOrders(res.items);
       setMeta(res.meta);
@@ -54,7 +63,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, isLoading: global
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [userId, currentPage, searchQuery, statusFilter]);
+  }, [userId, currentPage, searchQuery, statusFilter, startDate, endDate, sortBy, sortDesc]);
 
   // Refetch when dependencies change
   useEffect(() => {
@@ -88,7 +97,8 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, isLoading: global
       <OrderDetail 
         order={selectedOrder} 
         articles={articles} 
-        onBack={() => setSelectedOrderId(null)} 
+        onBack={() => setSelectedOrderId(null)}
+        isDistributor={true}
       />
     );
   }
@@ -133,18 +143,52 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, isLoading: global
 
       {/* Filters Section - Streamlined */}
       <div className="bg-white px-4 py-3 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
-        <div className="relative w-full md:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-          <input 
-            type="text" 
-            placeholder="Search #OR-00002..." 
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 border-none focus:ring-1 focus:ring-indigo-500 transition-all font-medium text-xs text-slate-900"
-          />
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="relative w-full md:w-48">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <input 
+              type="text" 
+              placeholder="Search..." 
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 border-none focus:ring-1 focus:ring-indigo-500 transition-all font-medium text-xs text-slate-900"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }}
+              className="px-2 py-1.5 rounded-xl bg-slate-50 border-none focus:ring-1 focus:ring-indigo-500 text-xs font-medium text-slate-600 outline-none"
+            />
+            <span className="text-slate-300 text-xs">-</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }}
+              className="px-2 py-1.5 rounded-xl bg-slate-50 border-none focus:ring-1 focus:ring-indigo-500 text-xs font-medium text-slate-600 outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={`${sortBy}-${sortDesc}`}
+              onChange={(e) => {
+                const [val, desc] = e.target.value.split('-');
+                setSortBy(val);
+                setSortDesc(desc === 'true');
+                setCurrentPage(1);
+              }}
+              className="px-2 py-1.5 rounded-xl bg-slate-50 border-none focus:ring-1 focus:ring-indigo-500 text-xs font-medium text-slate-600 outline-none cursor-pointer"
+            >
+              <option value="createdAt-true">Newest First</option>
+              <option value="createdAt-false">Oldest First</option>
+              <option value="finalAmount-true">Amount: High to Low</option>
+              <option value="finalAmount-false">Amount: Low to High</option>
+            </select>
+          </div>
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 w-full md:w-auto scrollbar-hide">
@@ -162,7 +206,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, isLoading: global
                 : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
               }`}
             >
-              {status.replace(/_/g, ' ')}
+              {status === 'ALL' ? status : STATUS_LABELS[status as OrderStatus] || status}
             </button>
           ))}
         </div>
@@ -192,8 +236,8 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, isLoading: global
                 <div className="px-5 py-4 flex items-center justify-between gap-4">
                   <div className="flex gap-4 items-center">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                      order.status === OrderStatus.DISPATCHED ? 'bg-emerald-50 text-emerald-600' : 
-                      order.status === OrderStatus.PENDING ? 'bg-amber-50 text-amber-600' :
+                      order.status === OrderStatus.OFD ? 'bg-emerald-50 text-emerald-600' : 
+                      order.status === OrderStatus.PFD ? 'bg-amber-50 text-amber-600' :
                       'bg-slate-50 text-slate-400'
                     }`}>
                       <FileText size={20} />
@@ -268,19 +312,27 @@ const StatCard: React.FC<{ label: string; value: string | number; icon: React.Re
   </div>
 );
 
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  [OrderStatus.BOOKED]: 'Booked',
+  [OrderStatus.PFD]: 'Prepare for Delivery',
+  [OrderStatus.RFD]: 'Ready for Delivery',
+  [OrderStatus.OFD]: 'Out for Delivery',
+  [OrderStatus.RECEIVED]: 'Received',
+};
+
 const StatusBadge: React.FC<{ status: OrderStatus }> = ({ status }) => {
   const config = {
     [OrderStatus.BOOKED]: { color: 'bg-indigo-50 text-indigo-500 border-indigo-100' },
-    [OrderStatus.PENDING]: { color: 'bg-amber-50 text-amber-500 border-amber-100' },
-    [OrderStatus.READY_FOR_DISPATCH]: { color: 'bg-blue-50 text-blue-500 border-blue-100' },
-    [OrderStatus.DISPATCHED]: { color: 'bg-emerald-50 text-emerald-500 border-emerald-100' },
-    [OrderStatus.DELIVERED]: { color: 'bg-slate-50 text-slate-500 border-slate-100' },
+    [OrderStatus.PFD]: { color: 'bg-amber-50 text-amber-500 border-amber-100' },
+    [OrderStatus.RFD]: { color: 'bg-blue-50 text-blue-500 border-blue-100' },
+    [OrderStatus.OFD]: { color: 'bg-emerald-50 text-emerald-500 border-emerald-100' },
+    [OrderStatus.RECEIVED]: { color: 'bg-slate-50 text-slate-500 border-slate-100' },
   };
 
-  const { color } = config[status];
+  const { color } = config[status] || { color: 'bg-gray-50 text-gray-500 border-gray-100' };
   return (
     <span className={`inline-flex px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider border ${color}`}>
-      {status.replace(/_/g, ' ')}
+      {STATUS_LABELS[status] || status}
     </span>
   );
 };

@@ -22,15 +22,28 @@ const OrderItemSchema = new mongoose.Schema(
       of: Number,
       default: {},
     },
+    allocatedSizeQuantities: {
+      type: Map,
+      of: Number,
+      default: {},
+    },
     cartonCount: {
       type: Number,
       required: true,
       default: 0,
     },
+    allocatedCartonCount: {
+      type: Number,
+      default: null, // null means not yet allocated
+    },
     pairCount: {
       type: Number,
       required: true,
       default: 0,
+    },
+    allocatedPairCount: {
+      type: Number,
+      default: null, // null means not yet allocated
     },
     price: {
       type: Number,
@@ -63,8 +76,12 @@ const OrderSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["BOOKED", "PENDING", "READY_FOR_DISPATCH", "DISPATCHED", "DELIVERED"],
+      enum: ["BOOKED", "PFD", "RFD", "OFD", "RECEIVED"],
       default: "BOOKED",
+    },
+    billUrl: {
+      type: String,
+      default: null,
     },
     items: [OrderItemSchema],
     totalAmount: {

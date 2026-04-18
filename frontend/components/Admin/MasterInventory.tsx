@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Search, Plus, Minus, Database, ArrowUpCircle, ArrowDownCircle, AlertTriangle, X } from 'lucide-react';
+import { Search, Plus, Minus, Database, ArrowUpCircle, ArrowDownCircle, AlertTriangle, X, ChevronDown, ImageIcon, Package, Layers } from 'lucide-react';
 import { Inventory, Article } from '../../types';
 import { getImageUrl } from '../../utils/imageUtils';
 
@@ -18,6 +18,16 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
   const [selectedArticleId, setSelectedArticleId] = useState('');
   const [qty, setQty] = useState(0);
   const [lowStockThreshold, setLowStockThreshold] = useState(10);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const filteredInventory = inventory.filter(inv => {
     const article = articles.find(a => a.id === inv.articleId);
@@ -95,144 +105,211 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        {/* Mobile View: Cards */}
-        <div className="md:hidden divide-y divide-slate-100">
-          {filteredInventory.map(inv => {
-            const article = articles.find(a => a.id === inv.articleId)!;
-            const isLowStock = inv.availableStock < lowStockThreshold;
+      <div className="space-y-3">
+        {filteredInventory.length === 0 && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
+            <Package className="mx-auto text-slate-200 mb-3" size={48} />
+            <p className="text-slate-400 font-medium font-mono uppercase tracking-widest text-xs italic">No matching stock records</p>
+          </div>
+        )}
 
-            return (
-              <div key={inv.articleId} className="p-4 space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="relative shrink-0">
-                    <img src={getImageUrl(article.imageUrl)} alt="" className="w-14 h-14 rounded-xl object-cover border border-slate-100" />
+        {filteredInventory.map(inv => {
+          const article = articles.find(a => a.id === inv.articleId)!;
+          const isExpanded = expandedIds.has(article.id);
+          const isLowStock = inv.availableStock < lowStockThreshold;
+          const variantCount = article.variants?.length || 0;
+
+          return (
+            <div key={inv.articleId} className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden transition-all hover:border-indigo-200">
+              {/* Parent Article Row */}
+              <div 
+                className="flex items-center gap-4 p-4 cursor-pointer hover:bg-slate-50/50 transition-colors"
+                onClick={() => toggleExpand(article.id)}
+              >
+                <div className="relative shrink-0">
+                  <img src={getImageUrl(article.imageUrl)} alt="" className="w-14 h-14 rounded-xl object-cover border border-slate-100" />
+                  {isLowStock && (
+                    <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-white animate-pulse shadow-sm"></div>
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <h4 className="font-bold text-slate-900 text-sm truncate">{article.name}</h4>
                     {isLowStock && (
-                      <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></div>
+                      <span className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded text-[9px] font-black uppercase tracking-tighter flex items-center gap-1">
+                        <AlertTriangle size={8} /> Low Stock
+                      </span>
                     )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-bold text-slate-900 truncate">{article.name}</p>
-                      {isLowStock && (
-                        <span className="flex items-center gap-1 bg-red-50 text-red-600 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter">
-                          <AlertTriangle size={10} /> Low
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-slate-400 font-mono tracking-widest">{article.sku}</p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">{article.sku}</p>
+                    <span className="text-[9px] font-bold text-indigo-400 bg-indigo-50 px-1.5 py-0.5 rounded uppercase">
+                      {variantCount} Variants
+                    </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 py-3 px-4 bg-slate-50 rounded-xl">
-                  <div>
-                    <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">Physical Stock</p>
-                    <div className="flex items-baseline gap-1">
-                      <span className={`text-lg font-black ${isLowStock ? 'text-red-600' : 'text-slate-900'}`}>{inv.actualStock}</span>
-                      <span className="text-[10px] text-slate-500 font-bold uppercase">Ctns</span>
+                {/* Stock Summary Columns */}
+                <div className="hidden lg:flex items-center gap-8 mr-4">
+                  <div className="text-center w-24">
+                    <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-0.5">Live Stock</p>
+                    <div className="flex items-baseline justify-center gap-1">
+                      <span className="text-lg font-black text-slate-800">{inv.availableStock}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Ctns</span>
                     </div>
                   </div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mb-1">Total Pairs</p>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-lg font-black text-slate-900">{(inv.actualStock * 24).toLocaleString()}</span>
-                      <span className="text-[10px] text-slate-500 font-bold uppercase">Pairs</span>
+                  <div className="text-center w-24">
+                    <p className="text-[9px] font-black text-rose-500 uppercase tracking-widest mb-0.5">Booked</p>
+                    <div className="flex items-baseline justify-center gap-1">
+                      <span className="text-lg font-black text-slate-800">{inv.reservedStock}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Ctns</span>
+                    </div>
+                  </div>
+                  <div className="text-center w-24 border-l border-slate-100 pl-4">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Physical</p>
+                    <div className="flex items-baseline justify-center gap-1">
+                      <span className="text-lg font-black text-slate-900">{inv.actualStock}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Ctns</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex gap-2 pt-2">
-                  <button 
-                    onClick={() => openMovementModal('OUTWARD', inv.articleId)}
-                    className="flex-1 py-2.5 px-4 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl font-bold text-sm hover:bg-rose-100 transition-all"
-                  >
-                    Stock Outward
-                  </button>
-                  <button 
-                    onClick={() => openMovementModal('INWARD', inv.articleId)}
-                    className="flex-1 py-2.5 px-4 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
-                  >
-                    Stock Inward
-                  </button>
+                {/* Actions */}
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                   <button 
+                     onClick={() => openMovementModal('OUTWARD', article.id)}
+                     className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                     title="Stock Outward"
+                   >
+                     <Minus size={18} />
+                   </button>
+                   <button 
+                     onClick={() => openMovementModal('INWARD', article.id)}
+                     className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                     title="Stock Inward"
+                   >
+                     <Plus size={18} />
+                   </button>
+                   <div className="w-px h-6 bg-slate-100 mx-1"></div>
+                   <ChevronDown 
+                     size={20} 
+                     className={`text-slate-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} 
+                   />
                 </div>
               </div>
-            );
-          })}
-          {filteredInventory.length === 0 && (
-            <div className="p-8 text-center text-slate-400 italic">No inventory records matching your search.</div>
-          )}
-        </div>
 
-        {/* Desktop View: Table */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left min-w-[700px]">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Article Details</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-center">Actual Physical Stock</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-center">In Pairs</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredInventory.map(inv => {
-                const article = articles.find(a => a.id === inv.articleId)!;
-                const isLowStock = inv.availableStock < lowStockThreshold;
+              {/* Mobile Stats Row */}
+              <div className="lg:hidden grid grid-cols-3 gap-2 px-4 pb-4">
+                <div className="bg-emerald-50/50 p-2 rounded-xl text-center">
+                  <p className="text-[8px] font-black text-emerald-600 uppercase tracking-tighter">Live Stock</p>
+                  <p className="text-sm font-black text-slate-900">{inv.availableStock} <span className="text-[8px] text-slate-400">CTN</span></p>
+                </div>
+                <div className="bg-rose-50/50 p-2 rounded-xl text-center">
+                  <p className="text-[8px] font-black text-rose-600 uppercase tracking-tighter">Booked</p>
+                  <p className="text-sm font-black text-slate-900">{inv.reservedStock} <span className="text-[8px] text-slate-400">CTN</span></p>
+                </div>
+                <div className="bg-slate-50 p-2 rounded-xl text-center">
+                  <p className="text-[8px] font-black text-slate-600 uppercase tracking-tighter">Physical</p>
+                  <p className="text-sm font-black text-slate-900">{inv.actualStock} <span className="text-[8px] text-slate-400">CTN</span></p>
+                </div>
+              </div>
 
-                return (
-                  <tr key={inv.articleId} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-4">
-                        <div className="relative">
-                          <img src={getImageUrl(article.imageUrl)} alt="" className="w-12 h-12 rounded-lg object-cover border border-slate-100" />
-                          {isLowStock && (
-                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse"></div>
-                          )}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-bold text-slate-900">{article.name}</p>
-                            {isLowStock && (
-                              <span className="flex items-center gap-1 bg-red-50 text-red-600 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter">
-                                <AlertTriangle size={10} /> Low Avail
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-slate-400 font-mono tracking-widest">{article.sku}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={`text-xl font-black ${isLowStock ? 'text-red-600' : 'text-slate-800'}`}>
-                        {inv.actualStock}
-                      </span>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold">Cartons</p>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="font-semibold text-slate-500">{(inv.actualStock * 24).toLocaleString()}</span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-3">
-                        <button 
-                          onClick={() => openMovementModal('OUTWARD', inv.articleId)}
-                          className="text-rose-600 hover:text-rose-800 font-bold text-sm"
-                        >
-                          Outward
-                        </button>
-                        <button 
-                          onClick={() => openMovementModal('INWARD', inv.articleId)}
-                          className="text-indigo-600 hover:text-indigo-800 font-bold text-sm"
-                        >
-                          Inward
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+              {/* Variant Dropdown Content */}
+              {isExpanded && (
+                <div className="border-t border-slate-100 bg-slate-50/50 animate-in slide-in-from-top-2 duration-300">
+                   {variantCount === 0 ? (
+                     <div className="p-8 text-center text-slate-400 italic text-xs font-medium">
+                       No variants registered for this article.
+                     </div>
+                   ) : (
+                     <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                          <thead className="bg-slate-100/50 border-b border-slate-100">
+                             <tr>
+                               <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Variant Details</th>
+                               <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Color</th>
+                               <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Live Stock</th>
+                               <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Booked</th>
+                               <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Physical</th>
+                             </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                             {article.variants?.map(variant => {
+                               // Calculate variant stock
+                               const livePairs = Object.values(variant.sizeMap || {}).reduce((sum, s) => sum + (s.qty || 0), 0);
+                               const bookedPairs = Object.values(variant.bookingMap || {}).reduce((sum, q) => sum + (q || 0), 0);
+                               const physicalPairs = livePairs + bookedPairs;
+
+                               // Convert to cartons (1 Ctn = 24 Pairs)
+                               const liveCtns = Math.floor(livePairs / 24);
+                               const bookedCtns = Math.floor(bookedPairs / 24);
+                               const physicalCtns = Math.floor(physicalPairs / 24);
+
+                                 return (
+                                 <tr key={variant.id} className="hover:bg-white transition-colors group">
+                                   <td className="px-6 py-3">
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-lg bg-white border border-slate-200 p-0.5 shadow-sm group-hover:border-indigo-200 transition-colors">
+                                           {(() => {
+                                             const colorMedia = article.colorMedia || [];
+                                             const matched = colorMedia.find(cm => cm.color.toLowerCase() === variant.color.toLowerCase());
+                                             const vImg = (matched && matched.images && matched.images.length > 0) 
+                                               ? matched.images[0].url 
+                                               : (variant.images && variant.images.length > 0 ? variant.images[0] : article.imageUrl);
+                                             
+                                             return vImg ? (
+                                               <img 
+                                                 src={getImageUrl(vImg)} 
+                                                 alt={variant.color} 
+                                                 className="w-full h-full object-cover rounded-md"
+                                               />
+                                             ) : (
+                                               <div className="w-full h-full rounded-md bg-slate-50 flex items-center justify-center">
+                                                 <ImageIcon size={14} className="text-slate-300" />
+                                               </div>
+                                             );
+                                           })()}
+                                        </div>
+                                        <div>
+                                          <p className="text-xs font-bold text-slate-800">{variant.itemName || 'Standard Variant'}</p>
+                                          <p className="text-[9px] font-mono text-slate-400 tracking-wider">SKU: {variant.sku || article.sku}</p>
+                                        </div>
+                                      </div>
+                                   </td>
+                                   <td className="px-6 py-3 text-center">
+                                      <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white border border-slate-100 shadow-sm">
+                                         <div 
+                                           className="w-3 h-3 rounded-full border border-slate-200 shadow-inner" 
+                                           style={{ backgroundColor: variant.color?.toLowerCase() || '#eee' }}
+                                         />
+                                         <span className="text-[10px] font-bold text-slate-600 uppercase">{variant.color}</span>
+                                      </div>
+                                   </td>
+                                   <td className="px-6 py-3 text-center">
+                                      <span className="text-sm font-black text-emerald-600">{liveCtns}</span>
+                                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
+                                   </td>
+                                   <td className="px-6 py-3 text-center">
+                                      <span className="text-sm font-black text-rose-500">{bookedCtns}</span>
+                                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
+                                   </td>
+                                   <td className="px-6 py-3 text-center">
+                                      <span className="text-sm font-black text-slate-800">{physicalCtns}</span>
+                                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
+                                   </td>
+                                 </tr>
+                               );
+                             })}
+                          </tbody>
+                        </table>
+                     </div>
+                   )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Movement Modal */}

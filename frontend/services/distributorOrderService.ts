@@ -17,13 +17,18 @@ class DistributorOrderService {
 
   async getOrdersByDistributor(
     distributorId: string,
-    params: { page?: number; limit?: number; q?: string; status?: string } = {}
+    params: { page?: number; limit?: number; q?: string; status?: string; startDate?: string; endDate?: string; sortBy?: string; sortDesc?: boolean } = {}
   ): Promise<{ items: Order[]; meta: any }> {
     const query = new URLSearchParams();
     if (params.page) query.append("page", params.page.toString());
     if (params.limit) query.append("limit", params.limit.toString());
     if (params.q) query.append("q", params.q);
     if (params.status) query.append("status", params.status);
+    if (params.startDate) query.append("startDate", params.startDate);
+    if (params.endDate) query.append("endDate", params.endDate);
+    if (params.sortBy) query.append("sortBy", params.sortBy);
+    if (params.sortDesc !== undefined) query.append("sortDesc", params.sortDesc.toString());
+    query.append("_t", Date.now().toString()); // Cache buster for real-time sync
 
     const res = await axios.get(`${API_URL}/my-orders?${query.toString()}`, {
       headers: getAuthHeaders(),
@@ -35,13 +40,18 @@ class DistributorOrderService {
   }
 
   async getAllOrders(
-    params: { page?: number; limit?: number; q?: string; status?: string } = {}
+    params: { page?: number; limit?: number; q?: string; status?: string; startDate?: string; endDate?: string; sortBy?: string; sortDesc?: boolean } = {}
   ): Promise<{ items: Order[]; meta: any }> {
     const query = new URLSearchParams();
     if (params.page) query.append("page", params.page.toString());
     if (params.limit) query.append("limit", params.limit.toString());
     if (params.q) query.append("q", params.q);
     if (params.status) query.append("status", params.status);
+    if (params.startDate) query.append("startDate", params.startDate);
+    if (params.endDate) query.append("endDate", params.endDate);
+    if (params.sortBy) query.append("sortBy", params.sortBy);
+    if (params.sortDesc !== undefined) query.append("sortDesc", params.sortDesc.toString());
+    query.append("_t", Date.now().toString()); // Cache buster for real-time sync
 
     const res = await axios.get(`${API_URL}?${query.toString()}`, {
       headers: getAuthHeaders(),
@@ -66,11 +76,42 @@ class DistributorOrderService {
 
   async updateOrderStatus(
     orderId: string,
-    status: OrderStatus
+    status: OrderStatus,
+    allocatedItems?: any[]
   ): Promise<Order | undefined> {
     const res = await axios.patch(
       `${API_URL}/${orderId}/status`,
-      { status },
+      { status, allocatedItems },
+      { headers: getAuthHeaders() }
+    );
+    return this.mapOrder(res.data.data);
+  }
+
+  async markAsReceived(
+    orderId: string,
+    billFile: File
+  ): Promise<Order | undefined> {
+    const formData = new FormData();
+    formData.append("status", OrderStatus.RECEIVED);
+    formData.append("bill", billFile);
+
+    const res = await axios.patch(
+      `${API_URL}/${orderId}/status`,
+      formData,
+      {
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+    return this.mapOrder(res.data.data);
+  }
+
+  async processReturn(orderId: string, variantId: string, cartons: number): Promise<Order | undefined> {
+    const res = await axios.post(
+      `${API_URL}/return`,
+      { orderId, variantId, cartons },
       { headers: getAuthHeaders() }
     );
     return this.mapOrder(res.data.data);

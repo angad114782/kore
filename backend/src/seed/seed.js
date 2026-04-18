@@ -20,29 +20,48 @@ const User = require("../models/User");
 
     console.log("✅ MongoDB Connected for seeding");
 
-    const email = process.env.SUPERADMIN_EMAIL;
-    const password = process.env.SUPERADMIN_PASSWORD;
+    // 1️⃣ Seed Super Admin
+    const superEmail = process.env.SUPERADMIN_EMAIL;
+    const superPassword = process.env.SUPERADMIN_PASSWORD;
 
-    if (!email || !password) {
+    if (!superEmail || !superPassword) {
       throw new Error("SUPERADMIN_EMAIL or SUPERADMIN_PASSWORD missing in .env");
     }
 
-    const exists = await User.findOne({ email });
-    if (exists) {
-      console.log("✅ Super Admin already exists:", email);
-      process.exit(0);
+    const superExists = await User.findOne({ email: superEmail });
+    if (!superExists) {
+      const hashed = await bcrypt.hash(superPassword, 10);
+      await User.create({
+        name: "Super Admin",
+        email: superEmail,
+        password: hashed,
+        role: "superadmin",
+      });
+      console.log("🔥 Super Admin seeded successfully:", superEmail);
+    } else {
+      console.log("✅ Super Admin already exists:", superEmail);
     }
 
-    const hashed = await bcrypt.hash(password, 10);
+    // 2️⃣ Seed Admin
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
 
-    await User.create({
-      name: "Super Admin",
-      email,
-      password: hashed,
-      role: "superadmin",
-    });
+    if (adminEmail && adminPassword) {
+      const adminExists = await User.findOne({ email: adminEmail });
+      if (!adminExists) {
+        const hashedAdmin = await bcrypt.hash(adminPassword, 10);
+        await User.create({
+          name: "Admin",
+          email: adminEmail,
+          password: hashedAdmin,
+          role: "admin",
+        });
+        console.log("🔥 Admin seeded successfully:", adminEmail);
+      } else {
+        console.log("✅ Admin already exists:", adminEmail);
+      }
+    }
 
-    console.log("🔥 Super Admin seeded successfully:", email);
     process.exit(0);
   } catch (e) {
     console.error("❌ Seed error:", e.message);
