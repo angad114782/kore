@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { RotateCcw, Package, ChevronRight, AlertCircle, CheckCircle2, Search, ArrowLeft, Layers, ImageIcon } from 'lucide-react';
-import { Order, OrderStatus, Article, Variant } from '../../types';
-import SearchableSelect from '../SearchableSelect';
+import { RotateCcw, Search, CheckCircle2, AlertCircle, Package, ChevronDown, ImageIcon, X } from 'lucide-react';
+import { Order, OrderStatus, Article } from '../../types';
 import { distributorOrderService } from '../../services/distributorOrderService';
+import { getImageUrl } from '../../utils/imageUtils';
 import { toast } from 'sonner';
 
 interface ReturnsProps {
@@ -10,248 +10,341 @@ interface ReturnsProps {
   articles: Article[];
 }
 
+interface ReturnEntry {
+  variantId: string;
+  cartons: number;
+}
+
 const Returns: React.FC<ReturnsProps> = ({ orders, articles }) => {
+  const [orderSearch, setOrderSearch] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState('');
-  const [selectedVariantId, setSelectedVariantId] = useState('');
-  const [returnCartons, setReturnCartons] = useState(0);
+  const [returnEntries, setReturnEntries] = useState<Record<string, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Filter for RECEIVED orders only
-  const receivedOrders = useMemo(() => 
+  const receivedOrders = useMemo(() =>
     orders.filter(o => o.status === OrderStatus.RECEIVED),
     [orders]
   );
 
-  const orderOptions = useMemo(() => 
-    receivedOrders.map(o => `${o.orderNumber} - ${o.distributorName}`),
-    [receivedOrders]
-  );
+  const filteredOrders = useMemo(() => {
+    if (!orderSearch.trim()) return receivedOrders;
+    const q = orderSearch.toLowerCase();
+    return receivedOrders.filter(o =>
+      o.orderNumber?.toLowerCase().includes(q) ||
+      o.distributorName?.toLowerCase().includes(q)
+    );
+  }, [orderSearch, receivedOrders]);
 
-  const selectedOrder = useMemo(() => 
-    receivedOrders.find(o => `${o.orderNumber} - ${o.distributorName}` === selectedOrderId),
+  const selectedOrder = useMemo(() =>
+    receivedOrders.find(o => o.id === selectedOrderId),
     [selectedOrderId, receivedOrders]
   );
 
-  const variantOptions = useMemo(() => {
-    if (!selectedOrder) return [];
-    return selectedOrder.items.map(item => {
-      const article = articles.find(a => a.id === item.articleId);
-      const variant = article?.variants?.find(v => v.id === item.variantId || v._id === item.variantId);
-      return `${article?.name || 'Unknown'} - ${variant?.color || 'Standard'} (${item.allocatedCartonCount || item.cartonCount} Ctns)`;
-    });
-  }, [selectedOrder, articles]);
+  const selectOrder = (id: string) => {
+    setSelectedOrderId(id);
+    setReturnEntries({});
+    setOrderSearch('');
+    setShowDropdown(false);
+  };
 
-  const selectedItem = useMemo(() => {
-    if (!selectedOrder || !selectedVariantId) return null;
-    return selectedOrder.items.find(item => {
-      const article = articles.find(a => a.id === item.articleId);
-      const variant = article?.variants?.find(v => v.id === item.variantId || v._id === item.variantId);
-      return `${article?.name || 'Unknown'} - ${variant?.color || 'Standard'} (${item.allocatedCartonCount || item.cartonCount} Ctns)` === selectedVariantId;
+  const toggleVariant = (variantId: string) => {
+    setReturnEntries(prev => {
+      const copy = { ...prev };
+      if (variantId in copy) {
+        delete copy[variantId];
+      } else {
+        copy[variantId] = 1;
+      }
+      return copy;
     });
-  }, [selectedVariantId, selectedOrder, articles]);
+  };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedOrder || !selectedItem || returnCartons <= 0) {
-      toast.error("Please fill all fields correctly");
-      return;
-    }
+  const setCartonCount = (variantId: string, count: number) => {
+    setReturnEntries(prev => ({ ...prev, [variantId]: count }));
+  };
+
+  const selectedCount = Object.keys(returnEntries).length;
+  const totalReturnCartons = Object.values(returnEntries).reduce((s, c) => s + c, 0);
+  const totalReturnPairs = totalReturnCartons * 24;
+
+  const canSubmit = selectedCount > 0 && Object.values(returnEntries).every(c => c > 0);
+
+  const handleSubmit = async () => {
+    if (!selectedOrder || !canSubmit) return;
 
     try {
       setIsSubmitting(true);
-      await distributorOrderService.processReturn(
-        selectedOrder.id,
-        selectedItem.variantId,
-        returnCartons
-      );
-      toast.success("Return processed successfully!");
-      
-      // Reset form
+      const entries = Object.entries(returnEntries);
+
+      for (const [variantId, cartons] of entries) {
+        await distributorOrderService.processReturn(
+          selectedOrder.id,
+          variantId,
+          cartons
+        );
+      }
+
+      toast.success(`Returned ${totalReturnCartons} cartons (${totalReturnPairs} pairs) from ${entries.length} variant(s)`);
       setSelectedOrderId('');
-      setSelectedVariantId('');
-      setReturnCartons(0);
+      setReturnEntries({});
     } catch (err: any) {
-      toast.error(err.response?.data?.message || err.message || "Failed to process return");
+      toast.error(err.response?.data?.message || err.message || 'Failed to process return');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const getVariantImage = (item: any) => {
+    const article = articles.find(a => a.id === item.articleId);
+    const variant = article?.variants?.find(v => v.id === item.variantId || v._id === item.variantId);
+    const colorMedia = (article as any)?.colorMedia || [];
+    const matched = colorMedia.find((cm: any) => cm.color?.toLowerCase() === variant?.color?.toLowerCase());
+    const img = (matched?.images?.[0]?.url) || variant?.images?.[0] || article?.imageUrl;
+    return img ? getImageUrl(img) : '';
+  };
+
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
-          <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100">
-            <RotateCcw size={24} />
+    <div className="max-w-5xl mx-auto animate-in fade-in duration-500">
+      {/* Header Row */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200">
+            <RotateCcw size={20} />
           </div>
-          Inventory Returns
-        </h2>
-        <p className="text-slate-500 font-medium ml-12">Process product returns from received orders to restore warehouse stock.</p>
+          <div>
+            <h2 className="text-xl font-black text-slate-900">Returns</h2>
+            <p className="text-[11px] text-slate-400 font-medium">Process multi-variant returns from received orders</p>
+          </div>
+        </div>
+        {receivedOrders.length > 0 && (
+          <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase tracking-widest">
+            {receivedOrders.length} Eligible
+          </span>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Main Form */}
-        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl shadow-slate-200/40 space-y-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <SearchableSelect
-              label="Select Received Order"
-              options={orderOptions}
-              value={selectedOrderId}
-              onChange={(val) => {
-                setSelectedOrderId(val);
-                setSelectedVariantId('');
-                setReturnCartons(0);
-              }}
-              placeholder="Search Order Number or Party..."
-              required
-            />
-
-            {selectedOrderId && (
-              <SearchableSelect
-                label="Select Article / Variant"
-                options={variantOptions}
-                value={selectedVariantId}
-                onChange={(val) => {
-                  setSelectedVariantId(val);
-                  setReturnCartons(0);
-                }}
-                placeholder="Choose item from order..."
-                required
-              />
-            )}
-
-            {selectedVariantId && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest">
-                    Return Quantity (Cartons)
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min="1"
-                      max={selectedItem?.allocatedCartonCount || selectedItem?.cartonCount}
-                      value={returnCartons || ''}
-                      onChange={(e) => setReturnCartons(parseInt(e.target.value) || 0)}
-                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
-                      placeholder="0"
-                      required
-                    />
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-3 py-1 bg-white rounded-lg border border-slate-100 shadow-sm">
-                       <span className="text-xs font-black text-slate-400 uppercase">Max: {selectedItem?.allocatedCartonCount || selectedItem?.cartonCount}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSubmitting || returnCartons <= 0}
-                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-lg shadow-indigo-100 hover:bg-indigo-700 disabled:bg-slate-200 disabled:shadow-none transition-all flex items-center justify-center gap-3"
-                >
-                  {isSubmitting ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <RotateCcw size={18} />
-                      Process Return
-                    </>
-                  )}
-                </button>
+      {/* Step 1 — Order Selector */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm mb-4">
+        <div className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-[11px] font-black shrink-0">1</div>
+            <div className="flex-1 relative">
+              <div
+                onClick={() => setShowDropdown(!showDropdown)}
+                className={`w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 border rounded-xl cursor-pointer transition-all ${
+                  showDropdown ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <span className={selectedOrder ? 'text-sm font-semibold text-slate-900' : 'text-sm text-slate-400'}>
+                  {selectedOrder ? `${selectedOrder.orderNumber} — ${selectedOrder.distributorName}` : 'Select a received order...'}
+                </span>
+                <ChevronDown size={16} className={`text-slate-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
               </div>
-            )}
-          </form>
-        </div>
 
-        {/* Info & Summary Panel */}
-        <div className="space-y-6">
-          {!selectedOrderId ? (
-             <div className="bg-indigo-50/50 p-8 rounded-3xl border border-indigo-100/50 flex flex-col items-center text-center space-y-4">
-                <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100 text-indigo-600">
-                  <Search size={32} />
-                </div>
-                <div>
-                   <h3 className="font-bold text-slate-900">Select an Order</h3>
-                   <p className="text-sm text-slate-500 leading-relaxed px-4">Choose a completed order from the dropdown to view items and start the return process.</p>
-                </div>
-             </div>
-          ) : (
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-200/40 overflow-hidden divide-y divide-slate-100 animate-in fade-in slide-in-from-right-4">
-               <div className="p-6 bg-slate-50/50">
-                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Order Summary</h3>
-                  <div className="flex items-center gap-4">
-                     <div className="w-12 h-12 bg-white rounded-xl border border-slate-200 flex items-center justify-center font-black text-indigo-600 shadow-sm">
-                        #{selectedOrder?.orderNumber.split('-')[1]}
-                     </div>
-                     <div>
-                        <p className="font-bold text-slate-900">{selectedOrder?.distributorName}</p>
-                        <p className="text-xs text-slate-500">Ordered on {selectedOrder?.date}</p>
-                     </div>
+              {showDropdown && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                  <div className="p-2 border-b border-slate-100 flex items-center gap-2">
+                    <Search size={14} className="text-slate-400 ml-1" />
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Search order or party..."
+                      className="w-full py-1.5 outline-none text-sm"
+                      value={orderSearch}
+                      onChange={(e) => setOrderSearch(e.target.value)}
+                    />
                   </div>
-               </div>
-
-               {selectedItem && (
-                 <div className="p-6 space-y-4">
-                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Item Detail</h3>
-                   <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 bg-slate-50 rounded-xl overflow-hidden border border-slate-100 shrink-0">
-                         {(() => {
-                           const article = articles.find(a => a.id === selectedItem.articleId);
-                           return (
-                             <img 
-                               src={article?.imageUrl} 
-                               alt="" 
-                               className="w-full h-full object-cover" 
-                               onError={(e) => {
-                                 (e.target as any).src = 'https://placehold.co/100x100?text=Item';
-                               }}
-                             />
-                           );
-                         })()}
+                  <div className="max-h-48 overflow-y-auto">
+                    {filteredOrders.length > 0 ? filteredOrders.map(o => (
+                      <div
+                        key={o.id}
+                        onClick={() => selectOrder(o.id)}
+                        className={`px-4 py-2.5 cursor-pointer hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                          selectedOrderId === o.id ? 'bg-indigo-50' : ''
+                        }`}
+                      >
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">{o.orderNumber}</p>
+                          <p className="text-[10px] text-slate-400 font-medium">{o.distributorName} · {o.date}</p>
+                        </div>
+                        <span className="text-[9px] font-black text-slate-400 uppercase">{o.items?.length || 0} items</span>
                       </div>
-                      <div className="flex-1">
-                         <p className="font-bold text-slate-900 text-sm">
-                           {articles.find(a => a.id === selectedItem.articleId)?.name}
-                         </p>
-                         <p className="text-xs text-slate-500">
-                           {articles.find(a => a.id === selectedItem.articleId)?.variants?.find(v => v.id === selectedItem.variantId || v._id === selectedItem.variantId)?.color}
-                         </p>
-                      </div>
-                   </div>
-
-                   <div className="grid grid-cols-2 gap-3 pt-2">
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Delivered</p>
-                         <p className="font-black text-slate-700">{selectedItem.allocatedCartonCount || selectedItem.cartonCount} <span className="text-[10px] font-bold">CTN</span></p>
-                      </div>
-                      <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-2xl">
-                         <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Return</p>
-                         <p className="font-black text-indigo-600">{returnCartons || 0} <span className="text-[10px] font-bold">CTN</span></p>
-                      </div>
-                   </div>
-                   
-                   {returnCartons > 0 && (
-                     <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex gap-3 text-emerald-800">
-                        <CheckCircle2 className="shrink-0 mt-0.5" size={16} />
-                        <p className="text-xs font-semibold leading-relaxed">
-                          This will restore <span className="font-black">{returnCartons * 24} pairs</span> to the master stock for this variant.
-                        </p>
-                     </div>
-                   )}
-                 </div>
-               )}
-
-               <div className="p-6">
-                  <div className="flex gap-3 text-slate-400">
-                     <AlertCircle className="shrink-0 mt-0.5" size={16} />
-                     <p className="text-[10px] font-medium leading-relaxed uppercase tracking-wider">
-                       Returns only restore physical stock. Financial adjustments should be managed separately in Bills.
-                     </p>
+                    )) : (
+                      <div className="px-4 py-6 text-center text-slate-400 text-xs">No matching orders found</div>
+                    )}
                   </div>
-               </div>
+                </div>
+              )}
             </div>
-          )}
+            {selectedOrder && (
+              <button onClick={() => { setSelectedOrderId(''); setReturnEntries({}); }} className="p-1.5 text-slate-300 hover:text-slate-500 transition-colors">
+                <X size={16} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Step 2 — Variant Selection Grid */}
+      {selectedOrder && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm mb-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-[11px] font-black shrink-0">2</div>
+              <span className="text-sm font-bold text-slate-700">Select variants & enter return qty</span>
+            </div>
+            {selectedCount > 0 && (
+              <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">
+                {selectedCount} selected
+              </span>
+            )}
+          </div>
+
+          <div className="divide-y divide-slate-50">
+            {selectedOrder.items.map((item) => {
+              const article = articles.find(a => a.id === item.articleId);
+              const variant = article?.variants?.find(v => v.id === item.variantId || v._id === item.variantId);
+              const isSelected = item.variantId in returnEntries;
+              const maxCtns = item.allocatedCartonCount || item.cartonCount || 0;
+              const currentCtns = returnEntries[item.variantId] || 0;
+              const imgUrl = getVariantImage(item);
+
+              return (
+                <div
+                  key={item.variantId}
+                  className={`flex items-center gap-3 px-4 py-3 transition-colors ${
+                    isSelected ? 'bg-indigo-50/40' : 'hover:bg-slate-50/50'
+                  }`}
+                >
+                  {/* Checkbox */}
+                  <button
+                    onClick={() => toggleVariant(item.variantId)}
+                    className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${
+                      isSelected
+                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                        : 'border-slate-300 hover:border-indigo-400'
+                    }`}
+                  >
+                    {isSelected && <CheckCircle2 size={12} />}
+                  </button>
+
+                  {/* Image */}
+                  <div className="w-9 h-9 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 shrink-0">
+                    {imgUrl ? (
+                      <img src={imgUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center"><ImageIcon size={14} className="text-slate-200" /></div>
+                    )}
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-800 truncate">
+                      {article?.name}{variant ? `-${variant.color}-${variant.sizeRange}` : ''}
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-medium">{variant?.color || 'Standard'} · {maxCtns} CTN delivered</p>
+                  </div>
+
+                  {/* Carton Input — only shown when selected */}
+                  {isSelected && (
+                    <div className="flex items-center gap-2 animate-in fade-in duration-200">
+                      <div className="flex items-center bg-white border border-indigo-200 rounded-lg overflow-hidden shadow-sm">
+                        <button
+                          onClick={() => setCartonCount(item.variantId, Math.max(1, currentCtns - 1))}
+                          className="px-2 py-1.5 text-indigo-600 hover:bg-indigo-50 transition-colors text-sm font-black"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={maxCtns}
+                          value={currentCtns || ''}
+                          onChange={(e) => {
+                            const v = Math.min(Math.max(1, parseInt(e.target.value) || 0), maxCtns);
+                            setCartonCount(item.variantId, v);
+                          }}
+                          className="w-10 text-center text-sm font-black text-slate-900 outline-none border-x border-indigo-100 py-1.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                        <button
+                          onClick={() => setCartonCount(item.variantId, Math.min(maxCtns, currentCtns + 1))}
+                          className="px-2 py-1.5 text-indigo-600 hover:bg-indigo-50 transition-colors text-sm font-black"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase w-10">/{maxCtns}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Step 3 — Summary & Submit */}
+      {selectedOrder && selectedCount > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="p-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-[11px] font-black shrink-0">3</div>
+              <div className="flex items-center gap-4">
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Cartons</p>
+                  <p className="text-lg font-black text-slate-900 leading-none">{totalReturnCartons}</p>
+                </div>
+                <div className="h-8 w-px bg-slate-100" />
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Pairs</p>
+                  <p className="text-lg font-black text-indigo-600 leading-none">{totalReturnPairs}</p>
+                </div>
+                <div className="h-8 w-px bg-slate-100" />
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Variants</p>
+                  <p className="text-lg font-black text-slate-900 leading-none">{selectedCount}</p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSubmit}
+              disabled={!canSubmit || isSubmitting}
+              className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:bg-slate-200 disabled:shadow-none transition-all flex items-center gap-2"
+            >
+              {isSubmitting ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  <RotateCcw size={14} />
+                  Process Return
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="px-4 pb-3">
+            <div className="flex gap-2 text-slate-400">
+              <AlertCircle className="shrink-0 mt-0.5" size={12} />
+              <p className="text-[9px] font-medium leading-relaxed">
+                Returns restore physical stock to the warehouse. Financial adjustments should be managed separately in Bills.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!selectedOrder && receivedOrders.length === 0 && (
+        <div className="bg-slate-50/50 p-12 rounded-2xl border border-slate-100 flex flex-col items-center text-center">
+          <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-sm text-slate-300 mb-4">
+            <Package size={28} />
+          </div>
+          <h3 className="font-bold text-slate-700 mb-1">No Received Orders</h3>
+          <p className="text-xs text-slate-400 max-w-[280px]">Orders must be in "Received" status before returns can be processed.</p>
+        </div>
+      )}
     </div>
   );
 };

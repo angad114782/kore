@@ -77,23 +77,46 @@ class DistributorOrderService {
   async updateOrderStatus(
     orderId: string,
     status: OrderStatus,
-    allocatedItems?: any[]
+    options: { allocatedItems?: any[], files?: Record<string, File>, receiverName?: string, receiverMobile?: string } = {}
   ): Promise<Order | undefined> {
+    const formData = new FormData();
+    formData.append("status", status);
+    
+    if (options.allocatedItems) {
+      formData.append("allocatedItems", JSON.stringify(options.allocatedItems));
+    }
+    
+    if (options.receiverName) formData.append("receiverName", options.receiverName);
+    if (options.receiverMobile) formData.append("receiverMobile", options.receiverMobile);
+
+    if (options.files) {
+      Object.entries(options.files).forEach(([key, file]) => {
+        formData.append(key, file);
+      });
+    }
+
     const res = await axios.patch(
       `${API_URL}/${orderId}/status`,
-      { status, allocatedItems },
-      { headers: getAuthHeaders() }
+      formData,
+      {
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "multipart/form-data",
+        },
+      }
     );
     return this.mapOrder(res.data.data);
   }
 
   async markAsReceived(
     orderId: string,
-    billFile: File
+    data: { receivingNote: File, receiverName: string, receiverMobile: string }
   ): Promise<Order | undefined> {
     const formData = new FormData();
     formData.append("status", OrderStatus.RECEIVED);
-    formData.append("bill", billFile);
+    formData.append("receivingNote", data.receivingNote);
+    formData.append("receiverName", data.receiverName);
+    formData.append("receiverMobile", data.receiverMobile);
 
     const res = await axios.patch(
       `${API_URL}/${orderId}/status`,

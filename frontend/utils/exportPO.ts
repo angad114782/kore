@@ -1,19 +1,9 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { PurchaseOrder, Vendor } from "../types";
+import { COMPANY_CONFIG } from "../constants";
 
-// Constant Company Info based on the user's provided image
-const COMPANY_INFO = {
-  name: "INNOVATIVE LIFESTYLE TECHNOLOGY PRIVATE LIMITED",
-  cin: "U511909DL2020PTC3711873",
-  gst: "07AAFC18644A1ZP",
-  pan: "AAFC18644A",
-  brand: "YOHO",
-  invoiceTo:
-    "INNOVATIVE LIFESTYLE TECHNOLOGY PRIVATE LIMITED, First Floor, M-24, Block-M, Badli Industrial Area Phase 1, GATE NO-4, New Delhi, North Delhi, Delhi, 110042",
-  shipTo:
-    "419/1, Village mundka, Near Under Pass, Mundka, New Delhi, West Delhi, 110041",
-};
+// Removed local COMPANY_CONFIG to use centralized COMPANY_CONFIG from constants.tsx
 
 const formatDate = (dateStr: string) => {
   if (!dateStr) return "";
@@ -64,7 +54,7 @@ export const exportPOToPDF = (
       content: "Company Name",
       styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
     },
-    vendor?.companyName || vendor?.displayName || COMPANY_INFO.name,
+    vendor?.companyName || vendor?.displayName || COMPANY_CONFIG.name,
     { content: "Vendor Name", styles: { fontStyle: "bold" } },
     vendor?.displayName || po.vendorName,
     { content: "PO Number", styles: { fontStyle: "bold" } },
@@ -76,7 +66,7 @@ export const exportPOToPDF = (
       content: "CIN No.",
       styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
     },
-    vendor?.cinNumber || COMPANY_INFO.cin,
+    vendor?.cinNumber || COMPANY_CONFIG.cin,
     { content: "Vendor Code", styles: { fontStyle: "bold" } },
     vendor?.vendorCode || "",
     { content: "PO Date", styles: { fontStyle: "bold" } },
@@ -88,9 +78,9 @@ export const exportPOToPDF = (
       content: "GST No.",
       styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
     },
-    vendor?.gstNumber || COMPANY_INFO.gst,
+    vendor?.gstNumber || COMPANY_CONFIG.gst,
     { content: "Brand", styles: { fontStyle: "bold" } },
-    vendor?.brand || COMPANY_INFO.brand,
+    vendor?.brand || COMPANY_CONFIG.brand,
     { content: "Delivery Date", styles: { fontStyle: "bold" } },
     deliveryDate,
   ]);
@@ -100,7 +90,7 @@ export const exportPOToPDF = (
       content: "PAN No.",
       styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
     },
-    vendor?.pan || COMPANY_INFO.pan,
+    vendor?.pan || COMPANY_CONFIG.pan,
     {
       content: "Total Value INR",
       styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
@@ -124,7 +114,7 @@ export const exportPOToPDF = (
       content: "Invoice To",
       styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
     },
-    vendorAddress || COMPANY_INFO.invoiceTo,
+    vendorAddress || COMPANY_CONFIG.invoiceTo,
     { content: "Vendor address", styles: { fontStyle: "bold" } },
     vendorAddress,
     { content: "PO Expiry Date", styles: { fontStyle: "bold" } },
@@ -136,7 +126,7 @@ export const exportPOToPDF = (
       content: "Ship To",
       styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
     },
-    vendorAddress || COMPANY_INFO.shipTo,
+    vendorAddress || COMPANY_CONFIG.shipTo,
     { content: "Contact Person", styles: { fontStyle: "bold" } },
     vendor?.displayName || "",
     { content: "Phone", styles: { fontStyle: "bold" } },
@@ -173,7 +163,7 @@ export const exportPOToPDF = (
     body: [
       [
         {
-          content: vendor?.companyName || COMPANY_INFO.name,
+          content: vendor?.companyName || COMPANY_CONFIG.name,
           styles: { halign: "left", fontStyle: "bold", fontSize: 11 },
         },
         {
@@ -390,7 +380,7 @@ export const exportOrderToExcel = (po: PurchaseOrder, vendor?: Vendor) => {
   // Company & Vendor Info Header
   rows.push([
     "Company Name",
-    vendor?.companyName || vendor?.displayName || COMPANY_INFO.name,
+    vendor?.companyName || vendor?.displayName || COMPANY_CONFIG.name,
     "Vendor Name",
     vendor?.displayName || po.vendorName,
     "PO Number",
@@ -398,7 +388,7 @@ export const exportOrderToExcel = (po: PurchaseOrder, vendor?: Vendor) => {
   ]);
   rows.push([
     "CIN No.",
-    vendor?.cinNumber || COMPANY_INFO.cin,
+    vendor?.cinNumber || COMPANY_CONFIG.cin,
     "Vendor Code",
     vendor?.vendorCode || "",
     "PO Date",
@@ -406,7 +396,7 @@ export const exportOrderToExcel = (po: PurchaseOrder, vendor?: Vendor) => {
   ]);
   rows.push([
     "GST No.",
-    vendor?.gstNumber || COMPANY_INFO.gst,
+    vendor?.gstNumber || COMPANY_CONFIG.gst,
     "Vendor GST",
     vendor?.gstNumber || "",
     "Delivery Date",
@@ -414,7 +404,7 @@ export const exportOrderToExcel = (po: PurchaseOrder, vendor?: Vendor) => {
   ]);
   rows.push([
     "PAN No.",
-    vendor?.pan || COMPANY_INFO.pan,
+    vendor?.pan || COMPANY_CONFIG.pan,
     "Vendor PAN",
     vendor?.pan || "",
     "Total Value (₹)",
@@ -443,7 +433,7 @@ export const exportOrderToExcel = (po: PurchaseOrder, vendor?: Vendor) => {
   ]);
   rows.push([
     "Brand",
-    vendor?.brand || COMPANY_INFO.brand,
+    vendor?.brand || COMPANY_CONFIG.brand,
     "Payment Terms",
     "",
     "Total Order Qty",

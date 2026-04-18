@@ -122,6 +122,7 @@ export enum OrderStatus {
   RFD = "RFD",       // Ready for Delivery
   OFD = "OFD",       // Out for Delivery
   RECEIVED = "RECEIVED",
+  PENDING = "PENDING",
 }
 
 export interface OrderItem {
@@ -142,7 +143,18 @@ export interface OrderItem {
 export interface Order {
   id: string;
   orderNumber?: string;
-  distributorId: string;
+  distributorId: string | {
+    id: string;
+    name: string;
+    email: string;
+    distributorId?: {
+      companyName: string;
+      phone: string;
+      email: string;
+      shippingAddress: DistributorAddress;
+      billingAddress: DistributorAddress;
+    };
+  };
   distributorName: string;
   date: string;
   status: OrderStatus;
@@ -154,6 +166,12 @@ export interface Order {
   discountAmount?: number;
   finalAmount?: number;
   billUrl?: string;
+  invoiceUrl?: string;
+  ewayBillUrl?: string;
+  transportBillUrl?: string;
+  receivingNoteUrl?: string;
+  receiverName?: string;
+  receiverMobile?: string;
 }
 
 export interface MovementRecord {

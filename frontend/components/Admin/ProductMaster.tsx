@@ -170,10 +170,11 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
           const rangeUsageCount: Record<string, number> = {};
 
           const mappedVariants = item.variants.map((v: any) => {
-            const sizeQuantities: Record<string, number> = {};
-            const sizeSkus: Record<string, string> = {};
+            const sizeQuantities: Record<string, number> = v.sizeQuantities || {};
+            const sizeSkus: Record<string, string> = v.sizeSkus || {};
 
-            if (v.sizeMap) {
+            // Legacy Fallback: If new dedicated fields are missing, try to restore from sizeMap
+            if (Object.keys(sizeQuantities).length === 0 && v.sizeMap) {
               Object.entries(v.sizeMap).forEach(([size, data]: [string, any]) => {
                 sizeQuantities[size] = data.qty || 0;
                 sizeSkus[size] = data.sku || "";
@@ -688,10 +689,11 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
         const item = res.data || res;
 
         const normalizedSavedVariants = (item.variants || []).map((v: any) => {
-          const sizeSkus: Record<string, string> = {};
-          const sizeQuantities: Record<string, number> = {};
+          const sizeSkus: Record<string, string> = v.sizeSkus || {};
+          const sizeQuantities: Record<string, number> = v.sizeQuantities || {};
 
-          if (v.sizeMap) {
+          // Legacy Fallback
+          if (Object.keys(sizeQuantities).length === 0 && v.sizeMap) {
             Object.entries(v.sizeMap).forEach(([sz, cell]: [string, any]) => {
               sizeSkus[sz] = cell.sku || "";
               sizeQuantities[sz] = cell.qty || 0;

@@ -47,6 +47,18 @@ const VariantSchema = new mongoose.Schema(
       default: {},
     },
 
+    sizeQuantities: {
+      type: Map,
+      of: Number,
+      default: {},
+    },
+
+    sizeSkus: {
+      type: Map,
+      of: String,
+      default: {},
+    },
+
     isActive: { type: Boolean, default: true },
   },
   { _id: true }

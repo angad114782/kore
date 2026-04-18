@@ -121,7 +121,15 @@ const getOrdersByDistributor = async (distributorId, { page = 1, limit = 10, sea
     const sortObj = { [sortBy]: (sortDesc === "true" || sortDesc === true) ? -1 : 1 };
 
     const [items, total, allStats] = await Promise.all([
-      Order.find(q).sort(sortObj).skip(skip).limit(l).lean(),
+      Order.find(q)
+        .sort(sortObj)
+        .skip(skip)
+        .limit(l)
+        .populate({
+          path: 'distributorId',
+          populate: { path: 'distributorId' }
+        })
+        .lean(),
       Order.countDocuments(q),
       Order.aggregate([
         { $match: q },
@@ -185,7 +193,15 @@ const getAllOrders = async ({ page = 1, limit = 10, search = "", status = "", st
     const sortObj = { [sortBy]: (sortDesc === "true" || sortDesc === true) ? -1 : 1 };
 
     const [items, total, allStats] = await Promise.all([
-      Order.find(q).sort(sortObj).skip(skip).limit(l).lean(),
+      Order.find(q)
+        .sort(sortObj)
+        .skip(skip)
+        .limit(l)
+        .populate({
+          path: 'distributorId',
+          populate: { path: 'distributorId' }
+        })
+        .lean(),
       Order.countDocuments(q),
       Order.aggregate([
         { $match: q },
@@ -221,7 +237,16 @@ const getAllOrders = async ({ page = 1, limit = 10, search = "", status = "", st
   }
 };
 
-const updateOrderStatus = async (orderId, status, { billUrl = null, allocatedItems = null } = {}) => {
+const updateOrderStatus = async (orderId, status, { 
+  billUrl = null, 
+  invoiceUrl = null,
+  ewayBillUrl = null,
+  transportBillUrl = null,
+  receivingNoteUrl = null,
+  receiverName = null,
+  receiverMobile = null,
+  allocatedItems = null 
+} = {}) => {
   try {
     const validStatuses = [
       "BOOKED",
@@ -241,9 +266,13 @@ const updateOrderStatus = async (orderId, status, { billUrl = null, allocatedIte
     }
 
     const updateData = { status };
-    if (status === "RECEIVED" && billUrl) {
-      updateData.billUrl = billUrl;
-    }
+    if (billUrl) updateData.billUrl = billUrl;
+    if (invoiceUrl) updateData.invoiceUrl = invoiceUrl;
+    if (ewayBillUrl) updateData.ewayBillUrl = ewayBillUrl;
+    if (transportBillUrl) updateData.transportBillUrl = transportBillUrl;
+    if (receivingNoteUrl) updateData.receivingNoteUrl = receivingNoteUrl;
+    if (receiverName) updateData.receiverName = receiverName;
+    if (receiverMobile) updateData.receiverMobile = receiverMobile;
 
     // Handle manual allocation when moving to PFD
     if (status === "PFD" && allocatedItems && Array.isArray(allocatedItems)) {
@@ -298,11 +327,17 @@ const updateOrderStatus = async (orderId, status, { billUrl = null, allocatedIte
       updateData.items = order.items;
     }
 
-    const updatedOrder = await Order.findByIdAndUpdate(
-      orderId,
-      { $set: updateData },
-      { returnDocument: 'after' }
-    );
+    // Apply updates to the order object
+    Object.assign(order, updateData);
+    
+    // Save the document (this persists items array changes as well)
+    await order.save();
+    
+    // Re-populate for consistency
+    const updatedOrder = await Order.findById(orderId).populate({
+      path: 'distributorId',
+      populate: { path: 'distributorId' }
+    });
 
     return updatedOrder;
   } catch (error) {

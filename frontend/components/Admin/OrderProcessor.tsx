@@ -15,7 +15,7 @@ import {
   FileText,
   ImageIcon
 } from 'lucide-react';
-import { Order, OrderStatus, Article } from '../../types';
+import { Order, OrderStatus, Article, Inventory } from '../../types';
 import OrderDetail from '../Distributor/OrderDetail';
 import { distributorOrderService } from '../../services/distributorOrderService';
 import Pagination from '../ui/Pagination';
@@ -23,12 +23,13 @@ import { toast } from 'sonner';
 
 interface OrderProcessorProps {
   articles: Article[];
+  inventory: Inventory[];
   updateStatus: (id: string, status: OrderStatus) => void;
   isLoading?: boolean;
   lastUpdated?: Date;
 }
 
-const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, updateStatus, isLoading: globalLoading, lastUpdated }) => {
+const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, inventory, updateStatus, isLoading: globalLoading, lastUpdated }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'ALL'>('ALL');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -87,6 +88,7 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, updateStatus,
       <OrderDetail 
         order={selectedOrder} 
         articles={articles} 
+        inventory={inventory}
         onBack={() => setSelectedOrderId(null)} 
       />
     );
@@ -221,10 +223,35 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, updateStatus,
                       />
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                       <span className="flex items-center gap-1.5"><User size={12} className="text-slate-300" /> {order.distributorName}</span>
                       <span className="flex items-center gap-1.5"><Clock size={12} /> {order.date}</span>
                       <span className="text-indigo-600 font-black">₹{(order.finalAmount || order.totalAmount).toLocaleString()}</span>
+                      
+                      {/* Carton Analytics */}
+                      <div className="flex items-center gap-3 ml-2 pl-4 border-l border-slate-100">
+                        <div className="flex flex-col">
+                          <span className="text-[8px] text-slate-400">Total</span>
+                          <span className="text-slate-900 font-bold">{order.totalCartons}ctn</span>
+                        </div>
+                        {(() => {
+                          const allocated = order.items.reduce((acc, item) => acc + (item.allocatedCartonCount ?? 0), 0);
+                          const fulfilled = order.status === OrderStatus.RECEIVED ? allocated : 0;
+                          const pending = order.totalCartons - fulfilled;
+                          return (
+                            <>
+                              <div className="flex flex-col">
+                                <span className="text-[8px] text-emerald-500">Fulfilled</span>
+                                <span className={`font-bold ${fulfilled > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>{fulfilled}ctn</span>
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-[8px] text-amber-500">Pending</span>
+                                <span className={`font-bold ${pending > 0 ? 'text-amber-600' : 'text-slate-300'}`}>{pending}ctn</span>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -239,22 +266,6 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, updateStatus,
                       <span className="px-3 py-1.5 bg-slate-50 text-slate-400 rounded-lg font-bold text-[9px] uppercase tracking-wider border border-slate-100 flex items-center gap-1.5">
                         <Loader2 size={10} className="animate-spin" /> Allocation Required
                       </span>
-                    )}
-                    {order.status === OrderStatus.PFD && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); updateStatus(order.id, OrderStatus.RFD); }}
-                        className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-600 hover:text-white transition-all tracking-wider"
-                      >
-                        Mark Ready for Delivery
-                      </button>
-                    )}
-                    {order.status === OrderStatus.RFD && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); updateStatus(order.id, OrderStatus.OFD); }}
-                        className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg font-bold text-[10px] uppercase hover:bg-emerald-600 hover:text-white transition-all tracking-wider"
-                      >
-                        Out for Delivery
-                      </button>
                     )}
                     {order.status === OrderStatus.RECEIVED && order.billUrl && (
                       <button 
@@ -304,6 +315,7 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   [OrderStatus.RFD]: 'Ready for Delivery',
   [OrderStatus.OFD]: 'Out for Delivery',
   [OrderStatus.RECEIVED]: 'Received',
+  [OrderStatus.PENDING]: 'Pending',
 };
 
 const StatusBadge: React.FC<{ status: OrderStatus }> = ({ status }) => {

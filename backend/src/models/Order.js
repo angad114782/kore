@@ -83,6 +83,30 @@ const OrderSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    invoiceUrl: {
+      type: String,
+      default: null,
+    },
+    ewayBillUrl: {
+      type: String,
+      default: null,
+    },
+    transportBillUrl: {
+      type: String,
+      default: null,
+    },
+    receivingNoteUrl: {
+      type: String,
+      default: null,
+    },
+    receiverName: {
+      type: String,
+      default: null,
+    },
+    receiverMobile: {
+      type: String,
+      default: null,
+    },
     items: [OrderItemSchema],
     totalAmount: {
       type: Number,

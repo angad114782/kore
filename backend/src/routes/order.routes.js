@@ -19,7 +19,13 @@ router.get("/", role(["admin", "superadmin"]), OrderController.getAllOrders);
 router.patch(
   "/:id/status",
   role(["admin", "superadmin", "distributor"]),
-  billUpload.single("bill"),
+  billUpload.fields([
+    { name: "invoice", maxCount: 1 },
+    { name: "ewayBill", maxCount: 1 },
+    { name: "transportBill", maxCount: 1 },
+    { name: "receivingNote", maxCount: 1 },
+    { name: "bill", maxCount: 1 }, // backward compatibility
+  ]),
   OrderController.updateOrderStatus
 );
 

@@ -146,14 +146,17 @@ const App: React.FC = () => {
       const mapped = res.data.map((item: any) => {
         // Normalize variants: convert sizeMap -> sizeSkus/sizeQuantities
         const normalizedVariants = (item.variants || []).map((v: any) => {
-          const sizeSkus: Record<string, string> = {};
-          const sizeQuantities: Record<string, number> = {};
-          if (v.sizeMap) {
+          const sizeSkus: Record<string, string> = v.sizeSkus || {};
+          const sizeQuantities: Record<string, number> = v.sizeQuantities || {};
+          
+          // Legacy Fallback: If new dedicated fields are missing, try to restore from sizeMap
+          if (Object.keys(sizeQuantities).length === 0 && v.sizeMap) {
             Object.entries(v.sizeMap).forEach(([sz, cell]: [string, any]) => {
               sizeSkus[sz] = cell.sku || "";
               sizeQuantities[sz] = cell.qty || 0;
             });
           }
+
           return {
             ...v,
             id: v._id || Math.random().toString(36).substr(2, 9),
@@ -834,6 +837,7 @@ const App: React.FC = () => {
             <OrderProcessor
               updateStatus={updateOrderStatus}
               articles={articles}
+              inventory={inventory}
               isLoading={loadingOrders}
               lastUpdated={lastUpdated}
             />
@@ -841,6 +845,7 @@ const App: React.FC = () => {
             <MyOrders
               userId={user.id}
               articles={articles}
+              inventory={inventory}
               isLoading={loadingOrders}
               lastUpdated={lastUpdated}
             />

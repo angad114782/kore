@@ -90,22 +90,32 @@ const normalizeVariants = (variantsRaw) => {
 
   return variants.map((v) => {
     const sizeMap = {};
+    const sizeQuantities = {};
+    const sizeSkus = {};
 
+    // 1. Process Assortment (Breakup)
     if (v.sizeQuantities && typeof v.sizeQuantities === "object") {
       Object.keys(v.sizeQuantities).forEach((size) => {
-        sizeMap[size] = {
-          qty: Number(v.sizeQuantities[size] || 0),
-          sku: v.sizeSkus?.[size] || "",
-        };
+        sizeQuantities[size] = Number(v.sizeQuantities[size] || 0);
+        sizeSkus[size] = v.sizeSkus?.[size] || "";
       });
     }
 
+    // 2. Process Inventory Stock (Physical Warehouse Qty)
     if (v.sizeMap && typeof v.sizeMap === "object") {
       Object.keys(v.sizeMap).forEach((size) => {
         const cell = v.sizeMap[size] || {};
         sizeMap[size] = {
           qty: Number(cell.qty || 0),
           sku: cell.sku || "",
+        };
+      });
+    } else if (v.sizeQuantities && typeof v.sizeQuantities === "object") {
+      // Fallback: Initialize stock to 0 but keep SKU
+      Object.keys(v.sizeQuantities).forEach((size) => {
+        sizeMap[size] = {
+          qty: 0,
+          sku: v.sizeSkus?.[size] || "",
         };
       });
     }
@@ -121,6 +131,8 @@ const normalizeVariants = (variantsRaw) => {
       mrp: Number(v.mrp || 0),
       hsnCode: v.hsnCode || "",
       sizeMap,
+      sizeQuantities,
+      sizeSkus,
       isActive: parseBoolean(v.isActive, true),
     };
   });
@@ -367,6 +379,8 @@ exports.update = async (req, id) => {
         matched.mrp = v.mrp;
         matched.hsnCode = v.hsnCode;
         matched.sizeMap = v.sizeMap;
+        matched.sizeQuantities = v.sizeQuantities;
+        matched.sizeSkus = v.sizeSkus;
         matched.isActive = v.isActive;
 
         existingById.delete(matched._id.toString());

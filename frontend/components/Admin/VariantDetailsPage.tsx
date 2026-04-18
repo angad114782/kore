@@ -109,22 +109,21 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
       ? Object.keys(variant.sizeSkus)
       : parseSizeRange(variant.sizeRange || article.sizeRange || "");
 
-  const currentSizeMap = variant.sizeMap || variant.sizeQuantities || {};
+  // sizeQuantities = assortment breakup (plain numbers: {"4": 3, "5": 6})
+  // sizeMap = stock/inventory data ({"4": {qty: 0, sku: "..."}}) — qty is stock, NOT assortment
+  const currentAssortmentMap = variant.sizeQuantities || {};
+  const currentSizeMap = variant.sizeMap || {};
   const currentBookingMap = variant.bookingMap || {};
   const currentPOMap = stockData?.poMap || {};
   const currentLiveStockMap = stockData?.liveStockMap || {};
 
-  // Force totalPairs to 0 as current sizeMap values reflect assortment templates, not actual stock
   const totalPairs = Object.values(currentLiveStockMap).reduce(
     (s: number, v) => s + (Number(v) || 0),
     0
   );
 
-  const totalAssortment = Object.values(currentSizeMap).reduce(
-    (s: number, data) => {
-      const qty = typeof data === "object" ? (data as any)?.qty : Number(data);
-      return s + (Number(qty) || 0);
-    },
+  const totalAssortment = Object.values(currentAssortmentMap).reduce(
+    (s: number, v) => s + (Number(v) || 0),
     0
   );
 
@@ -303,11 +302,7 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
             </h3>
             <div className="flex flex-wrap gap-1.5">
               {sizes.map((sz) => {
-                const data = currentSizeMap[sz];
-                const qty =
-                  typeof data === "object"
-                    ? (data as any)?.qty
-                    : Number(data) || 0;
+                const qty = Number(currentAssortmentMap[sz]) || 0;
                 return (
                   <div
                     key={sz}
@@ -426,11 +421,8 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {sizes.map((sz) => {
                   const qty = currentLiveStockMap[sz] || 0;
-                  const data = currentSizeMap[sz];
-                  const sku =
-                    (typeof data === "object"
-                      ? (data as any)?.sku
-                      : variant.sizeSkus?.[sz]) || "";
+                  const sku = variant.sizeSkus?.[sz] || 
+                    (typeof currentSizeMap[sz] === "object" ? (currentSizeMap[sz] as any)?.sku : "") || "";
 
                   let bgClass =
                     qty > 0

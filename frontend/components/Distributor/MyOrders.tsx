@@ -13,7 +13,7 @@ import {
   FileText,
   Loader2
 } from 'lucide-react';
-import { Order, OrderStatus, Article } from '../../types';
+import { Order, OrderStatus, Article, Inventory } from '../../types';
 import OrderDetail from './OrderDetail';
 import { distributorOrderService } from '../../services/distributorOrderService';
 import Pagination from '../ui/Pagination';
@@ -22,11 +22,12 @@ import { toast } from 'sonner';
 interface MyOrdersProps {
   userId: string;
   articles: Article[];
+  inventory: Inventory[];
   isLoading?: boolean;
   lastUpdated?: Date;
 }
 
-const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, isLoading: globalLoading, lastUpdated }) => {
+const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, inventory, isLoading: globalLoading, lastUpdated }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'ALL'>('ALL');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -97,6 +98,7 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, isLoading: global
       <OrderDetail 
         order={selectedOrder} 
         articles={articles} 
+        inventory={inventory}
         onBack={() => setSelectedOrderId(null)}
         isDistributor={true}
       />
@@ -318,6 +320,7 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   [OrderStatus.RFD]: 'Ready for Delivery',
   [OrderStatus.OFD]: 'Out for Delivery',
   [OrderStatus.RECEIVED]: 'Received',
+  [OrderStatus.PENDING]: 'Pending',
 };
 
 const StatusBadge: React.FC<{ status: OrderStatus }> = ({ status }) => {

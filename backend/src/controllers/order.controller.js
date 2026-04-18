@@ -69,15 +69,28 @@ const getAllOrders = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, allocatedItems } = req.body;
+    let { status, allocatedItems, receiverName, receiverMobile } = req.body;
 
-    // Build billUrl from uploaded file if present
-    let billUrl = null;
-    if (req.file) {
-      billUrl = `/uploads/bills/${req.file.filename}`;
+    // allocatedItems arrives as a JSON string via FormData — parse it
+    if (typeof allocatedItems === 'string') {
+      try { allocatedItems = JSON.parse(allocatedItems); } catch { allocatedItems = null; }
     }
 
-    const updatedOrder = await OrderService.updateOrderStatus(id, status, { billUrl, allocatedItems });
+    const docs = {};
+    if (req.files) {
+      if (req.files.invoice) docs.invoiceUrl = `/uploads/bills/${req.files.invoice[0].filename}`;
+      if (req.files.ewayBill) docs.ewayBillUrl = `/uploads/bills/${req.files.ewayBill[0].filename}`;
+      if (req.files.transportBill) docs.transportBillUrl = `/uploads/bills/${req.files.transportBill[0].filename}`;
+      if (req.files.receivingNote) docs.receivingNoteUrl = `/uploads/bills/${req.files.receivingNote[0].filename}`;
+      if (req.files.bill) docs.billUrl = `/uploads/bills/${req.files.bill[0].filename}`;
+    }
+
+    const updatedOrder = await OrderService.updateOrderStatus(id, status, { 
+      ...docs, 
+      allocatedItems,
+      receiverName,
+      receiverMobile
+    });
 
     // Emit real-time event
     emitOrderUpdate(updatedOrder);

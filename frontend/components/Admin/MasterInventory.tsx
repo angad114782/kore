@@ -76,31 +76,15 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
               onChange={(e) => setLowStockThreshold(parseInt(e.target.value) || 0)}
             />
           </div>
-          <div className="relative flex-1 md:w-48">
+          <div className="relative flex-1 md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input 
               type="text" 
-              placeholder="Search..." 
+              placeholder="Search products..." 
               className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-          </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => openMovementModal('OUTWARD')}
-              className="flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 border border-rose-100 rounded-lg font-bold hover:bg-rose-100 transition-all"
-            >
-              <Minus size={18} />
-              Stock Outward
-            </button>
-            <button 
-              onClick={() => openMovementModal('INWARD')}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
-            >
-              <Plus size={18} />
-              Stock Inward
-            </button>
           </div>
         </div>
       </div>
@@ -152,46 +136,25 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
 
                 {/* Stock Summary Columns */}
                 <div className="hidden lg:flex items-center gap-8 mr-4">
-                  <div className="text-center w-24">
+                  <div className="text-center w-24 border-l border-slate-100 pl-4">
                     <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-0.5">Live Stock</p>
                     <div className="flex items-baseline justify-center gap-1">
-                      <span className="text-lg font-black text-slate-800">{inv.availableStock}</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">Ctns</span>
-                    </div>
-                  </div>
-                  <div className="text-center w-24">
-                    <p className="text-[9px] font-black text-rose-500 uppercase tracking-widest mb-0.5">Booked</p>
-                    <div className="flex items-baseline justify-center gap-1">
-                      <span className="text-lg font-black text-slate-800">{inv.reservedStock}</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">Ctns</span>
+                      <span className="text-xl font-black text-slate-900">{Math.abs(inv.availableStock)}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ctns</span>
                     </div>
                   </div>
                   <div className="text-center w-24 border-l border-slate-100 pl-4">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Physical</p>
+                    <p className="text-[9px] font-black text-rose-500 uppercase tracking-widest mb-0.5">Booked</p>
                     <div className="flex items-baseline justify-center gap-1">
-                      <span className="text-lg font-black text-slate-900">{inv.actualStock}</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">Ctns</span>
+                      <span className="text-xl font-black text-slate-900">{Math.abs(inv.reservedStock)}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ctns</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Actions */}
                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                   <button 
-                     onClick={() => openMovementModal('OUTWARD', article.id)}
-                     className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
-                     title="Stock Outward"
-                   >
-                     <Minus size={18} />
-                   </button>
-                   <button 
-                     onClick={() => openMovementModal('INWARD', article.id)}
-                     className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                     title="Stock Inward"
-                   >
-                     <Plus size={18} />
-                   </button>
-                   <div className="w-px h-6 bg-slate-100 mx-1"></div>
+                   <div className="lg:w-32"></div>
                    <ChevronDown 
                      size={20} 
                      className={`text-slate-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} 
@@ -200,18 +163,14 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
               </div>
 
               {/* Mobile Stats Row */}
-              <div className="lg:hidden grid grid-cols-3 gap-2 px-4 pb-4">
-                <div className="bg-emerald-50/50 p-2 rounded-xl text-center">
-                  <p className="text-[8px] font-black text-emerald-600 uppercase tracking-tighter">Live Stock</p>
-                  <p className="text-sm font-black text-slate-900">{inv.availableStock} <span className="text-[8px] text-slate-400">CTN</span></p>
+              <div className="lg:hidden grid grid-cols-2 gap-2 px-4 pb-4">
+                <div className="bg-emerald-50/50 p-2.5 rounded-xl text-center border border-emerald-100">
+                  <p className="text-[8px] font-black text-emerald-600 uppercase tracking-tighter mb-0.5">Live Stock</p>
+                  <p className="text-sm font-black text-slate-900">{Math.abs(inv.availableStock)} <span className="text-[8px] text-slate-400">CTN</span></p>
                 </div>
-                <div className="bg-rose-50/50 p-2 rounded-xl text-center">
-                  <p className="text-[8px] font-black text-rose-600 uppercase tracking-tighter">Booked</p>
-                  <p className="text-sm font-black text-slate-900">{inv.reservedStock} <span className="text-[8px] text-slate-400">CTN</span></p>
-                </div>
-                <div className="bg-slate-50 p-2 rounded-xl text-center">
-                  <p className="text-[8px] font-black text-slate-600 uppercase tracking-tighter">Physical</p>
-                  <p className="text-sm font-black text-slate-900">{inv.actualStock} <span className="text-[8px] text-slate-400">CTN</span></p>
+                <div className="bg-rose-50/50 p-2.5 rounded-xl text-center border border-rose-100">
+                  <p className="text-[8px] font-black text-rose-600 uppercase tracking-tighter mb-0.5">Booked</p>
+                  <p className="text-sm font-black text-slate-900">{Math.abs(inv.reservedStock)} <span className="text-[8px] text-slate-400">CTN</span></p>
                 </div>
               </div>
 
@@ -231,7 +190,7 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                                <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Color</th>
                                <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Live Stock</th>
                                <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Booked</th>
-                               <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Physical</th>
+                               <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                              </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -287,16 +246,28 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                                       </div>
                                    </td>
                                    <td className="px-6 py-3 text-center">
-                                      <span className="text-sm font-black text-emerald-600">{liveCtns}</span>
+                                      <span className="text-sm font-black text-emerald-600">{Math.abs(liveCtns)}</span>
                                       <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
                                    </td>
                                    <td className="px-6 py-3 text-center">
-                                      <span className="text-sm font-black text-rose-500">{bookedCtns}</span>
+                                      <span className="text-sm font-black text-rose-500">{Math.abs(bookedCtns)}</span>
                                       <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
                                    </td>
-                                   <td className="px-6 py-3 text-center">
-                                      <span className="text-sm font-black text-slate-800">{physicalCtns}</span>
-                                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
+                                   <td className="px-6 py-3">
+                                      <div className="flex justify-end items-center gap-2">
+                                        <button 
+                                          onClick={() => openMovementModal('OUTWARD', article.id)}
+                                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[9px] font-bold hover:bg-rose-100 transition-all border border-rose-100"
+                                        >
+                                          <Minus size={12} /> Stock Outward
+                                        </button>
+                                        <button 
+                                          onClick={() => openMovementModal('INWARD', article.id)}
+                                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-[9px] font-bold hover:bg-indigo-100 transition-all border border-indigo-100"
+                                        >
+                                          <Plus size={12} /> Stock Inward
+                                        </button>
+                                      </div>
                                    </td>
                                  </tr>
                                );
