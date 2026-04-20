@@ -241,7 +241,7 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, inventory, up
                           return (
                             <>
                               <div className="flex flex-col">
-                                <span className="text-[8px] text-emerald-500">Fulfilled</span>
+                                <span className="text-[8px] text-emerald-500"> Delivered</span>
                                 <span className={`font-bold ${fulfilled > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>{fulfilled}ctn</span>
                               </div>
                               <div className="flex flex-col">

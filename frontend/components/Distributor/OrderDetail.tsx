@@ -821,10 +821,10 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                 <span>Total Cartons</span>
                 <span className="font-bold text-white">{currentOrder.totalCartons}</span>
               </div>
-              <div className="flex justify-between text-slate-400 text-[11px]">
+              {/* <div className="flex justify-between text-slate-400 text-[11px]">
                 <span>Total Pairs</span>
                 <span className="font-bold text-white">{currentOrder.totalPairs}</span>
-              </div>
+              </div> */}
 
               {/* Fulfillment Summary */}
               {(() => {
@@ -833,10 +833,10 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                 const pending = currentOrder.totalCartons - fulfilled;
                 return (
                   <div className="pt-3 mt-3 border-t border-white/10 grid grid-cols-2 gap-3">
-                    <div className="bg-white/5 p-2 rounded-lg border border-white/5">
+                    {/* <div className="bg-white/5 p-2 rounded-lg border border-white/5">
                       <p className="text-[8px] font-bold text-emerald-400 uppercase tracking-widest mb-0.5">Fulfilled</p>
                       <p className="text-xs font-black text-white">{fulfilled} <span className="text-[8px] text-slate-500 font-bold uppercase">Ctns</span></p>
-                    </div>
+                    </div> */}
                     <div className="bg-white/5 p-2 rounded-lg border border-white/5">
                       <p className="text-[8px] font-bold text-amber-400 uppercase tracking-widest mb-0.5">Pending</p>
                       <p className="text-xs font-black text-white">{pending} <span className="text-[8px] text-slate-500 font-bold uppercase">Ctns</span></p>
