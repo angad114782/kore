@@ -27,6 +27,11 @@ const OrderItemSchema = new mongoose.Schema(
       of: Number,
       default: {},
     },
+    fulfilledSizeQuantities: {
+      type: Map,
+      of: Number,
+      default: {},
+    },
     cartonCount: {
       type: Number,
       required: true,
@@ -35,6 +40,10 @@ const OrderItemSchema = new mongoose.Schema(
     allocatedCartonCount: {
       type: Number,
       default: null, // null means not yet allocated
+    },
+    fulfilledCartonCount: {
+      type: Number,
+      default: 0,
     },
     pairCount: {
       type: Number,
@@ -45,6 +54,10 @@ const OrderItemSchema = new mongoose.Schema(
       type: Number,
       default: null, // null means not yet allocated
     },
+    fulfilledPairCount: {
+      type: Number,
+      default: 0,
+    },
     price: {
       type: Number,
       required: true,
@@ -53,6 +66,27 @@ const OrderItemSchema = new mongoose.Schema(
   },
   { _id: false }
 );
+
+const FulfillmentHistorySchema = new mongoose.Schema({
+  batchNumber: Number,
+  date: { type: Date, default: Date.now },
+  items: [{
+    variantId: mongoose.Schema.Types.ObjectId,
+    cartonCount: Number,
+    pairCount: Number,
+    sizeQuantities: { type: Map, of: Number }
+  }],
+  totalAmount: Number,
+  totalCartons: Number,
+  totalPairs: Number,
+  billUrl: String,
+  invoiceUrl: String,
+  ewayBillUrl: String,
+  transportBillUrl: String,
+  receivingNoteUrl: String,
+  receiverName: String,
+  receiverMobile: String,
+}, { _id: true, timestamps: true });
 
 const OrderSchema = new mongoose.Schema(
   {
@@ -76,7 +110,7 @@ const OrderSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["BOOKED", "PFD", "RFD", "OFD", "RECEIVED"],
+      enum: ["BOOKED", "PFD", "RFD", "OFD", "RECEIVED", "PARTIAL"],
       default: "BOOKED",
     },
     billUrl: {
@@ -108,6 +142,7 @@ const OrderSchema = new mongoose.Schema(
       default: null,
     },
     items: [OrderItemSchema],
+    fulfillmentHistory: [FulfillmentHistorySchema],
     totalAmount: {
       type: Number,
       required: true,

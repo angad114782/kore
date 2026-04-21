@@ -10,6 +10,7 @@ import {
   Filter,
   X,
   User,
+  AlertCircle,
   ChevronRight,
   Loader2,
   FileText,
@@ -199,92 +200,84 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, inventory, up
         )}
 
         <div className="grid grid-cols-1 gap-2">
-          {orders.map(order => (
-            <div 
-              key={order.id} 
-              onClick={() => setSelectedOrderId(order.id)}
-              className="bg-white rounded-xl border border-slate-100 shadow-sm hover:border-indigo-100 transition-all group overflow-hidden cursor-pointer"
-            >
-              <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex gap-4 items-center flex-1">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-slate-50 text-slate-400`}>
-                    <Package size={20} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <h4 className="font-bold text-sm text-slate-900 tracking-tight">#{order.orderNumber || order.id.slice(-6).toUpperCase()}</h4>
-                      <StatusBadge status={order.status} />
-                    </div>
-                    
-                    {/* Non-Interactive Progress Timeline */}
-                    <div className="mb-2 hidden md:block">
-                      <OrderProgress 
-                        status={order.status} 
-                      />
-                    </div>
+          {orders.map(order => {
+            const fulfilled = order.items.reduce((acc, item) => acc + (item.fulfilledCartonCount || 0), 0);
+            const total = order.totalCartons;
+            const progress = total > 0 ? Math.round((fulfilled / total) * 100) : 0;
+            const isTransitioning = order.status === OrderStatus.PARTIAL || (order.status === OrderStatus.OFD && fulfilled > 0);
 
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                      <span className="flex items-center gap-1.5"><User size={12} className="text-slate-300" /> {order.distributorName}</span>
-                      <span className="flex items-center gap-1.5"><Clock size={12} /> {order.date}</span>
-                      <span className="text-indigo-600 font-black">₹{(order.finalAmount || order.totalAmount).toLocaleString()}</span>
+            return (
+              <div 
+                key={order.id} 
+                onClick={() => setSelectedOrderId(order.id)}
+                className="bg-white rounded-xl border border-slate-100 shadow-sm hover:border-indigo-100 transition-all group overflow-hidden cursor-pointer relative"
+              >
+                <div className="px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex gap-4 items-center flex-1 min-w-0">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-slate-50 text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                      <Package size={16} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <h4 className="font-bold text-sm text-slate-900 tracking-tight">#{order.orderNumber || order.id.slice(-6).toUpperCase()}</h4>
+                        <span className="text-[10px] text-slate-300 font-medium hidden sm:block">•</span>
+                        <span className="text-[11px] font-bold text-slate-600 truncate max-w-[150px]">{order.distributorName}</span>
+                        <StatusBadge status={order.status} />
+                      </div>
                       
-                      {/* Carton Analytics */}
-                      <div className="flex items-center gap-3 ml-2 pl-4 border-l border-slate-100">
-                        <div className="flex flex-col">
-                          <span className="text-[8px] text-slate-400">Total</span>
-                          <span className="text-slate-900 font-bold">{order.totalCartons}ctn</span>
+                      <div className="flex items-center gap-x-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
+                        <span className="flex items-center gap-1"><Clock size={10} /> {order.date}</span>
+                        <span className="w-1 h-1 rounded-full bg-slate-200" />
+                        <div className="flex items-center gap-1.5">
+                          <Package size={10} className={fulfilled > 0 ? 'text-emerald-500' : 'text-slate-300'} />
+                          <span className={fulfilled > 0 ? 'text-slate-900' : 'text-slate-400'}>
+                            {fulfilled} / {total} <span className="text-[8px] opacity-70">Cartons</span>
+                          </span>
+                          {isTransitioning && <span className="text-emerald-600 lowercase font-black text-[8px] tracking-normal">({progress}%)</span>}
                         </div>
-                        {(() => {
-                          const allocated = order.items.reduce((acc, item) => acc + (item.allocatedCartonCount ?? 0), 0);
-                          const fulfilled = order.status === OrderStatus.RECEIVED ? allocated : 0;
-                          const pending = order.totalCartons - fulfilled;
-                          return (
-                            <>
-                              <div className="flex flex-col">
-                                <span className="text-[8px] text-emerald-500"> Delivered</span>
-                                <span className={`font-bold ${fulfilled > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>{fulfilled}ctn</span>
-                              </div>
-                              <div className="flex flex-col">
-                                <span className="text-[8px] text-amber-500">Pending</span>
-                                <span className={`font-bold ${pending > 0 ? 'text-amber-600' : 'text-slate-300'}`}>{pending}ctn</span>
-                              </div>
-                            </>
-                          );
-                        })()}
+                        <span className="w-1 h-1 rounded-full bg-slate-200" />
+                        <span className="text-indigo-600 font-black">₹{order.finalAmount?.toLocaleString()}</span>
                       </div>
                     </div>
                   </div>
+
+                  <div className="flex items-center justify-end gap-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex gap-2">
+                      {order.status === OrderStatus.BOOKED && (
+                        <span className="px-2 py-1 bg-amber-50 text-amber-600 rounded-lg font-bold text-[8px] uppercase tracking-wider border border-amber-100 flex items-center gap-1">
+                          <AlertCircle size={10} /> Needs Allocation
+                        </span>
+                      )}
+                      {order.status === OrderStatus.RECEIVED && order.billUrl && (
+                        <button 
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5005/api';
+                            window.open(`${baseUrl.replace('/api', '')}${order.billUrl}`, '_blank');
+                          }}
+                          className="px-2.5 py-1 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold text-[9px] uppercase hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all tracking-wider flex items-center gap-1"
+                        >
+                          <FileText size={12} /> Bill
+                        </button>
+                      )}
+                    </div>
+                    <ChevronRight size={14} className="text-slate-200 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
+                  </div>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 pt-3 sm:pt-0" onClick={(e) => e.stopPropagation()}>
-                  <div className="md:hidden">
-                    <StatusBadge status={order.status} />
+                {/* Sleek Progress Edge */}
+                {isTransitioning && (
+                  <div className="absolute bottom-0 left-0 h-[1.5px] w-full bg-slate-100/50">
+                    <div 
+                      className="h-full bg-emerald-500 transition-all duration-1000 shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                      style={{ width: `${progress}%` }}
+                    />
                   </div>
-                  
-                  <div className="flex gap-2">
-                    {order.status === OrderStatus.BOOKED && (
-                      <span className="px-3 py-1.5 bg-slate-50 text-slate-400 rounded-lg font-bold text-[9px] uppercase tracking-wider border border-slate-100 flex items-center gap-1.5">
-                        <Loader2 size={10} className="animate-spin" /> Allocation Required
-                      </span>
-                    )}
-                    {order.status === OrderStatus.RECEIVED && order.billUrl && (
-                      <button 
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5005/api';
-                          window.open(`${baseUrl.replace('/api', '')}${order.billUrl}`, '_blank');
-                        }}
-                        className="px-3 py-1.5 bg-violet-50 text-violet-600 rounded-lg font-bold text-[10px] uppercase hover:bg-violet-600 hover:text-white transition-all tracking-wider flex items-center gap-1.5"
-                      >
-                        <FileText size={12} /> View Bill
-                      </button>
-                    )}
-                  </div>
-                </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
           
           {orders.length === 0 && !loading && (
             <div className="bg-white rounded-2xl p-12 border border-dashed border-slate-200 text-center">
@@ -315,6 +308,7 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   [OrderStatus.RFD]: 'Ready for Delivery',
   [OrderStatus.OFD]: 'Out for Delivery',
   [OrderStatus.RECEIVED]: 'Received',
+  [OrderStatus.PARTIAL]: 'Partially Delivered',
   [OrderStatus.PENDING]: 'Pending',
 };
 
@@ -325,6 +319,7 @@ const StatusBadge: React.FC<{ status: OrderStatus }> = ({ status }) => {
     [OrderStatus.RFD]: { color: 'bg-blue-50 text-blue-500 border-blue-100' },
     [OrderStatus.OFD]: { color: 'bg-emerald-50 text-emerald-500 border-emerald-100' },
     [OrderStatus.RECEIVED]: { color: 'bg-slate-50 text-slate-500 border-slate-100' },
+    [OrderStatus.PARTIAL]: { color: 'bg-amber-100 text-amber-700 border-amber-200' },
   };
 
   const { color } = config[status] || { color: 'bg-gray-50 text-gray-500 border-gray-100' };
@@ -346,7 +341,12 @@ const OrderProgress: React.FC<{
     OrderStatus.RECEIVED
   ];
   
-  const currentIndex = stages.indexOf(status);
+  let currentIndex = stages.indexOf(status);
+  
+  // Custom handling for PARTIAL status to show progress between OFD and RECEIVED
+  if (status === OrderStatus.PARTIAL) {
+    currentIndex = 3.5;
+  }
   
   return (
     <div className="flex items-center gap-1.5 w-full max-w-[320px]">

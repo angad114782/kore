@@ -22,9 +22,10 @@ import {
   Phone,
   User as UserIcon,
   ShieldCheck,
-  Mail
+  Mail,
+  History
 } from 'lucide-react';
-import { Order, OrderStatus, Article, Inventory } from '../../types';
+import { Order, OrderStatus, Article, Inventory, OrderItem, FulfillmentBatch } from '../../types';
 import jsPDF from 'jspdf';
 import autoTable, { UserOptions } from 'jspdf-autotable';
 
@@ -45,6 +46,7 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   [OrderStatus.RFD]: 'Ready for Delivery',
   [OrderStatus.OFD]: 'Out for Delivery',
   [OrderStatus.RECEIVED]: 'Received',
+  [OrderStatus.PARTIAL]: 'Partially Delivered',
   [OrderStatus.PENDING]: 'Pending',
 };
 
@@ -59,6 +61,7 @@ interface OrderDetailProps {
 const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, onBack, isDistributor = false }) => {
   const [uploading, setUploading] = useState(false);
   const [currentOrder, setCurrentOrder] = useState<Order>(order);
+  const [activeTab, setActiveTab] = useState<'items' | 'history'>('items');
 
   // Sync state if order prop changes (real-time updates from parent/socket)
   React.useEffect(() => {
@@ -99,9 +102,16 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
     setAllocations(initial);
   }, [currentOrder]);
 
-  const handleCartonAllocationChange = (variantId: string, newCartonCount: number, originalCartonCount: number, originalPairCount: number, originalSizeQuantities: Record<string, number>) => {
+  const handleCartonAllocationChange = (variantId: string, newCartonCount: number, item: OrderItem) => {
     setAllocations(prev => {
-      const cartonCount = Math.max(0, Math.min(newCartonCount, originalCartonCount));
+      const fulfilled = item.fulfilledCartonCount || 0;
+      const remaining = item.cartonCount - fulfilled;
+      const cartonCount = Math.max(0, Math.min(newCartonCount, remaining));
+      
+      const originalCartonCount = item.cartonCount;
+      const originalPairCount = item.pairCount;
+      const originalSizeQuantities = item.sizeQuantities || {};
+
       const ratio = originalCartonCount > 0 ? cartonCount / originalCartonCount : 0;
       
       const newPairCount = Math.round(originalPairCount * ratio);
@@ -263,14 +273,21 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
       "Net 30 Days",
     ]);
 
+    // Dynamic batch values for PI
+    const getBatchCartons = (item: any) => ['PFD', 'RFD', 'OFD'].includes(currentOrder.status) ? (item.allocatedCartonCount || 0) : item.cartonCount;
+    const getBatchPairs = (item: any) => ['PFD', 'RFD', 'OFD'].includes(currentOrder.status) ? (item.allocatedPairCount || 0) : item.pairCount;
+
+    const totalBatchPairs = currentOrder.items.reduce((sum, item) => sum + getBatchPairs(item), 0);
+    const totalBatchCartons = currentOrder.items.reduce((sum, item) => sum + getBatchCartons(item), 0);
+
     // Row 4
     topTableData.push([
       { content: "PAN No.", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
       COMPANY_CONFIG.pan,
       { content: "Total Pairs", styles: { fontStyle: "bold" } },
-      currentOrder.totalPairs,
+      totalBatchPairs,
       { content: "Total Cartons", styles: { fontStyle: "bold" } },
-      currentOrder.totalCartons,
+      totalBatchCartons,
     ]);
 
     // Row 5: Addresses
@@ -317,11 +334,17 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
     });
 
     // Item Table Data
-    const itemRows = currentOrder.items.map((item, idx) => {
+    const itemRows = currentOrder.items
+      .filter(item => {
+        const qty = getBatchPairs(item);
+        return qty > 0;
+      })
+      .map((item, idx) => {
       const article = articles.find(a => a.id === item.articleId);
       const variant = article?.variants?.find(v => v.id === item.variantId);
       const price = variant?.costPrice || 0;
-      const totalValue = item.pairCount * price;
+      const batchPairs = getBatchPairs(item);
+      const totalValue = batchPairs * price;
       const hsn = article?.sku || '6404'; // Default hsn for footwear if not available
       const gender = article?.category?.toString().charAt(0) || 'M';
 
@@ -334,7 +357,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
         variant?.color || 'N/A',
         gender,
         article?.mrp || item.price / (item.pairCount || 1), // MRP
-        item.pairCount,
+        batchPairs,
         price.toFixed(2), // Unit Cost
         totalValue.toFixed(2), // Total Value
       ];
@@ -373,13 +396,13 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
     const subTotal = currentOrder.items.reduce((sum, item) => {
       const art = articles.find(a => a.id === item.articleId);
       const vari = art?.variants?.find(v => v.id === item.variantId);
-      return sum + (item.pairCount * (vari?.costPrice || 0));
+      return sum + (getBatchPairs(item) * (vari?.costPrice || 0));
     }, 0);
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.text(`Sub Total: Rs. ${subTotal.toLocaleString()}`, 420, finalY);
-    doc.text(`Total Qty: ${currentOrder.totalPairs} Pairs`, 420, finalY + 12);
+    doc.text(`Total Qty: ${totalBatchPairs} Pairs`, 420, finalY + 12);
     
     doc.setFontSize(11);
     doc.setTextColor(79, 70, 229);
@@ -397,6 +420,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
 
   const statusSteps = [
     { status: OrderStatus.BOOKED, label: 'Booked', icon: <Clock size={16} /> },
+    { status: OrderStatus.PARTIAL, label: 'Partial', icon: <Package size={16} /> },
     { status: OrderStatus.PFD, label: 'Prepare for Delivery', icon: <Package size={16} /> },
     { status: OrderStatus.RFD, label: 'Ready for Delivery', icon: <Package size={16} /> },
     { status: OrderStatus.OFD, label: 'Out for Delivery', icon: <Truck size={16} /> },
@@ -451,9 +475,8 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="lg:col-span-3 space-y-4">
-          {/* Status Timeline - Compact */}
+      <div className="space-y-6">
+        {/* Status Timeline - Compact */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <div className="relative flex justify-between">
               {/* Progress Line */}
@@ -673,294 +696,485 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
             </div>
           )}
 
-          {/* Items Detail - Sleek Rows */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                <Package size={14} className="text-indigo-600" />
-                Order Items
-              </h3>
-              <span className="text-[10px] font-bold text-slate-400">{currentOrder.items.length} Variants</span>
-            </div>
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/30">
-                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Image</th>
-                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Article / Variant</th>
-                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Color</th>
-                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Live Stock</th>
-                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Allocated Cartons</th>
-                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {currentOrder.items.map((item, idx) => {
-                    const article = articles.find(a => a.id === item.articleId);
-                    const variant = article?.variants?.find(v => v.id === item.variantId);
-                    const inv = inventory.find(i => i.articleId === item.articleId);
-                    
-                    const itemIsBooked = currentOrder.status === OrderStatus.BOOKED;
-                    const price = variant?.costPrice || 0;
-                    const amount = item.pairCount * price;
-
-                    return (
-                      <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="w-12 h-12 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 flex items-center justify-center">
-                            {(() => {
-                              const colorMedia = article?.colorMedia || [];
-                              const matched = colorMedia.find(cm => cm.color.toLowerCase() === variant?.color?.toLowerCase());
-                              const vImg = (matched && matched.images && matched.images.length > 0) 
-                                ? matched.images[0].url 
-                                : (variant?.images && variant?.images.length > 0 ? variant?.images[0] : article?.imageUrl);
-                              
-                              return vImg ? (
-                                <img 
-                                  src={getImageUrl(vImg)} 
-                                  alt={variant?.color || article?.name}
-                                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
-                                />
-                              ) : (
-                                <ImageIcon size={20} className="text-slate-200" />
-                              );
-                            })()}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <p className="font-bold text-sm text-slate-900 leading-tight">
-                            {article?.name}{variant ? `-${variant.color}-${variant.sizeRange}` : ''}
-                          </p>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{variant?.sku || 'NO-SKU'}</p>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="px-2 py-0.5 rounded-full bg-slate-100 text-[10px] font-bold text-slate-600 uppercase">
-                            {variant?.color || 'N/A'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-center">
-                            <p className="text-sm font-black text-slate-800 leading-none">{Math.abs(inv?.availableStock || 0)}</p>
-                            <p className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest mt-1">Live</p>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          {itemIsBooked && !isDistributor ? (
-                            <div className="flex items-center gap-3">
-                              <div className="relative w-24">
-                                <input
-                                  type="number"
-                                  value={allocations[item.variantId!]?.allocatedCartonCount ?? item.cartonCount}
-                                  max={item.cartonCount}
-                                  onChange={(e) => handleCartonAllocationChange(
-                                    item.variantId!, 
-                                    parseInt(e.target.value) || 0, 
-                                    item.cartonCount, 
-                                    item.pairCount, 
-                                    item.sizeQuantities || {}
-                                  )}
-                                  className="w-full pl-3 pr-8 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs font-black text-indigo-600 focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm"
-                                />
-                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold text-indigo-300">CTN</span>
-                              </div>
-                              <span className="text-[9px] font-bold text-slate-300 uppercase">of {item.cartonCount} CTN</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-black text-slate-900">{item.allocatedCartonCount ?? item.cartonCount} CTN</span>
-                              {currentOrder.status === OrderStatus.RECEIVED ? (
-                                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Fulfilled</span>
-                              ) : (
-                                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">Pending</span>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <p className="font-bold text-sm text-slate-900 tracking-tight">₹{amount.toLocaleString()}</p>
-                          <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">{item.pairCount} Pairs</p>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            
-            {!isDistributor && currentOrder.status === OrderStatus.BOOKED && (
-              <div className="p-6 bg-slate-50/50 border-t border-slate-100 flex justify-end items-center gap-4">
-                <div className="flex flex-col text-right">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Allocation Action</span>
-                  <span className="text-xs font-bold text-indigo-600">Review all items before proceeding</span>
-                </div>
+          {/* Layout Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div className="lg:col-span-3 space-y-6">
+              {/* Tabs Navigation */}
+              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-2xl w-fit">
                 <button
-                  disabled={uploading}
-                  onClick={handleAllocateAndProceed}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                  onClick={() => setActiveTab('items')}
+                  className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                    activeTab === 'items' 
+                      ? 'bg-white text-indigo-600 shadow-sm' 
+                      : 'text-slate-400 hover:text-slate-600'
+                  }`}
                 >
-                  {uploading ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <CheckCircle size={16} />
-                  )}
-                  Allocate & Prepare for Delivery
+                  <Package size={14} />
+                  Order Items
+                  <span className={`px-1.5 py-0.5 rounded-md text-[8px] ${
+                     activeTab === 'items' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 text-slate-500'
+                  }`}>
+                    {currentOrder.items.length}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('history')}
+                  className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                    activeTab === 'history' 
+                      ? 'bg-white text-indigo-600 shadow-sm' 
+                      : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  <History size={14} />
+                  Delivery History
+                  <span className={`px-1.5 py-0.5 rounded-md text-[8px] ${
+                     activeTab === 'history' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 text-slate-500'
+                  }`}>
+                    {currentOrder.fulfillmentHistory?.length || 0}
+                  </span>
                 </button>
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* Sidebar info - Compact */}
-        <div className="space-y-4">
-          {/* Order Summary */}
-          <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-lg">
-            <h3 className="text-xs font-bold uppercase tracking-[0.2em] mb-4 border-b border-white/10 pb-3 text-slate-400">Payment Breakdown</h3>
-            <div className="space-y-3 mb-5">
-              <div className="flex justify-between text-slate-400 text-[11px]">
-                <span>Total Cartons</span>
-                <span className="font-bold text-white">{currentOrder.totalCartons}</span>
-              </div>
-              {/* <div className="flex justify-between text-slate-400 text-[11px]">
-                <span>Total Pairs</span>
-                <span className="font-bold text-white">{currentOrder.totalPairs}</span>
-              </div> */}
-
-              {/* Fulfillment Summary */}
-              {(() => {
-                const allocated = currentOrder.items.reduce((acc, item) => acc + (item.allocatedCartonCount ?? 0), 0);
-                const fulfilled = currentOrder.status === OrderStatus.RECEIVED ? allocated : 0;
-                const pending = currentOrder.totalCartons - fulfilled;
-                return (
-                  <div className="pt-3 mt-3 border-t border-white/10 grid grid-cols-2 gap-3">
-                    {/* <div className="bg-white/5 p-2 rounded-lg border border-white/5">
-                      <p className="text-[8px] font-bold text-emerald-400 uppercase tracking-widest mb-0.5">Fulfilled</p>
-                      <p className="text-xs font-black text-white">{fulfilled} <span className="text-[8px] text-slate-500 font-bold uppercase">Ctns</span></p>
-                    </div> */}
-                    <div className="bg-white/5 p-2 rounded-lg border border-white/5">
-                      <p className="text-[8px] font-bold text-amber-400 uppercase tracking-widest mb-0.5">Pending</p>
-                      <p className="text-xs font-black text-white">{pending} <span className="text-[8px] text-slate-500 font-bold uppercase">Ctns</span></p>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <div className="pt-3 border-t border-white/10 space-y-2">
-                <div className="flex justify-between items-end">
-                  <span className="text-[11px] font-bold text-slate-400">Subtotal</span>
-                  <span className="text-sm font-bold text-slate-300">
-                    ₹{(currentOrder.totalAmount || 0).toLocaleString()}
-                  </span>
-                </div>
-                {(currentOrder.discountPercentage || 0) > 0 && (
-                  <div className="flex justify-between items-end">
-                    <span className="text-[11px] font-bold text-emerald-400">Discount ({currentOrder.discountPercentage}%)</span>
-                    <span className="text-sm font-bold text-emerald-400">-₹{(currentOrder.discountAmount || 0).toLocaleString()}</span>
-                  </div>
-                )}
-                <div className="flex justify-between items-end pt-2 border-t border-white/5">
-                  <span className="text-xs font-bold text-white">Total Amount</span>
-                  <span className="text-xl font-black text-indigo-400 tracking-tight">
-                    ₹{(currentOrder.finalAmount || currentOrder.totalAmount || 0).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white/5 p-3 rounded-xl flex items-center gap-3 mt-4 border border-white/5">
-              <CreditCard size={16} className="text-indigo-400" />
-              <div>
-                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Terms</p>
-                <p className="text-[11px] font-medium">Net 30 Days</p>
-              </div>
-            </div>
-
-            {/* Admin Status Transitions */}
-            {!isDistributor && (
-              <div className="mt-6 pt-6 border-t border-white/10 space-y-3">
-                <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Order Management</p>
-                
-                {currentOrder.status === OrderStatus.PFD && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleDownloadPI}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all shadow-md shadow-slate-200/50 active:scale-95"
-                    >
-                      <FileText size={14} className="text-indigo-600" />
-                      PI
-                    </button>
-                    <button
-                      disabled={uploading}
-                      onClick={() => handleUpdateStatus(OrderStatus.RFD)}
-                      className="flex-[2] flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 transition-all shadow-md active:scale-95 disabled:opacity-50"
-                    >
-                      {uploading ? <Loader2 size={14} className="animate-spin" /> : <ChevronRight size={14} />}
-                      Ready for Delivery
-                    </button>
-                  </div>
-                )}
-                
-                {currentOrder.status !== OrderStatus.BOOKED && currentOrder.status !== OrderStatus.RECEIVED && (
-                  <p className="text-[8px] text-slate-500 text-center font-bold uppercase tracking-widest mt-2">
-                    Current Status: {STATUS_LABELS[currentOrder.status]}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Shipping Info */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <MapPin size={16} className="text-indigo-600" />
-              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-widest">Delivery</h3>
-            </div>
-            {(() => {
-              const d = typeof currentOrder.distributorId === 'object' ? currentOrder.distributorId : null;
-              const profile = d?.distributorId;
-              const addr = profile?.shippingAddress;
-              const email = profile?.email || d?.email || 'N/A';
-              const phone = profile?.phone || 'N/A';
-
-              return (
-                <div className="space-y-4">
-                  <div>
-                    <p className="font-bold text-sm text-slate-900 tracking-tight">
-                      {profile?.companyName || currentOrder.distributorName}
-                    </p>
-                    {addr && addr.address1 ? (
-                      <p className="text-[10px] text-slate-500 leading-relaxed font-medium mt-1">
-                        {addr.attention && <span className="block italic text-slate-400">Attn: {addr.attention}</span>}
-                        {addr.address1}{addr.address2 ? `, ${addr.address2}` : ''}<br />
-                        {addr.city}, {addr.state} - {addr.pinCode}<br />
-                        {addr.country}
-                      </p>
-                    ) : (
-                      <p className="text-[10px] text-slate-400 italic mt-1">Shipping address not details available</p>
-                    )}
+              <div className="transition-all duration-500 min-h-[400px]">
+            {activeTab === 'items' ? (
+              <div className="animate-in fade-in slide-in-from-left-4 duration-500 space-y-6">
+                {/* Items Detail - Sleek Rows */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                      <Package size={14} className="text-indigo-600" />
+                      Current Order Breakdown
+                    </h3>
                   </div>
                   
-                  <div className="pt-4 border-t border-slate-100 flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-slate-50 flex items-center justify-center">
-                        <Phone size={12} className="text-slate-400" />
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-100 bg-slate-50/30">
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Image</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Article / Variant</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Color</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ordered</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Fulfilled</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Remaining</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Allocation (Current Batch)</th>
+                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {currentOrder.items.map((item, idx) => {
+                          const article = articles.find(a => a.id === item.articleId);
+                          const variant = article?.variants?.find(v => v.id === item.variantId);
+                          
+                          const itemIsBooked = currentOrder.status === OrderStatus.BOOKED;
+                          const price = variant?.costPrice || 0;
+                          const amount = item.pairCount * price;
+
+                          return (
+                            <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
+                              <td className="px-6 py-4">
+                                <div className="w-12 h-12 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 flex items-center justify-center">
+                                  {(() => {
+                                    const colorMedia = article?.colorMedia || [];
+                                    const matched = colorMedia.find(cm => cm.color.toLowerCase() === variant?.color?.toLowerCase());
+                                    const vImg = (matched && matched.images && matched.images.length > 0) 
+                                      ? matched.images[0].url 
+                                      : (variant?.images && variant?.images.length > 0 ? variant?.images[0] : article?.imageUrl);
+                                    
+                                    return vImg ? (
+                                      <img 
+                                        src={getImageUrl(vImg)} 
+                                        alt={variant?.color || article?.name}
+                                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                                      />
+                                    ) : (
+                                      <ImageIcon size={20} className="text-slate-200" />
+                                    );
+                                  })()}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <p className="font-bold text-sm text-slate-900 leading-tight">
+                                  {article?.name}{variant ? `-${variant.color}-${variant.sizeRange}` : ''}
+                                </p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{variant?.sku || 'NO-SKU'}</p>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-[10px] font-bold text-slate-600 uppercase">
+                                  {variant?.color || 'N/A'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="text-center">
+                                  <p className="text-sm font-black text-slate-800 leading-none">{item.cartonCount}</p>
+                                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">Ctn</p>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="text-center">
+                                  <p className="text-sm font-black text-emerald-600 leading-none">{item.fulfilledCartonCount || 0}</p>
+                                  <p className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest mt-1">Ctn</p>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="text-center">
+                                  <p className="text-sm font-black text-amber-600 leading-none">{Math.max(0, item.cartonCount - (item.fulfilledCartonCount || 0))}</p>
+                                  <p className="text-[8px] font-bold text-amber-500 uppercase tracking-widest mt-1">Ctn</p>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                {(itemIsBooked || currentOrder.status === OrderStatus.PARTIAL) && !isDistributor ? (
+                                  <div className="flex items-center gap-3">
+                                    <div className="relative w-24">
+                                      <input
+                                        type="number"
+                                        value={allocations[item.variantId!]?.allocatedCartonCount ?? 0}
+                                        max={item.cartonCount - (item.fulfilledCartonCount || 0)}
+                                        onChange={(e) => handleCartonAllocationChange(
+                                          item.variantId!, 
+                                          parseInt(e.target.value) || 0,
+                                          item
+                                        )}
+                                        className="w-full pl-3 pr-8 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs font-black text-indigo-600 focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm"
+                                      />
+                                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold text-indigo-300">CTN</span>
+                                    </div>
+                                    <span className="text-[9px] font-bold text-slate-300 uppercase">of {item.cartonCount - (item.fulfilledCartonCount || 0)} Rem</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-black text-slate-900">{item.allocatedCartonCount || 0} CTN</span>
+                                    {item.allocatedCartonCount && item.allocatedCartonCount > 0 ? (
+                                      <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">In Transit</span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">-</span>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <p className="font-bold text-sm text-slate-900 tracking-tight">₹{amount.toLocaleString()}</p>
+                                <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">{item.pairCount} Pairs</p>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {!isDistributor && (currentOrder.status === OrderStatus.BOOKED || currentOrder.status === OrderStatus.PARTIAL) && (
+                    <div className="p-6 bg-slate-50/50 border-t border-slate-100 flex justify-end items-center gap-4">
+                      <div className="flex flex-col text-right">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Allocation Action</span>
+                        <span className="text-xs font-bold text-indigo-600">Prepare items for the next delivery batch</span>
                       </div>
-                      <p className="text-[10px] font-semibold text-slate-700">{phone}</p>
+                      <button
+                        disabled={uploading}
+                        onClick={handleAllocateAndProceed}
+                        className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                      >
+                        {uploading ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <CheckCircle size={16} />
+                        )}
+                        Allocate & Prepare for Delivery
+                      </button>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-slate-50 flex items-center justify-center">
-                        <Mail size={12} className="text-slate-400" />
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-6">
+                {/* Fulfillment History Section */}
+                {currentOrder.fulfillmentHistory && currentOrder.fulfillmentHistory.length > 0 ? (
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                        <History size={14} className="text-indigo-600" />
+                        Detailed Fulfillment Timeline
+                      </h3>
+                    </div>
+
+                    <div className="p-6 space-y-8">
+                      {currentOrder.fulfillmentHistory.slice().reverse().map((batch, bidx) => (
+                        <div key={batch.id || bidx} className="relative pl-8 before:absolute before:left-[11px] before:top-2 before:bottom-[-32px] before:w-0.5 before:bg-slate-100 last:before:hidden">
+                          {/* Timeline Node */}
+                          <div className="absolute left-0 top-1.5 w-6 h-6 rounded-full bg-white border-2 border-indigo-500 flex items-center justify-center z-10 shadow-sm">
+                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                          </div>
+
+                          <div className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden hover:border-indigo-200 transition-all group">
+                            {/* Batch Header */}
+                            <div className="px-5 py-3 border-b border-slate-200 bg-white flex flex-col sm:flex-row justify-between gap-3">
+                              <div className="flex items-center gap-4">
+                                <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-xs">
+                                  #{batch.batchNumber || currentOrder.fulfillmentHistory!.length - bidx}
+                                </div>
+                                <div>
+                                  <p className="text-xs font-bold text-slate-900">Delivery Batch Confirmation</p>
+                                  <p className="text-[10px] font-medium text-slate-400 flex items-center gap-1 mt-0.5">
+                                    <Calendar size={10} /> {new Date(batch.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })} at {new Date(batch.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {batch.invoiceUrl && (
+                                  <a href={getFullUrl(batch.invoiceUrl)!} target="_blank" rel="noopener noreferrer" className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm" title="View Invoice">
+                                    <FileText size={14} />
+                                  </a>
+                                )}
+                                {batch.ewayBillUrl && (
+                                  <a href={getFullUrl(batch.ewayBillUrl)!} target="_blank" rel="noopener noreferrer" className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-all shadow-sm" title="View E-Way Bill">
+                                    <Truck size={14} />
+                                  </a>
+                                )}
+                                {batch.receivingNoteUrl && (
+                                  <a href={getFullUrl(batch.receivingNoteUrl)!} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-900 text-emerald-400 rounded-lg hover:bg-emerald-400 hover:text-slate-900 transition-all shadow-sm" title="View Receiving Note">
+                                    <ShieldCheck size={14} />
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Batch Items Table */}
+                            <div className="p-4">
+                              <table className="w-full text-left">
+                                <thead>
+                                  <tr className="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
+                                    <th className="pb-2">Article / Variant</th>
+                                    <th className="pb-2 text-center">Batch Delv</th>
+                                    <th className="pb-2 text-right">Value</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {batch.items.map((bItem, iIdx) => {
+                                    let artName = "Unknown Article";
+                                    let varColor = "N/A";
+                                    let itemPrice = 0;
+
+                                    articles.forEach(art => {
+                                      const variant = art.variants?.find(v => v.id === bItem.variantId.toString());
+                                      if (variant) {
+                                        artName = art.name;
+                                        varColor = variant.color;
+                                        itemPrice = variant.costPrice || 0;
+                                      }
+                                    });
+
+                                    return (
+                                      <tr key={iIdx}>
+                                        <td className="py-2.5">
+                                          <p className="text-[11px] font-bold text-slate-800">{artName}</p>
+                                          <p className="text-[9px] font-medium text-slate-400 lowercase">{varColor}</p>
+                                        </td>
+                                        <td className="py-2.5 text-center">
+                                          <span className="inline-flex px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[10px] font-black">{bItem.cartonCount} CTN</span>
+                                        </td>
+                                        <td className="py-2.5 text-right font-bold text-slate-700 text-[10px]">
+                                          ₹{(bItem.pairCount * itemPrice).toLocaleString()}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                                <tfoot>
+                                  <tr className="border-t-2 border-slate-200 border-dashed">
+                                    <td className="pt-3 text-[10px] font-black text-slate-400 uppercase">Batch Total</td>
+                                    <td className="pt-3 text-center">
+                                      <p className="text-xs font-black text-slate-900">{batch.totalCartons} CTN</p>
+                                      <p className="text-[8px] font-bold text-slate-400 uppercase">{batch.totalPairs} Pairs</p>
+                                    </td>
+                                    <td className="pt-3 text-right">
+                                      <p className="text-xs font-black text-indigo-600">₹{batch.totalAmount.toLocaleString()}</p>
+                                    </td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+
+                            {/* Receiver Footer */}
+                            {batch.receiverName && (
+                              <div className="px-5 py-2.5 bg-slate-100/50 border-t border-slate-200 flex justify-between items-center">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-lg bg-white flex items-center justify-center border border-slate-200">
+                                    <UserIcon size={12} className="text-indigo-500" />
+                                  </div>
+                                  <p className="text-[10px] font-bold text-slate-600 uppercase tracking-tight">Received By: <span className="text-slate-900">{batch.receiverName}</span></p>
+                                </div>
+                                {batch.receiverMobile && (
+                                  <div className="flex items-center gap-1.5 text-slate-400">
+                                    <Phone size={10} />
+                                    <span className="text-[10px] font-bold">{batch.receiverMobile}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-2xl border border-slate-200 p-12 flex flex-col items-center justify-center text-center">
+                    <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4 text-slate-300">
+                      <History size={32} />
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-900">No Delivery History</h3>
+                    <p className="text-sm text-slate-500 max-w-xs mt-2">Fulfillment batches will appear here as soon as orders are delivered and confirmed.</p>
+                  </div>
+                )}
+              </div>
+            )}
+              </div>
+            </div>
+
+            {/* Sidebar Column */}
+            <div className="lg:col-span-1 space-y-6">
+              {/* Payment Breakdown */}
+              <div className="bg-slate-900 text-white p-7 rounded-3xl shadow-xl shadow-slate-200/20">
+                <h3 className="text-xs font-black uppercase tracking-[0.3em] mb-6 border-b border-white/10 pb-4 text-slate-400">Payment Breakdown</h3>
+                <div className="space-y-4 mb-6">
+                  <div className="flex justify-between text-slate-400 text-xs">
+                    <span>Total Cartons</span>
+                    <span className="font-bold text-white">{currentOrder.totalCartons}</span>
+                  </div>
+
+                  {/* Fulfillment Summary */}
+                  {(() => {
+                    const allocated = currentOrder.items.reduce((acc, item) => acc + (item.allocatedCartonCount ?? 0), 0);
+                    const fulfilled = currentOrder.status === OrderStatus.RECEIVED || currentOrder.status === OrderStatus.PARTIAL 
+                      ? currentOrder.items.reduce((acc, item) => acc + (item.fulfilledCartonCount || 0), 0)
+                      : 0;
+                    const pending = currentOrder.totalCartons - fulfilled;
+                    return (
+                      <div className="pt-4 mt-4 border-t border-white/10">
+                        <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
+                          <div>
+                            <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">Status: Pending Delivery</p>
+                            <p className="text-xl font-black text-white">{pending} <span className="text-xs text-slate-500 font-bold uppercase">Cartons</span></p>
+                          </div>
+                          <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
+                            <Package size={20} className="text-amber-500" />
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-[10px] font-semibold text-slate-700">{email}</p>
+                    );
+                  })()}
+
+                  <div className="pt-6 border-t border-white/10 space-y-3">
+                    <div className="flex justify-between items-end">
+                      <span className="text-xs font-bold text-slate-400">Order Subtotal</span>
+                      <span className="text-base font-bold text-slate-300">
+                        ₹{(currentOrder.totalAmount || 0).toLocaleString()}
+                      </span>
+                    </div>
+                    {(currentOrder.discountPercentage || 0) > 0 && (
+                      <div className="flex justify-between items-end">
+                        <span className="text-xs font-bold text-emerald-400">Special Discount ({currentOrder.discountPercentage}%)</span>
+                        <span className="text-base font-bold text-emerald-400">-₹{(currentOrder.discountAmount || 0).toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-end pt-4 border-t border-white/10">
+                      <span className="text-sm font-black text-white uppercase tracking-widest">Final Payable</span>
+                      <span className="text-3xl font-black text-indigo-400 tracking-tighter">
+                        ₹{(currentOrder.finalAmount || currentOrder.totalAmount || 0).toLocaleString()}
+                      </span>
                     </div>
                   </div>
                 </div>
-              );
-            })()}
+
+                {/* Admin Status Transitions */}
+                {!isDistributor && (
+                  <div className="mt-8 pt-8 border-t border-white/10 space-y-4">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Lifecycle Management</p>
+                    
+                    {currentOrder.status === OrderStatus.PFD && (
+                      <div className="flex flex-col gap-3">
+                        <button
+                          onClick={handleDownloadPI}
+                          className="flex items-center justify-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl font-bold text-xs hover:bg-slate-50 transition-all shadow-lg"
+                        >
+                          <FileText size={16} className="text-indigo-600" />
+                          Download Proforma
+                        </button>
+                        <button
+                          disabled={uploading}
+                          onClick={() => handleUpdateStatus(OrderStatus.RFD)}
+                          className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
+                        >
+                          {uploading ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
+                          Mark Ready for Delivery
+                        </button>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 rounded-xl">
+                      <Clock size={12} className="text-slate-500" />
+                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em]">
+                        Current Stage: {STATUS_LABELS[currentOrder.status]}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Delivery Location Sidebar */}
+              <div className="bg-white p-7 rounded-3xl border border-slate-200 shadow-xl shadow-slate-200/20">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center">
+                    <MapPin size={20} className="text-indigo-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest leading-none mb-1">Destination</h3>
+                    <p className="text-[10px] font-bold text-slate-400">Shipping Details</p>
+                  </div>
+                </div>
+
+                {(() => {
+                  const d = typeof currentOrder.distributorId === 'object' ? currentOrder.distributorId : null;
+                  const profile = d?.distributorId;
+                  const addr = profile?.shippingAddress;
+                  const email = profile?.email || d?.email || 'N/A';
+                  const phone = profile?.phone || 'N/A';
+
+                  return (
+                    <div className="space-y-6">
+                      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                        <p className="font-black text-sm text-slate-900 tracking-tight mb-2">
+                          {profile?.companyName || currentOrder.distributorName}
+                        </p>
+                        {addr && addr.address1 ? (
+                          <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
+                            {addr.address1}{addr.address2 ? `, ${addr.address2}` : ''}<br />
+                            {addr.city}, {addr.state} - {addr.pinCode}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-slate-400 italic font-medium">Shipping address not available</p>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                          <Phone size={14} className="text-indigo-500" />
+                          <p className="text-[11px] font-bold text-slate-700">{phone}</p>
+                        </div>
+                        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 min-w-0">
+                          <Mail size={14} className="text-blue-500" />
+                          <p className="text-[11px] font-bold text-slate-700 truncate">{email}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
 };
 
 const StatusBadge: React.FC<{ status: OrderStatus }> = ({ status }) => {
@@ -969,7 +1183,8 @@ const StatusBadge: React.FC<{ status: OrderStatus }> = ({ status }) => {
     [OrderStatus.PFD]: { color: 'bg-amber-50 text-amber-500 border-amber-100' },
     [OrderStatus.RFD]: { color: 'bg-blue-50 text-blue-500 border-blue-100' },
     [OrderStatus.OFD]: { color: 'bg-emerald-50 text-emerald-500 border-emerald-100' },
-    [OrderStatus.RECEIVED]: { color: 'bg-slate-50 text-slate-500 border-slate-100' },
+    [OrderStatus.RECEIVED]: { color: 'bg-emerald-50 text-emerald-600 border-emerald-100' },
+    [OrderStatus.PARTIAL]: { color: 'bg-amber-50 text-amber-600 border-amber-100' },
     [OrderStatus.PENDING]: { color: 'bg-slate-50 text-slate-400 border-slate-100' },
   };
 

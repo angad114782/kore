@@ -251,7 +251,16 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, inventory, isLoad
                       </div>
                       <div className="flex items-center gap-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                         <span className="flex items-center gap-1"><Clock size={12} /> {order.date}</span>
-                        <span className="flex items-center gap-1"><Package size={12} /> {order.totalCartons} ctn</span>
+                        <span className="flex items-center gap-1">
+                          <Package size={12} /> 
+                          {order.status === OrderStatus.PARTIAL || order.status === OrderStatus.RECEIVED ? (
+                            <span className="text-slate-900">
+                              {order.items.reduce((acc, item) => acc + (item.fulfilledCartonCount || 0), 0)} / {order.totalCartons} ctn
+                            </span>
+                          ) : (
+                            <span>{order.totalCartons} ctn</span>
+                          )}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -265,13 +274,17 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, inventory, isLoad
                   </div>
                 </div>
                 
-                {/* Condensed Items List */}
-                <div className="px-5 pb-3 flex flex-wrap gap-1.5">
+                <div className="px-5 pb-4 flex flex-wrap gap-1.5 mt-auto">
                   {order.items.slice(0, 5).map((item, idx) => {
                     const article = articles.find(a => a.id === item.articleId);
+                    const isPartiallyFulfilled = item.fulfilledCartonCount && item.fulfilledCartonCount > 0;
                     return (
-                      <span key={idx} className="bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100 text-[9px] font-bold text-slate-500">
-                        <span className="text-indigo-600 mr-1">{item.cartonCount}×</span>
+                      <span key={idx} className={`px-2 py-0.5 rounded-md border text-[9px] font-bold ${
+                        isPartiallyFulfilled ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-500'
+                      }`}>
+                        <span className={isPartiallyFulfilled ? 'text-emerald-600 mr-1' : 'text-indigo-600 mr-1'}>
+                          {isPartiallyFulfilled ? `${item.fulfilledCartonCount}/` : ''}{item.cartonCount}×
+                        </span>
                         {article?.name || 'Item'}
                       </span>
                     );
@@ -282,6 +295,16 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, inventory, isLoad
                     </span>
                   )}
                 </div>
+
+                {/* Progress Bar for Partial/Delivery */}
+                {(order.status === OrderStatus.PARTIAL || (order.status === OrderStatus.OFD && order.items.some(i => i.fulfilledCartonCount! > 0))) && (
+                  <div className="h-1 w-full bg-slate-100 mt-auto">
+                    <div 
+                      className="h-full bg-emerald-500 transition-all duration-1000"
+                      style={{ width: `${Math.min(100, Math.round((order.items.reduce((acc, i) => acc + (i.fulfilledCartonCount || 0), 0) / order.totalCartons) * 100))}%` }}
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -320,6 +343,7 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   [OrderStatus.RFD]: 'Ready for Delivery',
   [OrderStatus.OFD]: 'Out for Delivery',
   [OrderStatus.RECEIVED]: 'Received',
+  [OrderStatus.PARTIAL]: 'Partially Delivered',
   [OrderStatus.PENDING]: 'Pending',
 };
 
@@ -330,6 +354,7 @@ const StatusBadge: React.FC<{ status: OrderStatus }> = ({ status }) => {
     [OrderStatus.RFD]: { color: 'bg-blue-50 text-blue-500 border-blue-100' },
     [OrderStatus.OFD]: { color: 'bg-emerald-50 text-emerald-500 border-emerald-100' },
     [OrderStatus.RECEIVED]: { color: 'bg-slate-50 text-slate-500 border-slate-100' },
+    [OrderStatus.PARTIAL]: { color: 'bg-amber-100 text-amber-700 border-amber-200' },
   };
 
   const { color } = config[status] || { color: 'bg-gray-50 text-gray-500 border-gray-100' };

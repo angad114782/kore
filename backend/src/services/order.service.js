@@ -254,6 +254,7 @@ const updateOrderStatus = async (orderId, status, {
       "RFD",
       "OFD",
       "RECEIVED",
+      "PARTIAL"
     ];
 
     if (!validStatuses.includes(status)) {
@@ -276,26 +277,23 @@ const updateOrderStatus = async (orderId, status, {
 
     // Handle manual allocation when moving to PFD
     if (status === "PFD" && allocatedItems && Array.isArray(allocatedItems)) {
-      let newTotalAmount = 0;
-      let newTotalCartons = 0;
-      let newTotalPairs = 0;
-
       for (const allocatedItem of allocatedItems) {
         const orderItem = order.items.find(
           (item) => item.variantId.toString() === allocatedItem.variantId.toString()
         );
 
         if (orderItem) {
-          // Update allocated counts
+          // Validate against remaining quantity
+          const fulfilled = orderItem.fulfilledCartonCount || 0;
+          const remaining = orderItem.cartonCount - fulfilled;
+          if (allocatedItem.allocatedCartonCount > remaining) {
+            throw new Error(`Cannot allocate ${allocatedItem.allocatedCartonCount} cartons for ${orderItem.variantId}. Only ${remaining} remaining.`);
+          }
+
+          // Update allocated counts for the CURRENT batch
           orderItem.allocatedCartonCount = allocatedItem.allocatedCartonCount;
           orderItem.allocatedPairCount = allocatedItem.allocatedPairCount;
           orderItem.allocatedSizeQuantities = allocatedItem.allocatedSizeQuantities || {};
-
-          // Recalculate totals based on allocation
-          const perPairPrice = orderItem.price / (orderItem.pairCount || 1);
-          newTotalAmount += orderItem.allocatedPairCount * perPairPrice;
-          newTotalCartons += orderItem.allocatedCartonCount;
-          newTotalPairs += orderItem.allocatedPairCount;
 
           // Deduct from Stock (MasterCatalog)
           const catalogItem = await MasterCatalog.findById(orderItem.articleId);
@@ -316,15 +314,89 @@ const updateOrderStatus = async (orderId, status, {
           }
         }
       }
-
-      updateData.totalAmount = newTotalAmount;
-      updateData.totalCartons = newTotalCartons;
-      updateData.totalPairs = newTotalPairs;
-      
-      const discountAmount = (newTotalAmount * (order.discountPercentage || 0)) / 100;
-      updateData.discountAmount = discountAmount;
-      updateData.finalAmount = newTotalAmount - discountAmount;
       updateData.items = order.items;
+      // Note: We NO LONGER overwrite order.totalAmount etc. here.
+      // Those fields represent the ORIGINAL order.
+    }
+
+    // Handle finalization when moving to RECEIVED
+    if (status === "RECEIVED") {
+      const currentBatchItems = [];
+      let batchAmount = 0;
+      let batchCartons = 0;
+      let batchPairs = 0;
+
+      let allFulfilled = true;
+
+      for (const item of order.items) {
+        if (item.allocatedCartonCount > 0) {
+          // record in current batch
+          currentBatchItems.push({
+            variantId: item.variantId,
+            cartonCount: item.allocatedCartonCount,
+            pairCount: item.allocatedPairCount,
+            sizeQuantities: item.allocatedSizeQuantities
+          });
+
+          const perPairPrice = item.price / (item.pairCount || 1);
+          batchAmount += item.allocatedPairCount * perPairPrice;
+          batchCartons += item.allocatedCartonCount;
+          batchPairs += item.allocatedPairCount;
+
+          // update fulfilled counts
+          item.fulfilledCartonCount = (item.fulfilledCartonCount || 0) + item.allocatedCartonCount;
+          item.fulfilledPairCount = (item.fulfilledPairCount || 0) + item.allocatedPairCount;
+          
+          const fulfilledSizes = item.fulfilledSizeQuantities ? Object.fromEntries(item.fulfilledSizeQuantities) : {};
+          const currentAllocSizes = item.allocatedSizeQuantities ? Object.fromEntries(item.allocatedSizeQuantities) : {};
+          
+          for (const [size, qty] of Object.entries(currentAllocSizes)) {
+            fulfilledSizes[size] = (fulfilledSizes[size] || 0) + qty;
+          }
+          item.fulfilledSizeQuantities = fulfilledSizes;
+
+          // reset allocated counts for next batch
+          item.allocatedCartonCount = 0;
+          item.allocatedPairCount = 0;
+          item.allocatedSizeQuantities = {};
+        }
+
+        if ((item.fulfilledCartonCount || 0) < item.cartonCount) {
+          allFulfilled = false;
+        }
+      }
+
+      const batchNumber = (order.fulfillmentHistory?.length || 0) + 1;
+      const historyEntry = {
+        batchNumber,
+        date: new Date(),
+        items: currentBatchItems,
+        totalAmount: batchAmount,
+        totalCartons: batchCartons,
+        totalPairs: batchPairs,
+        billUrl: order.billUrl || billUrl,
+        invoiceUrl: order.invoiceUrl || invoiceUrl,
+        ewayBillUrl: order.ewayBillUrl || ewayBillUrl,
+        transportBillUrl: order.transportBillUrl || transportBillUrl,
+        receivingNoteUrl: receivingNoteUrl,
+        receiverName: receiverName,
+        receiverMobile: receiverMobile
+      };
+
+      if (!order.fulfillmentHistory) order.fulfillmentHistory = [];
+      order.fulfillmentHistory.push(historyEntry);
+
+      // Determine final status
+      updateData.status = allFulfilled ? "RECEIVED" : "PARTIAL";
+      updateData.items = order.items;
+      updateData.fulfillmentHistory = order.fulfillmentHistory;
+      
+      // Clear current batch docs from main order fields after archive
+      updateData.billUrl = null;
+      updateData.invoiceUrl = null;
+      updateData.ewayBillUrl = null;
+      updateData.transportBillUrl = null;
+      updateData.receivingNoteUrl = null;
     }
 
     // Apply updates to the order object

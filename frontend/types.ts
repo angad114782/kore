@@ -122,6 +122,7 @@ export enum OrderStatus {
   RFD = "RFD",       // Ready for Delivery
   OFD = "OFD",       // Out for Delivery
   RECEIVED = "RECEIVED",
+  PARTIAL = "PARTIAL", // Added for partial fulfillment
   PENDING = "PENDING",
 }
 
@@ -132,12 +133,37 @@ export interface OrderItem {
   /** detailed breakdown: pairs per size (e.g. {"5":12, "6":12}) */
   sizeQuantities?: Record<string, number>;
   allocatedSizeQuantities?: Record<string, number>;
+  fulfilledSizeQuantities?: Record<string, number>;
 
   cartonCount: number;
   allocatedCartonCount?: number;
+  fulfilledCartonCount?: number;
   pairCount: number;
   allocatedPairCount?: number;
+  fulfilledPairCount?: number;
   price: number;
+}
+
+export interface FulfillmentBatch {
+  id?: string;
+  batchNumber?: number;
+  date: string;
+  items: {
+    variantId: string;
+    cartonCount: number;
+    pairCount: number;
+    sizeQuantities: Record<string, number>;
+  }[];
+  totalAmount: number;
+  totalCartons: number;
+  totalPairs: number;
+  billUrl?: string;
+  invoiceUrl?: string;
+  ewayBillUrl?: string;
+  transportBillUrl?: string;
+  receivingNoteUrl?: string;
+  receiverName?: string;
+  receiverMobile?: string;
 }
 
 export interface Order {
@@ -159,6 +185,7 @@ export interface Order {
   date: string;
   status: OrderStatus;
   items: OrderItem[];
+  fulfillmentHistory?: FulfillmentBatch[];
   totalAmount: number;
   totalCartons: number;
   totalPairs: number;
