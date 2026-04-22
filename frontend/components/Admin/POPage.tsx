@@ -1076,9 +1076,9 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
   const targetArticle = articles.find(
   (a) => (a.id || (a as any)._id) === option.articleId
 );
-    const targetVariant = targetArticle?.variants?.find(
-      (v) => v.id === option.variantId || v._id === option.variantId
-    );
+   const targetVariant = targetArticle?.variants?.find(
+  (v: any) => v.id === option.variantId || v._id === option.variantId
+);
 
     // Construct default sizeMap with 0 quantities for a new PO item
     const defaultSizeMap: Record<string, { qty: number; sku: string }> = {};
@@ -2138,12 +2138,12 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                     {/* Item Details (Picker) */}
                     <td className="px-3 py-3 relative">
                       <div
-                        ref={
-                          activeItemPickerIdx === idx
-                            ? itemPickerRef
-                            : undefined
-                        }
-                      >
+  ref={
+    activeItemPickerIdx === idx
+      ? itemPickerTriggerRef
+      : undefined
+  }
+>
                         <button
                           type="button"
                           className={`w-full text-left px-3 py-2 border rounded-lg text-sm transition-all flex items-center justify-between ${
@@ -2161,22 +2161,22 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
 
                         {activeItemPickerIdx === idx &&
                           createPortal(
-                            <div
-                              ref={itemPickerRef}
-                              style={{
-                                position: "absolute",
-                                top: pickerPos.openUp
-                                  ? pickerPos.top - 10
-                                  : pickerPos.top + 42,
-                                left: pickerPos.left,
-                                width: pickerPos.width * 2,
-                                transform: pickerPos.openUp
-                                  ? "translateY(-100%)"
-                                  : "none",
-                                zIndex: 9999,
-                              }}
-                              className="bg-white border border-slate-200 rounded-xl shadow-2xl max-h-80 overflow-hidden"
-                            >
+                           <div
+  ref={itemPickerDropdownRef}
+  style={{
+    position: "absolute",
+    top: pickerPos.openUp
+      ? pickerPos.top - 10
+      : pickerPos.top + 42,
+    left: pickerPos.left,
+    width: pickerPos.width * 2,
+    transform: pickerPos.openUp
+      ? "translateY(-100%)"
+      : "none",
+    zIndex: 9999,
+  }}
+  className="bg-white border border-slate-200 rounded-xl shadow-2xl max-h-80 overflow-hidden"
+>
                               <div className="p-2 border-b border-slate-100">
                                 <div className="relative">
                                   <Search
@@ -2212,7 +2212,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                                         </div>
                                         {variants.map((option) => (
                                           <button
-                                            key={`${option.articleId}-${option.sku}`}
+                                            key={`${option.articleId}-${option.variantId}-${option.name}`}
                                             type="button"
                                             className="w-full text-left px-4 py-2.5 text-sm hover:bg-indigo-50 transition-colors flex items-center gap-3 border-b border-slate-50"
                                             onClick={() =>
@@ -2584,23 +2584,23 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
       </div>
 
       <QuantityGridModal
-        key={`${qtyModalRowId}-${
+  key={`${qtyModalRowId}-${
+    items.find((it) => it.id === qtyModalRowId)?.sizeMap
+      ? JSON.stringify(
           items.find((it) => it.id === qtyModalRowId)?.sizeMap
-            ? JSON.stringify(
-                items.find((it) => it.id === qtyModalRowId)?.sizeMap
-              )
-            : "empty"
-        }`}
-        isOpen={showQtyModal}
-        onClose={() => setShowQtyModal(false)}
-        article={articles.find(
-  (a) => (a.id || (a as any)._id) === qtyModalArticleId
-)}
-        variantId={qtyModalVariantId}
-        rowId={qtyModalRowId}
-        existingItems={items}
-        onSave={handleSaveQtyGrid}
-      />
+        )
+      : "empty"
+  }`}
+  isOpen={showQtyModal}
+  onClose={() => setShowQtyModal(false)}
+  article={articles.find(
+    (a) => (a.id || (a as any)._id) === qtyModalArticleId
+  )}
+  variantId={qtyModalVariantId}
+  rowId={qtyModalRowId}
+  existingItems={items}
+  onSave={handleSaveQtyGrid}
+/>
     </div>
   );
 };
