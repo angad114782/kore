@@ -601,22 +601,19 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
 
     if (!formData.artname || !formData.category || !formData.brand) {
       return toast.error("Please fill all required fields");
     }
 
-    const foundCategory = categories.find(
-      (c) => (c.name || c) === formData.category
-    );
+    const foundCategory = categories.find((c) => (c.name || c) === formData.category);
     const categoryId = foundCategory?._id || foundCategory?.id;
 
     const foundBrand = brands.find((b) => (b.name || b) === formData.brand);
     const brandId = foundBrand?._id || foundBrand?.id;
 
-    const foundMan = manufacturers.find(
-      (m) => (m.name || m) === formData.manufacturer
-    );
+    const foundMan = manufacturers.find((m) => (m.name || m) === formData.manufacturer);
     const manufacturerId = foundMan?._id || foundMan?.id;
 
     const foundUnit = units.find((u) => (u.name || u) === formData.unit);
