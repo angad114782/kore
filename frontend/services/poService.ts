@@ -13,7 +13,7 @@ export const poService = {
   },
 
   async getNextPONumber() {
-    return apiFetch("/purchase-orders/next-po-number");
+    return apiFetch("/purchase-orders/next-number");
   },
 
   async createPO(data: Partial<PurchaseOrder>) {
