@@ -153,6 +153,14 @@ const makeLegacyFallbackKey = (v) => {
 exports.create = async (req) => {
   const body = req.body || {};
 
+  const articleName = (body.articleName || "").trim();
+  const existing = await MasterCatalog.findOne({ articleName, isDeleted: false });
+  if (existing) {
+    const err = new Error(`Product with name "${articleName}" already exists.`);
+    err.statusCode = 409;
+    throw err;
+  }
+
   const productColors = parseMaybeJson(body.productColors, []);
   const sizeRanges = parseMaybeJson(body.sizeRanges, []);
   const variants = normalizeVariants(parseMaybeJson(body.variants, []));
@@ -531,23 +539,53 @@ exports.getVariantStock = async (variantId) => {
     status: "SUBMITTED" 
   }).lean();
 
-  console.log(`[DEBUG DYNAMIC] Found ${submittedGRNs.length} submitted GRNs for variant "${variant.itemName}"`);
+  console.log(`[LIVE-STOCK-DEBUG] Found ${submittedGRNs.length} submitted GRNs for variant "${variant.itemName}" (ID: ${variantId})`);
+
+  // Fetch unique POs to get their SKU maps and quantity breakups
+  const poNumbers = [...new Set(submittedGRNs.filter(g => g.refType === 'PO').map(g => g.refId))];
+  const poDocs = await PurchaseOrder.find({ poNumber: { $in: poNumbers } }).lean();
+  const poLookup = poDocs.reduce((acc, p) => { acc[p.poNumber] = p; return acc; }, {});
+
+  console.log(`[LIVE-STOCK-DEBUG] Fetched ${poDocs.length} unique POs: ${poNumbers.join(", ")}`);
+
+  // Expand skuToSize with SKUs from all relevant POs
+  poDocs.forEach(po => {
+    const poItem = po.items.find(it => 
+      (it.variantId && String(it.variantId) === variantId.toString()) || 
+      (it.itemName === variant.itemName)
+    );
+    if (poItem && poItem.sizeMap) {
+      const poSizeMap = poItem.sizeMap && typeof poItem.sizeMap.toJSON === 'function' ? poItem.sizeMap.toJSON() : poItem.sizeMap;
+      const skusCount = Object.values(poSizeMap).filter(v => v.sku).length;
+      console.log(`[LIVE-STOCK-DEBUG] PO "${po.poNumber}" item match found. SKUs in PO: ${skusCount}`);
+      
+      Object.entries(poSizeMap).forEach(([size, cell]) => {
+        if (cell && cell.sku) {
+          skuToSize[String(cell.sku).trim().toLowerCase()] = size.trim();
+        }
+      });
+    } else {
+      console.log(`[LIVE-STOCK-DEBUG] PO "${po.poNumber}" - No matching item found for variant "${variant.itemName}"`);
+    }
+  });
 
   const totalReceived = {};
+  const receivedPerPO = {}; // { poNumber: { size: qty } }
+  let totalBarcodesProcessed = 0;
+  let totalMatchesFound = 0;
+
+  // ── PRIMARY: SKU-based barcode matching (using Master + all PO SKUs) ──
   submittedGRNs.forEach(grn => {
     (grn.cartons || []).forEach(carton => {
-      // Precise check: match by ID or by Item Name within this record
       const isMatch = (carton.variantId && String(carton.variantId) === variantId.toString()) || 
                       (carton.itemName === variant.itemName);
-      
       if (!isMatch) return;
 
       (carton.pairBarcodes || []).forEach(barcode => {
+        totalBarcodesProcessed++;
         const cleanBar = String(barcode).trim().toLowerCase();
         let sz = skuToSize[cleanBar];
 
-        // ── FALLBACK: Smart Pattern Match ──
-        // If no SKU match, check if barcode ends with "-Size" or " Size"
         if (!sz) {
           const matchedSize = variantSizes.find(vSize => {
             const lowVSize = String(vSize).toLowerCase();
@@ -555,18 +593,81 @@ exports.getVariantStock = async (variantId) => {
           });
           if (matchedSize) {
             sz = matchedSize;
-            skuToSize[cleanBar] = sz; // Cache it
+            skuToSize[cleanBar] = sz;
           }
         }
 
         if (sz) {
+          totalMatchesFound++;
           totalReceived[sz] = (totalReceived[sz] || 0) + 1;
+
+          if (grn.refType === 'PO') {
+            const poNum = grn.refId;
+            if (!receivedPerPO[poNum]) receivedPerPO[poNum] = {};
+            receivedPerPO[poNum][sz] = (receivedPerPO[poNum][sz] || 0) + 1;
+          }
         }
       });
     });
   });
 
-  console.log(`[DEBUG DYNAMIC] Received per size:`, totalReceived);
+  console.log(`[LIVE-STOCK-DEBUG] SKU Matching: Processed ${totalBarcodesProcessed} barcodes, Found ${totalMatchesFound} matches`);
+
+  // ── FALLBACK: Use PO quantity breakup if SKU matching found nothing ──
+  const skuMatchedTotal = Object.values(totalReceived).reduce((s, v) => s + v, 0);
+
+  if (skuMatchedTotal === 0 && submittedGRNs.length > 0) {
+    console.log(`[LIVE-STOCK-DEBUG] ⚡ NO matches found via SKUs. Triggering PO-based fallback logic...`);
+    
+    submittedGRNs.forEach(grn => {
+      const po = poLookup[grn.refId];
+      const poItem = po ? po.items.find(it => 
+        (it.variantId && String(it.variantId) === variantId.toString()) || 
+        (it.itemName === variant.itemName)
+      ) : null;
+      
+      const poSizeMap = poItem ? (poItem.sizeMap && typeof poItem.sizeMap.toJSON === 'function' ? poItem.sizeMap.toJSON() : (poItem.sizeMap || {})) : {};
+      const hasPOSizes = Object.keys(poSizeMap).length > 0;
+
+      // Count matching cartons for THIS specific GRN
+      let cartonCount = 0;
+      (grn.cartons || []).forEach(carton => {
+        const isMatch = (carton.variantId && String(carton.variantId) === variantId.toString()) || 
+                        (carton.itemName === variant.itemName);
+        if (isMatch) cartonCount++;
+      });
+
+      if (cartonCount === 0) {
+        console.log(`[LIVE-STOCK-DEBUG] GRN ${grn.grnNo}: 0 cartons match this variant.`);
+        return;
+      }
+
+      if (hasPOSizes) {
+        console.log(`[LIVE-STOCK-DEBUG] GRN ${grn.grnNo}: Applying PO "${po.poNumber}" quantity breakup for ${cartonCount} cartons`);
+        Object.entries(poSizeMap).forEach(([size, cell]) => {
+          const cleanSize = size.trim();
+          const added = (cartonCount * (Number(cell?.qty) || 0));
+          totalReceived[cleanSize] = (totalReceived[cleanSize] || 0) + added;
+
+          if (grn.refType === 'PO') {
+            const poNum = grn.refId;
+            if (!receivedPerPO[poNum]) receivedPerPO[poNum] = {};
+            receivedPerPO[poNum][cleanSize] = (receivedPerPO[poNum][cleanSize] || 0) + added;
+          }
+        });
+      } else {
+        console.log(`[LIVE-STOCK-DEBUG] GRN ${grn.grnNo}: PO data missing, falling back to Master Catalog assortment for ${cartonCount} cartons`);
+        const sizeQuantitiesData = variant.sizeQuantities && typeof variant.sizeQuantities.toJSON === 'function' 
+          ? variant.sizeQuantities.toJSON() : (variant.sizeQuantities || {});
+        Object.entries(sizeQuantitiesData).forEach(([size, qtyPerCarton]) => {
+          const cleanSize = size.trim();
+          totalReceived[cleanSize] = (totalReceived[cleanSize] || 0) + (cartonCount * (Number(qtyPerCarton) || 0));
+        });
+      }
+    });
+  }
+
+  console.log(`[LIVE-STOCK-DEBUG] Final calculated stock:`, totalReceived);
 
   // 3. DYNAMIC CALCULATION: Total Dispatched from Orders
   const fulfilledOrders = await Order.find({ 
@@ -619,6 +720,7 @@ exports.getVariantStock = async (variantId) => {
   // Calculate PO Map for upcoming stock
   const pos = await PurchaseOrder.find({
     isDeleted: false,
+    billStatus: "APPROVED",
     $or: [
       { "items.variantId": variantId.toString() },
       { "items.itemName": variant.itemName || "" },
@@ -627,6 +729,8 @@ exports.getVariantStock = async (variantId) => {
   }).lean();
 
   pos.forEach((po) => {
+    const receivedForThisPO = receivedPerPO[po.poNumber] || {};
+
     (po.items || []).forEach((item) => {
       const isMatch = String(item.variantId) === String(variantId) || 
                       item.itemName === variant.itemName || 
@@ -637,7 +741,12 @@ exports.getVariantStock = async (variantId) => {
           const qtyPerCarton = Number(cell?.qty || 0);
           const cartonCount = Number(item.cartonCount || 0);
           const cleanSz = sz.trim();
-          poMap[cleanSz] = (poMap[cleanSz] || 0) + (cartonCount * qtyPerCarton);
+          
+          const totalOrdered = cartonCount * qtyPerCarton;
+          const alreadyReceived = receivedForThisPO[cleanSz] || 0;
+          const remaining = Math.max(0, totalOrdered - alreadyReceived);
+          
+          poMap[cleanSz] = (poMap[cleanSz] || 0) + remaining;
         });
       }
     });

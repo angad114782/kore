@@ -51,7 +51,12 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
         import.meta.env.VITE_API_BASE_URL +
         `/master-catalog/variants/${variant.id}/stock`;
       console.log("[VariantDetailsPage] Fetching stock from:", url);
-      const res = await fetch(url);
+      const token = localStorage.getItem("kore_token");
+      const res = await fetch(url, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
       console.log("[VariantDetailsPage] Fetch response status:", res.status);
       const json = await res.json();
       console.log("[VariantDetailsPage] Stock data received:", json.data);

@@ -1183,9 +1183,17 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="flex-2 bg-indigo-600 text-white py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100"
+                  disabled={loading}
+                  className="flex-2 bg-indigo-600 text-white py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  {editingArticle ? "Save Changes" : "Create Master"}
+                  {loading ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>{editingArticle ? "Updating..." : "Creating..."}</span>
+                    </>
+                  ) : (
+                    editingArticle ? "Save Changes" : "Create Master"
+                  )}
                 </button>
               </div>
             </form>

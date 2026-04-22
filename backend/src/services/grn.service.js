@@ -281,8 +281,9 @@ exports.submitDraft = async (draftId, { scannedItemNames } = {}) => {
   // Fetch PO for metadata
   let vendorName = "";
   let articleName = "";
+  let po = null;
   if (draft.refType === "PO") {
-    const po = await PurchaseOrder.findOne({ poNumber: draft.refId }).lean();
+    po = await PurchaseOrder.findOne({ poNumber: draft.refId }).lean();
     if (po) {
       vendorName = po.vendorName || "";
       // Use scannedItemNames from frontend if provided, otherwise fall back to first item
@@ -337,17 +338,40 @@ exports.submitDraft = async (draftId, { scannedItemNames } = {}) => {
 
     // ─── Actual Scanned Quantity Calculation ───
     // Build a reverse lookup of SKU -> Size Name
+    // ⚡ CRITICAL: We prioritize the Purchase Order's sizeMap because barcodes are generated 
+    // from the PO's SKU entries, which might differ from the Master Catalog defaults.
+    const poItem = po ? po.items.find(it => 
+      (it.variantId && String(it.variantId) === String(variant._id)) || 
+      (it.itemName === variant.itemName)
+    ) : null;
+
+    console.log(`[GRN-SUBMIT-DEBUG] Processing variant "${variant.itemName}" (ID: ${variant._id})`);
+    if (po) {
+      console.log(`[GRN-SUBMIT-DEBUG] Matched PO: ${po.poNumber}. Item found: ${!!poItem}`);
+    }
+
     const skuToSize = {};
-    if (variant.sizeMap) {
-      const entries = variant.sizeMap instanceof Map 
-        ? Array.from(variant.sizeMap.entries()) 
-        : Object.entries(variant.sizeMap);
-        
-      entries.forEach(([size, cell]) => {
+    const poSizeMap = poItem ? (poItem.sizeMap && typeof poItem.sizeMap.toJSON === 'function' ? poItem.sizeMap.toJSON() : (poItem.sizeMap || {})) : {};
+
+    Object.entries(poSizeMap).forEach(([size, cell]) => {
+      if (cell && cell.sku) {
+        skuToSize[String(cell.sku).trim().toLowerCase()] = size.trim();
+      }
+    });
+
+    const poSkusCount = Object.keys(skuToSize).length;
+    console.log(`[GRN-SUBMIT-DEBUG] SKUs found in PO: ${poSkusCount}`);
+
+    // Fallback: If PO had no SKUs, check Master Catalog
+    if (poSkusCount === 0 && variant.sizeMap) {
+      console.log(`[GRN-SUBMIT-DEBUG] PO has no SKUs, checking Master Catalog for SKUs...`);
+      const masterSizeMap = variant.sizeMap && typeof variant.sizeMap.toJSON === 'function' ? variant.sizeMap.toJSON() : (variant.sizeMap || {});
+      Object.entries(masterSizeMap).forEach(([size, cell]) => {
         if (cell && cell.sku) {
-          skuToSize[String(cell.sku).trim()] = size;
+          skuToSize[String(cell.sku).trim().toLowerCase()] = size.trim();
         }
       });
+      console.log(`[GRN-SUBMIT-DEBUG] Total SKUs after Master check: ${Object.keys(skuToSize).length}`);
     }
 
     // Filter cartons that belong to THIS specific variant
@@ -356,16 +380,49 @@ exports.submitDraft = async (draftId, { scannedItemNames } = {}) => {
       (c.itemName === variant.itemName)
     );
 
+    console.log(`[GRN-SUBMIT-DEBUG] Found ${variantCartons.length} cartons for this variant in the draft.`);
+
     const actualCounts = {};
+    let matchedBarcodes = 0;
     variantCartons.forEach(carton => {
       (carton.pairBarcodes || []).forEach(barcode => {
-        const cleanBar = String(barcode).trim();
+        const cleanBar = String(barcode).trim().toLowerCase();
         const size = skuToSize[cleanBar];
         if (size) {
+          matchedBarcodes++;
           actualCounts[size] = (actualCounts[size] || 0) + 1;
         }
       });
     });
+
+    console.log(`[GRN-SUBMIT-DEBUG] SKU Matching result: ${matchedBarcodes} pairs matched out of ${variantCartons.length * 24} expected.`);
+
+    // ─── FALLBACK: If SKU matching found nothing, use PO-based quantity breakup ───
+    const totalCounted = Object.values(actualCounts).reduce((s, v) => s + v, 0);
+    
+    if (totalCounted === 0 && variantCartons.length > 0) {
+      if (poItem && Object.keys(poSizeMap).length > 0) {
+        console.log(`[GRN-SUBMIT-DEBUG] ⚡ SKU match failed. Triggering PO-based fallback for ${variantCartons.length} cartons.`);
+        Object.entries(poSizeMap).forEach(([size, cell]) => {
+          const cleanSize = size.trim();
+          actualCounts[cleanSize] = variantCartons.length * (Number(cell?.qty) || 0);
+        });
+      } else {
+        // Last resort: use Master Catalog assortment
+        console.log(`[GRN-SUBMIT-DEBUG] ⚡ SKU match failed & PO data missing. Triggering Master-based fallback.`);
+        const sizeQuantitiesData = variant.sizeQuantities && typeof variant.sizeQuantities.toJSON === 'function' 
+          ? variant.sizeQuantities.toJSON() : (variant.sizeQuantities || {});
+
+        if (Object.keys(sizeQuantitiesData).length > 0) {
+          Object.entries(sizeQuantitiesData).forEach(([size, qtyPerCarton]) => {
+            const cleanSize = size.trim();
+            actualCounts[cleanSize] = variantCartons.length * (Number(qtyPerCarton) || 0);
+          });
+        }
+      }
+    }
+
+    console.log(`[GRN-SUBMIT-DEBUG] Final counts for inventory update:`, actualCounts);
 
     // ─── Perform Atomic Update with Actual Counts ───
     if (Object.keys(actualCounts).length > 0) {

@@ -477,6 +477,38 @@ const QuantityGridModal: React.FC<{
       return;
     }
 
+    // ⚡ CRITICAL: Prevent saving if any size with quantity > 0 is missing an SKU
+    const missingSkus: string[] = [];
+    Object.entries(sizeData).forEach(([sz, data]) => {
+      if (data.qty > 0 && !data.sku.trim()) {
+        missingSkus.push(sz);
+      }
+    });
+
+    if (missingSkus.length > 0) {
+      toast.error(`Missing SKU for size(s): ${missingSkus.join(", ")}. Every quantity must have an associated SKU.`);
+      return;
+    }
+
+    // ⚡ CRITICAL: Prevent duplicate SKUs within the same item
+    const skuToSizeMap: Record<string, string> = {};
+    const duplicatePairs: string[] = [];
+    Object.entries(sizeData).forEach(([sz, data]) => {
+      const s = (data.sku || "").trim().toLowerCase();
+      if (data.qty > 0 && s) {
+        if (skuToSizeMap[s]) {
+          duplicatePairs.push(`${sz} & ${skuToSizeMap[s]} (SKU: ${data.sku})`);
+        } else {
+          skuToSizeMap[s] = sz;
+        }
+      }
+    });
+
+    if (duplicatePairs.length > 0) {
+      toast.error(`Duplicate SKUs detected: ${duplicatePairs.join(", ")}. Each size must have a unique SKU for accurate scanning.`);
+      return;
+    }
+
     const aggregatedItem: Partial<PurchaseOrderItem> = {
       variantId: vId,
       articleId: article.id || (article as any)._id || "",

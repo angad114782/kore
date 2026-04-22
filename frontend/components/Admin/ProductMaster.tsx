@@ -638,6 +638,36 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
           `Total quantity for variant "${v.itemName}" must be a multiple of 24 (Current: ${total})`
         );
       }
+
+      // ⚡ CRITICAL: Prevent saving if any size with quantity > 0 is missing an SKU
+      const missingSkus: string[] = [];
+      Object.entries(v.sizeQuantities).forEach(([sz, qty]) => {
+        if (qty > 0 && !(v.sizeSkus[sz] || "").trim()) {
+          missingSkus.push(sz);
+        }
+      });
+
+      if (missingSkus.length > 0) {
+        return toast.error(`Missing SKU for variant "${v.itemName}" on size(s): ${missingSkus.join(", ")}. Every quantity must have an associated SKU.`);
+      }
+
+      // ⚡ CRITICAL: Prevent duplicate SKUs within the same variant
+      const skuToSizeMap: Record<string, string> = {};
+      const duplicatePairs: string[] = [];
+      Object.entries(v.sizeQuantities).forEach(([sz, qty]) => {
+        const s = (v.sizeSkus[sz] || "").trim().toLowerCase();
+        if (qty > 0 && s) {
+          if (skuToSizeMap[s]) {
+            duplicatePairs.push(`${sz} & ${skuToSizeMap[s]} (SKU: ${v.sizeSkus[sz]})`);
+          } else {
+            skuToSizeMap[s] = sz;
+          }
+        }
+      });
+
+      if (duplicatePairs.length > 0) {
+        return toast.error(`Duplicate SKUs in variant "${v.itemName}" between: ${duplicatePairs.join(", ")}. Each size must have a unique SKU.`);
+      }
     }
 
     const data = new FormData();
@@ -1607,16 +1637,27 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <button
               type="button"
-              className="flex-1 sm:flex-none px-6 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition-all shadow-sm"
+              disabled={loading}
+              className="flex-1 sm:flex-none px-6 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Save as Draft
             </button>
             <button
               type="submit"
-              className="flex-1 sm:flex-none px-8 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 hover:-translate-y-0.5"
+              disabled={loading}
+              className="flex-1 sm:flex-none px-8 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:translate-y-0"
             >
-              <CheckCircle2 size={18} />
-              Save Product
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Saving...</span>
+                </div>
+              ) : (
+                <>
+                  <CheckCircle2 size={18} />
+                  <span>Save Product</span>
+                </>
+              )}
             </button>
           </div>
         </div>
