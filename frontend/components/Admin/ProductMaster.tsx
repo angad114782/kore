@@ -635,36 +635,6 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
           `Total quantity for variant "${v.itemName}" must be a multiple of 24 (Current: ${total})`
         );
       }
-
-      // ⚡ CRITICAL: Prevent saving if any size with quantity > 0 is missing an SKU
-      const missingSkus: string[] = [];
-      Object.entries(v.sizeQuantities).forEach(([sz, qty]) => {
-        if (qty > 0 && !(v.sizeSkus[sz] || "").trim()) {
-          missingSkus.push(sz);
-        }
-      });
-
-      if (missingSkus.length > 0) {
-        return toast.error(`Missing SKU for variant "${v.itemName}" on size(s): ${missingSkus.join(", ")}. Every quantity must have an associated SKU.`);
-      }
-
-      // ⚡ CRITICAL: Prevent duplicate SKUs within the same variant
-      const skuToSizeMap: Record<string, string> = {};
-      const duplicatePairs: string[] = [];
-      Object.entries(v.sizeQuantities).forEach(([sz, qty]) => {
-        const s = (v.sizeSkus[sz] || "").trim().toLowerCase();
-        if (qty > 0 && s) {
-          if (skuToSizeMap[s]) {
-            duplicatePairs.push(`${sz} & ${skuToSizeMap[s]} (SKU: ${v.sizeSkus[sz]})`);
-          } else {
-            skuToSizeMap[s] = sz;
-          }
-        }
-      });
-
-      if (duplicatePairs.length > 0) {
-        return toast.error(`Duplicate SKUs in variant "${v.itemName}" between: ${duplicatePairs.join(", ")}. Each size must have a unique SKU.`);
-      }
     }
 
     const data = new FormData();
