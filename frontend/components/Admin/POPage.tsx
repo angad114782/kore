@@ -562,9 +562,9 @@ const QuantityGridModal: React.FC<{
                     >
                       <td className="py-4 px-4 font-bold text-slate-700 bg-white sticky left-0 z-10 shadow-[4px_0_4px_-2px_rgba(0,0,0,0.05)]">
                         <div className="flex flex-col">
-                          <span>{v.color || "Default"}</span>
+                          <span className="font-bold text-slate-800">{article.name} - {v.color || "Default"}</span>
                           <span className="text-[10px] font-medium text-slate-400">
-                            {v.itemName || ""}
+                            Range: {v.sizeRange || "N/A"}
                           </span>
                         </div>
                       </td>
@@ -1063,12 +1063,12 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
       (v) => v.id === option.variantId || v._id === option.variantId
     );
 
-    // Construct default sizeMap but set quantities to 0 for a new PO item
+    // Construct default sizeMap with 0 quantities for a new PO item
     const defaultSizeMap: Record<string, { qty: number; sku: string }> = {};
     if (targetVariant && targetVariant.sizeQuantities) {
       Object.entries(targetVariant.sizeQuantities).forEach(([sz, qty]) => {
         defaultSizeMap[sz] = {
-          qty: 0, // NEW PO item starts with 0
+          qty: Number(qty) || 0, // Pre-fill with catalog assortment ratio
           sku: targetVariant.sizeSkus?.[sz] || "",
         };
       });
@@ -1202,6 +1202,7 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
             JSON.stringify(
               updatedVariants.map((v: any) => ({
                 id: v.id || v._id,
+                _id: v._id || v.id,
                 itemName: v.itemName,
                 costPrice: v.costPrice,
                 sellingPrice: v.sellingPrice,
@@ -1209,7 +1210,10 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
                 hsnCode: v.hsnCode,
                 color: v.color,
                 sizeRange: v.sizeRange,
+                sizeRangeId: v.sizeRangeId || "",
                 sizeMap: v.sizeMap,
+                sizeQuantities: v.sizeQuantities || {},
+                sizeSkus: v.sizeSkus || {},
               }))
             )
           );
@@ -1389,22 +1393,26 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
                     "articleName",
                     article.articleName || article.name
                   );
-                  data.append(
-                    "variants",
-                    JSON.stringify(
-                      updatedVariants.map((v: any) => ({
-                        id: v.id || v._id,
-                        itemName: v.itemName,
-                        costPrice: v.costPrice,
-                        sellingPrice: v.sellingPrice,
-                        mrp: v.mrp,
-                        hsnCode: v.hsnCode,
-                        color: v.color,
-                        sizeRange: v.sizeRange,
-                        sizeMap: v.sizeMap,
-                      }))
-                    )
-                  );
+                    data.append(
+                      "variants",
+                      JSON.stringify(
+                        updatedVariants.map((v: any) => ({
+                          id: v.id || v._id,
+                          _id: v._id || v.id,
+                          itemName: v.itemName,
+                          costPrice: v.costPrice,
+                          sellingPrice: v.sellingPrice,
+                          mrp: v.mrp,
+                          hsnCode: v.hsnCode,
+                          color: v.color,
+                          sizeRange: v.sizeRange,
+                          sizeRangeId: v.sizeRangeId || "",
+                          sizeMap: v.sizeMap,
+                          sizeQuantities: v.sizeQuantities || {},
+                          sizeSkus: v.sizeSkus || {},
+                        }))
+                      )
+                    );
 
                   // Retain existing taxonomy
                   if (article.categoryId?._id || article.categoryId)

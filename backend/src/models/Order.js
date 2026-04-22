@@ -32,6 +32,11 @@ const OrderItemSchema = new mongoose.Schema(
       of: Number,
       default: {},
     },
+    blockedSizeQuantities: {
+      type: Map,
+      of: Number,
+      default: {},
+    },
     cartonCount: {
       type: Number,
       required: true,
@@ -40,6 +45,10 @@ const OrderItemSchema = new mongoose.Schema(
     allocatedCartonCount: {
       type: Number,
       default: null, // null means not yet allocated
+    },
+    blockedCartonCount: {
+      type: Number,
+      default: 0,
     },
     fulfilledCartonCount: {
       type: Number,
@@ -53,6 +62,10 @@ const OrderItemSchema = new mongoose.Schema(
     allocatedPairCount: {
       type: Number,
       default: null, // null means not yet allocated
+    },
+    blockedPairCount: {
+      type: Number,
+      default: 0,
     },
     fulfilledPairCount: {
       type: Number,

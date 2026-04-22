@@ -62,7 +62,7 @@ export interface Variant {
   mrp: number;
   hsnCode?: string;
   sizeQuantities: Record<string, number>;
-  sizeMap?: Record<string, { qty: number; sku: string }>;
+  sizeMap?: Record<string, { qty: number; blockedQty?: number; sku: string }>;
   bookingMap?: Record<string, number>;
   poMap?: Record<string, number>;
   images?: string[];
@@ -112,8 +112,9 @@ export interface Article {
 export interface Inventory {
   articleId: string;
   actualStock: number; // In Cartons
-  reservedStock: number; // In Cartons
-  availableStock: number; // actual - reserved
+  reservedStock: number; // In Cartons (Booked)
+  blockedStock: number; // In Cartons (Blocked)
+  availableStock: number; // actual - reserved - blocked (Wait, user said subtraction from live stock, so live is available)
 }
 
 export enum OrderStatus {
@@ -132,13 +133,16 @@ export interface OrderItem {
   variantId?: string;
   /** detailed breakdown: pairs per size (e.g. {"5":12, "6":12}) */
   sizeQuantities?: Record<string, number>;
+  blockedSizeQuantities?: Record<string, number>;
   allocatedSizeQuantities?: Record<string, number>;
   fulfilledSizeQuantities?: Record<string, number>;
 
   cartonCount: number;
+  blockedCartonCount?: number;
   allocatedCartonCount?: number;
   fulfilledCartonCount?: number;
   pairCount: number;
+  blockedPairCount?: number;
   allocatedPairCount?: number;
   fulfilledPairCount?: number;
   price: number;

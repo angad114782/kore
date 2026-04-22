@@ -69,11 +69,16 @@ const getAllOrders = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    let { status, allocatedItems, receiverName, receiverMobile } = req.body;
-
+    let { status, allocatedItems, blockedItems, receiverName, receiverMobile } = req.body;
+    
     // allocatedItems arrives as a JSON string via FormData — parse it
     if (typeof allocatedItems === 'string') {
       try { allocatedItems = JSON.parse(allocatedItems); } catch { allocatedItems = null; }
+    }
+    
+    // blockedItems arrives as a JSON string via FormData — parse it
+    if (typeof blockedItems === 'string') {
+      try { blockedItems = JSON.parse(blockedItems); } catch { blockedItems = null; }
     }
 
     const docs = {};
@@ -88,6 +93,7 @@ const updateOrderStatus = async (req, res) => {
     const updatedOrder = await OrderService.updateOrderStatus(id, status, { 
       ...docs, 
       allocatedItems,
+      blockedItems,
       receiverName,
       receiverMobile
     });
@@ -111,24 +117,21 @@ const updateOrderStatus = async (req, res) => {
 
 const processReturn = async (req, res) => {
   try {
-    const { orderId, variantId, cartons } = req.body;
+    const { orderId, items, reason } = req.body;
 
-    if (!orderId || !variantId || !cartons) {
+    if (!orderId || !items || !Array.isArray(items)) {
       return res.status(400).json({
         success: false,
-        message: "Order ID, Variant ID, and Cartons are required",
+        message: "Order ID and an array of items are required",
       });
     }
 
-    const order = await OrderService.processReturn(orderId, variantId, parseInt(cartons));
-
-    // Emit real-time event
-    emitOrderUpdate(order);
+    const returnDoc = await OrderService.processReturn(orderId, { items, reason });
 
     res.status(200).json({
       success: true,
       message: "Return processed successfully",
-      data: order,
+      data: returnDoc,
     });
   } catch (error) {
     console.error("Error processing return:", error);
@@ -139,10 +142,35 @@ const processReturn = async (req, res) => {
   }
 };
 
+const getReturnHistory = async (req, res) => {
+  try {
+    const { page, limit, q } = req.query;
+    const result = await OrderService.getReturnHistory({
+      page: parseInt(page) || 1,
+      limit: parseInt(limit) || 10,
+      search: q
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Return history fetched successfully",
+      data: result.items,
+      meta: result.meta
+    });
+  } catch (error) {
+    console.error("Error fetching return history:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch return history",
+    });
+  }
+};
+
 module.exports = {
   createOrder,
   getDistributorOrders,
   getAllOrders,
   updateOrderStatus,
   processReturn,
+  getReturnHistory,
 };

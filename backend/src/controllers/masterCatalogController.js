@@ -89,3 +89,12 @@ exports.getVariantStock = async (req, res) => {
     return sendError(res, err);
   }
 };
+
+exports.resetVariantStock = async (req, res) => {
+  try {
+    const data = await masterCatalogService.resetVariantStock(req.params.variantId);
+    return res.json({ data });
+  } catch (err) {
+    return sendError(res, err);
+  }
+};

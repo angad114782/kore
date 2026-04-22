@@ -188,10 +188,18 @@ exports.bulkScan = async (draftId, cartonsPayload) => {
   if (!draft) throw new Error("Draft not found");
   if (draft.status !== "DRAFT") throw new Error("GRN already submitted");
 
+  // Fetch already received cartons for this reference to prevent duplicates
+  const doneMap = await exports.getReceivedCartons(draft.refId);
+
   let modified = false;
   for (const carton of cartonsPayload) {
-    const { cartonIndex, pairBarcodes, itemName } = carton;
+    const { cartonIndex, pairBarcodes, itemName, variantId } = carton;
     if (!pairBarcodes || pairBarcodes.length === 0) continue;
+
+    // Check for duplicates
+    if (itemName && doneMap[itemName] && doneMap[itemName].includes((cartonIndex || 1) - 1)) {
+      throw new Error(`Carton ${cartonIndex} for "${itemName}" has already been received in a previous GRN.`);
+    }
 
     // Use the explicit cartonIndex for the serial number
     const refNo = String(draft.refId).split("-")[1] || draft.refId;
@@ -199,7 +207,8 @@ exports.bulkScan = async (draftId, cartonsPayload) => {
 
     draft.cartons.unshift({
       cartonBarcode,
-      itemName: itemName || "", // NEW: Save specific variant name
+      itemName: itemName || "", 
+      variantId: variantId || "", // Save ID for reliable stock updates
       pairBarcodes: [...pairBarcodes],
       lockedAt: new Date(),
     });
@@ -300,8 +309,104 @@ exports.submitDraft = async (draftId, { scannedItemNames } = {}) => {
   draft.articleName = articleName;
   draft.totalPairs = totalPairs;
 
+  // ─── Inventory Update Logic ──────────────────────────────
+  // Group cartons by either variantId (reliable) or itemName (fallback)
+  const cartonsByVariant = (draft.cartons || []).reduce((acc, c) => {
+    const key = c.variantId || c.itemName || articleName;
+    if (!acc[key]) acc[key] = { count: 0, itemName: c.itemName || articleName, variantId: c.variantId };
+    acc[key].count += 1;
+    return acc;
+  }, {});
+
+  for (const [key, info] of Object.entries(cartonsByVariant)) {
+    const { variantId, itemName } = info;
+    
+    let query = variantId 
+      ? { "variants._id": variantId } 
+      : { "variants.itemName": itemName };
+
+    const catalog = await MasterCatalog.findOne(query);
+    if (!catalog) continue;
+
+    let variant = variantId ? catalog.variants.id(variantId) : null;
+    if (!variant) {
+      variant = catalog.variants.find(v => v.itemName === itemName);
+    }
+
+    if (!variant) continue;
+
+    // ─── Actual Scanned Quantity Calculation ───
+    // Build a reverse lookup of SKU -> Size Name
+    const skuToSize = {};
+    if (variant.sizeMap) {
+      const entries = variant.sizeMap instanceof Map 
+        ? Array.from(variant.sizeMap.entries()) 
+        : Object.entries(variant.sizeMap);
+        
+      entries.forEach(([size, cell]) => {
+        if (cell && cell.sku) {
+          skuToSize[String(cell.sku).trim()] = size;
+        }
+      });
+    }
+
+    // Filter cartons that belong to THIS specific variant
+    const variantCartons = (draft.cartons || []).filter(c => 
+      (c.variantId && String(c.variantId) === String(variant._id)) || 
+      (c.itemName === variant.itemName)
+    );
+
+    const actualCounts = {};
+    variantCartons.forEach(carton => {
+      (carton.pairBarcodes || []).forEach(barcode => {
+        const cleanBar = String(barcode).trim();
+        const size = skuToSize[cleanBar];
+        if (size) {
+          actualCounts[size] = (actualCounts[size] || 0) + 1;
+        }
+      });
+    });
+
+    // ─── Perform Atomic Update with Actual Counts ───
+    if (Object.keys(actualCounts).length > 0) {
+      const incUpdate = {};
+      Object.entries(actualCounts).forEach(([size, count]) => {
+        const cleanSize = String(size).trim();
+        incUpdate[`variants.$.sizeMap.${cleanSize}.qty`] = count;
+      });
+
+      await MasterCatalog.updateOne(
+        { "variants._id": variant._id },
+        { $inc: incUpdate }
+      );
+    }
+  }
+
   await draft.save();
   return draft;
+};
+
+exports.getReceivedCartons = async (refId) => {
+  const submittedGRNs = await GRNDraft.find({ refId, status: "SUBMITTED" }).lean();
+  const doneMap = {};
+
+  submittedGRNs.forEach(grn => {
+    (grn.cartons || []).forEach(c => {
+      const itemName = c.itemName || (grn.articleName.includes(",") ? grn.articleName.split(",")[0].trim() : grn.articleName);
+      if (!doneMap[itemName]) doneMap[itemName] = [];
+      
+      // Extract serial from barcode e.g. CTN-260422-PO-1023-001 -> 0
+      const parts = (c.cartonBarcode || "").split("-");
+      const serialStr = parts[parts.length - 1]; // "001"
+      const serial = parseInt(serialStr, 10);
+      
+      if (!isNaN(serial) && !doneMap[itemName].includes(serial - 1)) {
+        doneMap[itemName].push(serial - 1);
+      }
+    });
+  });
+
+  return doneMap;
 };
 
 exports.getHistory = async (search = "") => {

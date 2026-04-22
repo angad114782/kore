@@ -347,7 +347,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
       setError(null);
 
       // Prepare payload
-      const payload: Partial<User> = {
+      const payload: any = {
         name: formData.name || "",
         email: formData.email || "",
         phone: formData.phone || "",
@@ -359,16 +359,24 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
         discountPercentage: Number(formData.discountPercentage) || 0,
         creditLimit: Number(formData.creditLimit) || 0,
         loginEmail: formData.loginEmail || "",
-        loginPassword: formData.loginPassword || "",
         loginEnabled: editingId ? formData.loginEnabled : !!(formData.loginEmail && formData.loginPassword),
         isActive: true,
       };
+
+      // Only include password if it's provided (important for edits to avoid reset)
+      if (formData.loginPassword && formData.loginPassword.trim().length > 0) {
+        payload.loginPassword = formData.loginPassword;
+      }
 
       if (editingId) {
         // Update existing distributor
         await distributorService.updateDistributor(editingId, payload);
       } else {
         // Create new distributor
+        // For new distributors, password might be required by backend
+        if (!payload.loginPassword && payload.loginEnabled) {
+          throw new Error("Login password is required for new distributors with login enabled");
+        }
         await distributorService.createDistributor(payload);
       }
 

@@ -325,6 +325,7 @@ const App: React.FC = () => {
       articleId: a.id,
       actualStock: 100,
       reservedStock: 0,
+      blockedStock: 0,
       availableStock: 100,
     }));
   });
@@ -376,6 +377,7 @@ const App: React.FC = () => {
         articleId: a.id,
         actualStock: 0,
         reservedStock: 0,
+        blockedStock: 0,
         availableStock: 0,
       }));
       return [...prev, ...newInventoryItems];
@@ -852,7 +854,7 @@ const App: React.FC = () => {
           ))}
 
         {activeTab === "returns" && user.role !== UserRole.DISTRIBUTOR && (
-          <Returns orders={orders} articles={articles} />
+          <Returns orders={orders} articles={articles} onSuccess={fetchArticles} onInward={handleInwardStock} />
         )}
 
         {activeTab === "shop" && user.role === UserRole.DISTRIBUTOR && (

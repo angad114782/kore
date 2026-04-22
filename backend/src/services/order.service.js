@@ -1,6 +1,7 @@
 const Order = require("../models/Order");
 const User = require("../models/User");
 const MasterCatalog = require("../models/MasterCatalog");
+const Return = require("../models/Return");
 
 const generateNextOrderNumber = async () => {
   const lastOrder = await Order.findOne()
@@ -16,6 +17,22 @@ const generateNextOrderNumber = async () => {
   const next = (lastNum ? parseInt(lastNum, 10) : 0) + 1;
 
   return `OR-${String(next).padStart(5, "0")}`;
+};
+
+const generateNextReturnNumber = async () => {
+  const lastRet = await Return.findOne()
+    .sort({ createdAt: -1 })
+    .select("returnNumber")
+    .lean();
+
+  if (!lastRet || !lastRet.returnNumber) {
+    return "RET-00001";
+  }
+
+  const lastNum = lastRet.returnNumber.match(/RET-(\d+)/)?.[1];
+  const next = (lastNum ? parseInt(lastNum, 10) : 0) + 1;
+
+  return `RET-${String(next).padStart(5, "0")}`;
 };
 
 const createOrder = async (distributorId, orderData) => {
@@ -245,7 +262,8 @@ const updateOrderStatus = async (orderId, status, {
   receivingNoteUrl = null,
   receiverName = null,
   receiverMobile = null,
-  allocatedItems = null 
+  allocatedItems = null,
+  blockedItems = null
 } = {}) => {
   try {
     const validStatuses = [
@@ -275,48 +293,85 @@ const updateOrderStatus = async (orderId, status, {
     if (receiverName) updateData.receiverName = receiverName;
     if (receiverMobile) updateData.receiverMobile = receiverMobile;
 
-    // Handle manual allocation when moving to PFD
-    if (status === "PFD" && allocatedItems && Array.isArray(allocatedItems)) {
-      for (const allocatedItem of allocatedItems) {
+    // Handle Blocking Update (New Stage)
+    const isBlockingUpdate = blockedItems && Array.isArray(blockedItems);
+    if (isBlockingUpdate) {
+      for (const blockedEntry of blockedItems) {
         const orderItem = order.items.find(
-          (item) => item.variantId.toString() === allocatedItem.variantId.toString()
+          (item) => item.variantId.toString() === blockedEntry.variantId.toString()
         );
 
         if (orderItem) {
-          // Validate against remaining quantity
-          const fulfilled = orderItem.fulfilledCartonCount || 0;
-          const remaining = orderItem.cartonCount - fulfilled;
-          if (allocatedItem.allocatedCartonCount > remaining) {
-            throw new Error(`Cannot allocate ${allocatedItem.allocatedCartonCount} cartons for ${orderItem.variantId}. Only ${remaining} remaining.`);
-          }
+          const oldBlockedSizes = orderItem.blockedSizeQuantities ? Object.fromEntries(orderItem.blockedSizeQuantities) : {};
+          const newBlockedSizes = blockedEntry.blockedSizeQuantities || {};
 
-          // Update allocated counts for the CURRENT batch
-          orderItem.allocatedCartonCount = allocatedItem.allocatedCartonCount;
-          orderItem.allocatedPairCount = allocatedItem.allocatedPairCount;
-          orderItem.allocatedSizeQuantities = allocatedItem.allocatedSizeQuantities || {};
-
-          // Deduct from Stock (MasterCatalog)
           const catalogItem = await MasterCatalog.findById(orderItem.articleId);
           if (catalogItem) {
             const variant = catalogItem.variants.id(orderItem.variantId);
             if (variant && variant.sizeMap) {
-              // Deduct each size's allocated quantity
-              const allocSizes = allocatedItem.allocatedSizeQuantities || {};
-              for (const [size, qty] of Object.entries(allocSizes)) {
-                if (variant.sizeMap.has(size)) {
+              const allSizes = new Set([...Object.keys(oldBlockedSizes), ...Object.keys(newBlockedSizes)]);
+              
+              for (const size of allSizes) {
+                const oldVal = Number(oldBlockedSizes[size] || 0);
+                const newVal = Number(newBlockedSizes[size] || 0);
+                const delta = newVal - oldVal;
+
+                if (delta !== 0 && variant.sizeMap.has(size)) {
                   const currentSizeCell = variant.sizeMap.get(size);
-                  currentSizeCell.qty = Math.max(0, currentSizeCell.qty - qty);
+                  // Deduct from Live Qty, Add to Blocked Qty
+                  currentSizeCell.qty = Math.max(0, (currentSizeCell.qty || 0) - delta);
+                  currentSizeCell.blockedQty = Math.max(0, (currentSizeCell.blockedQty || 0) + delta);
                   variant.sizeMap.set(size, currentSizeCell);
                 }
               }
               await catalogItem.save();
             }
           }
+
+          orderItem.blockedCartonCount = Math.max(0, Number(blockedEntry.blockedCartonCount) || 0);
+          orderItem.blockedPairCount = Math.max(0, Number(blockedEntry.blockedPairCount) || 0);
+          orderItem.blockedSizeQuantities = newBlockedSizes;
         }
       }
+      order.markModified("items");
       updateData.items = order.items;
-      // Note: We NO LONGER overwrite order.totalAmount etc. here.
-      // Those fields represent the ORIGINAL order.
+    }
+
+    // Handle manual allocation when moving to / updating PFD or RFD
+    const isAllocationUpdate = ["PFD", "RFD", "BOOKED", "PARTIAL"].includes(status) || ["PFD", "RFD"].includes(order.status);
+    
+    if (isAllocationUpdate && allocatedItems && Array.isArray(allocatedItems)) {
+      for (const allocatedItem of allocatedItems) {
+        const orderItem = order.items.find(
+          (item) => item.variantId.toString() === allocatedItem.variantId.toString()
+        );
+
+        if (orderItem) {
+          // Constraint: Cannot allocate more than what is currently BLOCKED
+          const blockedSizes = orderItem.blockedSizeQuantities ? Object.fromEntries(orderItem.blockedSizeQuantities) : {};
+          const newAllocSizes = allocatedItem.allocatedSizeQuantities || {};
+
+          // Validate size-wise
+          for (const size in newAllocSizes) {
+            const req = Number(newAllocSizes[size] || 0);
+            const avail = Number(blockedSizes[size] || 0);
+            if (req > avail) {
+              throw new Error(`Cannot allocate ${req} pairs for size ${size}. Only ${avail} pairs are blocked.`);
+            }
+          }
+
+          // Note: We don't deduct from MasterCatalog here because it was already 
+          // deducted from 'qty' and added to 'blockedQty' during the Blocking stage.
+          // The stock remains in 'blockedQty' until the order is RECEIVED/dispatched.
+
+          // Update allocated counts for the CURRENT batch in the order item
+          orderItem.allocatedCartonCount = Math.max(0, Number(allocatedItem.allocatedCartonCount) || 0);
+          orderItem.allocatedPairCount = Math.max(0, Number(allocatedItem.allocatedPairCount) || 0);
+          orderItem.allocatedSizeQuantities = newAllocSizes;
+        }
+      }
+      order.markModified("items");
+      updateData.items = order.items;
     }
 
     // Handle finalization when moving to RECEIVED
@@ -355,7 +410,34 @@ const updateOrderStatus = async (orderId, status, {
           }
           item.fulfilledSizeQuantities = fulfilledSizes;
 
-          // reset allocated counts for next batch
+          // Reduce the Blocked Stock in MasterCatalog as it's now out of the warehouse
+          const catalogItem = await MasterCatalog.findById(item.articleId);
+          if (catalogItem) {
+            const variant = catalogItem.variants.id(item.variantId);
+            if (variant && variant.sizeMap) {
+              for (const [size, qty] of Object.entries(currentAllocSizes)) {
+                if (variant.sizeMap.has(size)) {
+                  const currentSizeCell = variant.sizeMap.get(size);
+                  currentSizeCell.blockedQty = Math.max(0, (currentSizeCell.blockedQty || 0) - Number(qty));
+                  variant.sizeMap.set(size, currentSizeCell);
+                }
+              }
+              catalogItem.markModified('variants');
+              await catalogItem.save();
+            }
+          }
+
+          // Also reduce the order level blocked counts
+          const blockedSizes = item.blockedSizeQuantities ? Object.fromEntries(item.blockedSizeQuantities) : {};
+          for (const [size, qty] of Object.entries(currentAllocSizes)) {
+            blockedSizes[size] = Math.max(0, (blockedSizes[size] || 0) - Number(qty));
+          }
+          
+          item.blockedSizeQuantities = blockedSizes;
+          item.blockedCartonCount = Math.max(0, (item.blockedCartonCount || 0) - item.allocatedCartonCount);
+          item.blockedPairCount = Math.max(0, (item.blockedPairCount || 0) - item.allocatedPairCount);
+
+          // reset allocated counts for next batch AFTER using them for subtraction
           item.allocatedCartonCount = 0;
           item.allocatedPairCount = 0;
           item.allocatedSizeQuantities = {};
@@ -390,6 +472,8 @@ const updateOrderStatus = async (orderId, status, {
       updateData.status = allFulfilled ? "RECEIVED" : "PARTIAL";
       updateData.items = order.items;
       updateData.fulfillmentHistory = order.fulfillmentHistory;
+      order.markModified("items");
+      order.markModified("fulfillmentHistory");
       
       // Clear current batch docs from main order fields after archive
       updateData.billUrl = null;
@@ -417,46 +501,137 @@ const updateOrderStatus = async (orderId, status, {
   }
 };
 
-const processReturn = async (orderId, variantId, cartons) => {
+const processReturn = async (orderId, returnData) => {
   try {
+    const { items: returnItems, reason } = returnData;
     const order = await Order.findById(orderId);
     if (!order) throw new Error("Order not found");
-    if (order.status !== "RECEIVED") throw new Error("Only received orders can be returned");
-
-    const orderItem = order.items.find(item => item.variantId.toString() === variantId.toString());
-    if (!orderItem) throw new Error("Item not found in this order");
-
-    const allocCartons = orderItem.allocatedCartonCount || orderItem.cartonCount;
-    if (cartons > allocCartons) throw new Error(`Cannot return more than allocated (${allocCartons} cartons)`);
-
-    // Proportional calculation for size restoration
-    const ratio = cartons / allocCartons;
-    const allocSizes = orderItem.allocatedSizeQuantities || orderItem.sizeQuantities || {};
-
-    const catalogItem = await MasterCatalog.findById(orderItem.articleId);
-    if (!catalogItem) throw new Error("Article not found in catalog");
-
-    const variant = catalogItem.variants.id(variantId);
-    if (!variant) throw new Error("Variant not found in catalog");
-
-    if (variant.sizeMap) {
-      for (const [size, qty] of Object.entries(allocSizes)) {
-        const qtyToReturn = Math.round(qty * ratio);
-        if (variant.sizeMap.has(size)) {
-          const cell = variant.sizeMap.get(size);
-          cell.qty = (cell.qty || 0) + qtyToReturn;
-          variant.sizeMap.set(size, cell);
-        }
-      }
-      await catalogItem.save();
+    
+    const validStatuses = ["RECEIVED", "PARTIAL", "OFD"];
+    if (!validStatuses.includes(order.status)) {
+      throw new Error("Only orders with delivered items can be returned");
     }
 
-    // Update order amounts/counts to reflect return (Optional but helpful)
-    // For now we just add stock back to master catalog as the priority.
-    
-    return order;
+    const processedItems = [];
+    let totalCartons = 0;
+    let totalPairs = 0;
+
+    for (const retItem of returnItems) {
+      const { variantId, cartons } = retItem;
+      const orderItem = order.items.find(item => item.variantId.toString() === variantId.toString());
+      if (!orderItem) throw new Error(`Item ${variantId} not found in this order`);
+
+      // Calculate total previously returned for this variant
+      const previousReturns = await Return.aggregate([
+        { $match: { orderId: order._id } },
+        { $unwind: "$items" },
+        { $match: { "items.variantId": orderItem.variantId } },
+        { $group: { _id: null, total: { $sum: "$items.cartonCount" } } }
+      ]);
+      const alreadyReturned = previousReturns[0]?.total || 0;
+      
+      const deliveredCartons = orderItem.fulfilledCartonCount || 0;
+      const availableToReturn = deliveredCartons - alreadyReturned;
+
+      if (cartons > availableToReturn) {
+        throw new Error(`Cannot return ${cartons} cartons for ${variantId}. Only ${availableToReturn} cartons remain from delivery.`);
+      }
+
+      // Proportional calculation for size restoration
+      const ratio = cartons / (orderItem.fulfilledCartonCount || 1);
+      const fulfilledSizes = orderItem.fulfilledSizeQuantities ? Object.fromEntries(orderItem.fulfilledSizeQuantities) : {};
+      
+      const catalogItem = await MasterCatalog.findById(orderItem.articleId);
+      if (!catalogItem) throw new Error("Article not found in catalog");
+
+      const variant = catalogItem.variants.id(variantId);
+      if (!variant) throw new Error("Variant not found in catalog");
+
+      const returnSizeQuantities = {};
+      let itemPairs = 0;
+
+      if (variant.sizeMap) {
+        for (const [size, qty] of Object.entries(fulfilledSizes)) {
+          const qtyToReturn = Math.round(qty * ratio);
+          if (qtyToReturn > 0) {
+            returnSizeQuantities[size] = qtyToReturn;
+            itemPairs += qtyToReturn;
+
+            if (variant.sizeMap.has(size)) {
+              const cell = variant.sizeMap.get(size);
+              cell.qty = (cell.qty || 0) + qtyToReturn;
+              variant.sizeMap.set(size, cell);
+            }
+          }
+        }
+        catalogItem.markModified('variants');
+        await catalogItem.save();
+      }
+
+      processedItems.push({
+        variantId: orderItem.variantId,
+        articleId: orderItem.articleId,
+        cartonCount: cartons,
+        pairCount: itemPairs,
+        sizeQuantities: returnSizeQuantities
+      });
+
+      totalCartons += cartons;
+      totalPairs += itemPairs;
+    }
+
+    const returnNumber = await generateNextReturnNumber();
+    const newReturn = new Return({
+      returnNumber,
+      orderId,
+      orderNumber: order.orderNumber,
+      distributorId: order.distributorId,
+      distributorName: order.distributorName,
+      items: processedItems,
+      totalCartons,
+      totalPairs,
+      reason
+    });
+
+    await newReturn.save();
+    return newReturn;
   } catch (error) {
     throw new Error(`Failed to process return: ${error.message}`);
+  }
+};
+
+const getReturnHistory = async ({ page = 1, limit = 10, search = "" } = {}) => {
+  try {
+    const skip = (page - 1) * limit;
+    const query = {};
+    if (search) {
+      query.$or = [
+        { returnNumber: { $regex: search, $options: "i" } },
+        { distributorName: { $regex: search, $options: "i" } },
+        { orderNumber: { $regex: search, $options: "i" } }
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      Return.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Return.countDocuments(query)
+    ]);
+
+    return {
+      items,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    };
+  } catch (error) {
+    throw new Error(`Failed to fetch return history: ${error.message}`);
   }
 };
 
@@ -466,4 +641,5 @@ module.exports = {
   getAllOrders,
   updateOrderStatus,
   processReturn,
+  getReturnHistory,
 };

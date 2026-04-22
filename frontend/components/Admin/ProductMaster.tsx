@@ -205,6 +205,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
               hsnCode: v.hsnCode || "",
               sizeQuantities,
               sizeSkus,
+              sizeMap: v.sizeMap || {},
             };
           });
 
@@ -669,6 +670,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
       sizeRangeId: v.sizeRangeId || "",
       sizeQuantities: v.sizeQuantities || {},
       sizeSkus: v.sizeSkus || {},
+      sizeMap: v.sizeMap || {},
     }));
 
     data.append("variants", JSON.stringify(normalizedVariants));

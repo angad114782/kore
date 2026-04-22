@@ -77,13 +77,17 @@ class DistributorOrderService {
   async updateOrderStatus(
     orderId: string,
     status: OrderStatus,
-    options: { allocatedItems?: any[], files?: Record<string, File>, receiverName?: string, receiverMobile?: string } = {}
+    options: { allocatedItems?: any[], blockedItems?: any[], files?: Record<string, File>, receiverName?: string, receiverMobile?: string } = {}
   ): Promise<Order | undefined> {
     const formData = new FormData();
     formData.append("status", status);
     
     if (options.allocatedItems) {
       formData.append("allocatedItems", JSON.stringify(options.allocatedItems));
+    }
+
+    if (options.blockedItems) {
+      formData.append("blockedItems", JSON.stringify(options.blockedItems));
     }
     
     if (options.receiverName) formData.append("receiverName", options.receiverName);
@@ -131,13 +135,28 @@ class DistributorOrderService {
     return this.mapOrder(res.data.data);
   }
 
-  async processReturn(orderId: string, variantId: string, cartons: number): Promise<Order | undefined> {
+  async processReturn(orderId: string, items: { variantId: string; cartons: number }[], reason?: string): Promise<any> {
     const res = await axios.post(
       `${API_URL}/return`,
-      { orderId, variantId, cartons },
+      { orderId, items, reason },
       { headers: getAuthHeaders() }
     );
-    return this.mapOrder(res.data.data);
+    return res.data.data;
+  }
+
+  async getReturnHistory(params: { page?: number; limit?: number; q?: string } = {}): Promise<{ items: any[]; meta: any }> {
+    const query = new URLSearchParams();
+    if (params.page) query.append("page", params.page.toString());
+    if (params.limit) query.append("limit", params.limit.toString());
+    if (params.q) query.append("q", params.q);
+
+    const res = await axios.get(`${API_URL}/returns?${query.toString()}`, {
+      headers: getAuthHeaders(),
+    });
+    return {
+      items: res.data.data || [],
+      meta: res.data.meta,
+    };
   }
 }
 

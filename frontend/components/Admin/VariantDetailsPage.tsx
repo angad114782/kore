@@ -9,8 +9,11 @@ import {
   Copy,
   Check,
   ShoppingBag,
+  RotateCcw,
+  Loader2,
 } from "lucide-react";
 import { Article, Variant } from "../../types";
+import { toast } from "sonner";
 import { getImageUrl } from "../../utils/imageUtils";
 
 interface VariantDetailsPageProps {
@@ -35,8 +38,10 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
   const [stockData, setStockData] = useState<{
     poMap: Record<string, number>;
     liveStockMap: Record<string, number>;
+    blockedStockMap: Record<string, number>;
   } | null>(null);
   const [loadingStock, setLoadingStock] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const fetchStock = async () => {
     if (!variant.id) return;
@@ -55,6 +60,26 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
       console.error("Failed to fetch variant stock", err);
     } finally {
       setLoadingStock(false);
+    }
+  };
+
+  const handleResetStock = async () => {
+    if (!variant.id) return;
+    if (!window.confirm("WARNING: This will DELETE all GRNs and clear all Order Fulfillment records for THIS variant. This action cannot be undone. Proceed?")) return;
+    
+    setResetting(true);
+    try {
+      const url = import.meta.env.VITE_API_BASE_URL + `/master-catalog/variants/${variant.id}/reset-stock`;
+      const res = await fetch(url, { method: "POST" });
+      if (!res.ok) throw new Error("Failed to reset stock");
+      
+      toast.success("Variant stock and orders reset successfully!");
+      fetchStock(); // Refresh display
+    } catch (err) {
+      console.error("Reset failed", err);
+      toast.error("Failed to reset inventory");
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -89,7 +114,7 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
           ...(article.secondaryImages || []).map((img: any) => img.url || img),
         ].filter(Boolean);
 
-  const variantName = variant.itemName || `${article.name} – ${variant.color}`;
+  const variantName = variant.itemName || `${article.name} – ${variant.color} - ${variant.sizeRange}`;
 
   const parseSizeRange = (range: string) => {
     const cleaned = range.trim().replace(/\s/g, "");
@@ -116,6 +141,7 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
   const currentBookingMap = variant.bookingMap || {};
   const currentPOMap = stockData?.poMap || {};
   const currentLiveStockMap = stockData?.liveStockMap || {};
+  const currentBlockedStockMap = stockData?.blockedStockMap || {};
 
   const totalPairs = Object.values(currentLiveStockMap).reduce(
     (s: number, v) => s + (Number(v) || 0),
@@ -137,6 +163,33 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
   const totalPO = Object.values(currentPOMap).reduce((s: number, v) => {
     return s + (Number(v) || 0);
   }, 0);
+
+  const totalBlocked = Object.values(currentBlockedStockMap).reduce((s: number, v) => {
+    return s + (Number(v) || 0);
+  }, 0);
+
+  // Assortment-aware live stock calculation
+  const calculateAssortmentCartons = (stockMap: Record<string, number>) => {
+    if (!variant.sizeQuantities || Object.keys(variant.sizeQuantities).length === 0) return 0;
+    const possibleCartons = Object.entries(variant.sizeQuantities).map(([sz, count]) => {
+      const req = Number(count) || 0;
+      if (req <= 0) return Infinity;
+      
+      const cleanSz = sz.trim();
+      const avail = Number(stockMap[cleanSz] ?? stockMap[sz]) || 0;
+      return Math.floor(avail / req);
+    });
+    const result = Math.min(...possibleCartons);
+    return (result === Infinity || isNaN(result)) ? 0 : result;
+  };
+
+  // Available stock (Live - Blocked)
+  const availableStockMap: Record<string, number> = {};
+  sizes.forEach(sz => {
+    availableStockMap[sz] = Math.max(0, (currentLiveStockMap[sz] || 0) - (currentBlockedStockMap[sz] || 0));
+  });
+
+  const liveCartonsCount = calculateAssortmentCartons(availableStockMap);
 
   // Clear identity: Variant SKU or Article SKU, no auto-generated strings
   const primarySku = variant.sku || article.sku || "";
@@ -170,6 +223,14 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
           Catalogue
         </button>
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleResetStock}
+            disabled={resetting}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {resetting ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+            Reset Inventory
+          </button>
           <button
             onClick={() => onEditArticle(article.id)}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
@@ -347,11 +408,9 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                   : undefined
               }
             />
-            <SpecRow label="Current Stock" value={String(totalPairs)} />
-            {/* <SpecRow
-              label="Size Range1"
-              value={article.selectedSizes?.join(", ") || "—"}
-            /> */}
+            <SpecRow label="Live Stock" value={`${totalPairs} prs`} />
+            <SpecRow label="Blocked Stock" value={`${totalBlocked} prs`} badge={totalBlocked > 0 ? "rose" : undefined} />
+            <SpecRow label="Live Stock (Ctn)" value={`${liveCartonsCount} Ctn`} badge={liveCartonsCount > 0 ? "emerald" : "rose"} />
             <SpecRow label="Manufacturer" value={article.manufacturer || "—"} />
             <SpecRow label="Unit" value={article.unit || "—"} />
             {article.status === "WISHLIST" && (
@@ -402,11 +461,20 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                   </span>
                 </span>
               </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                <span className="text-xs font-medium text-slate-600">
+                  Blocked:{" "}
+                  <span className="font-bold text-amber-600">
+                    {totalBlocked} pairs
+                  </span>
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Three-column grid for size, booking and PO */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Four-column grid for size, booking, PO and Blocked */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
             {/* Left Column - Size Stock Breakdown */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -420,7 +488,10 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {sizes.map((sz) => {
-                  const qty = currentLiveStockMap[sz] || 0;
+                  const cleanSz = sz.trim();
+                  const qty = Number(currentLiveStockMap[cleanSz] ?? currentLiveStockMap[sz]) || 0;
+                  const blocked = Number(currentBlockedStockMap[cleanSz] ?? currentBlockedStockMap[sz]) || 0;
+                  const available = availableStockMap[sz] || 0;
                   const sku = variant.sizeSkus?.[sz] || 
                     (typeof currentSizeMap[sz] === "object" ? (currentSizeMap[sz] as any)?.sku : "") || "";
 
@@ -436,14 +507,14 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                       className={`p-3 rounded-xl border transition-all hover:shadow-md ${bgClass}`}
                     >
                       <div className="flex flex-col items-start justify-between mb-1">
-                        <span className="text-xs font-bold text-slate-500">
-                          Size {sz}
-                        </span>
-                        <div
-                          className={`text-xl font-black leading-none ${qtyClass}`}
-                        >
-                          {qty}
+                        <span className="text-[10px] font-bold text-slate-500">Size {sz}</span>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className={`text-xl font-black leading-none ${qtyClass}`}>{available}</span>
+                          {blocked > 0 && (
+                            <span className="text-[10px] font-bold text-rose-500">(-{blocked} blk)</span>
+                          )}
                         </div>
+                        <p className="text-[8px] font-bold text-slate-400 mt-1 uppercase">Live: {qty}</p>
                       </div>
                     </div>
                   );
@@ -464,7 +535,8 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {sizes.map((sz) => {
-                  const bookedQty = currentBookingMap[sz] || 0;
+                  const cleanSz = sz.trim();
+                  const bookedQty = Number(currentBookingMap[cleanSz] ?? currentBookingMap[sz]) || 0;
                   const statusColor = bookedQty === 0 ? "slate" : "emerald";
 
                   return (
@@ -509,7 +581,8 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {sizes.map((sz) => {
-                  const poQty = currentPOMap[sz] || 0;
+                  const cleanSz = sz.trim();
+                  const poQty = Number(currentPOMap[cleanSz] ?? currentPOMap[sz]) || 0;
                   const statusColor = poQty === 0 ? "slate" : "orange";
 
                   return (
@@ -531,6 +604,52 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                           }`}
                         >
                           {poQty}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Fourth Column - Blocked Breakdown */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black text-amber-600 uppercase tracking-wider flex items-center gap-1.5">
+                  <Package size={14} /> Blocked Stock
+                </h4>
+                <span className="text-[10px] font-bold text-slate-400">
+                  per size
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {sizes.map((sz) => {
+                  const cleanSz = sz.trim();
+                  const blockedQty = Number(currentBlockedStockMap[cleanSz] ?? currentBlockedStockMap[sz]) || 0;
+                  const statusColor = blockedQty === 0 ? "slate" : "amber";
+
+                  return (
+                    <div
+                      key={sz}
+                      className={`p-3 rounded-xl border transition-all hover:shadow-md ${
+                        statusColor === "amber"
+                          ? "bg-amber-50/60 border-amber-200"
+                          : "bg-slate-50/60 border-slate-200"
+                      }`}
+                    >
+                      <div className="flex flex-col items-start justify-between">
+                        <span className="text-xs font-bold text-slate-500">
+                          Size {sz}
+                        </span>
+                        <div
+                          className={`text-xl font-black leading-none ${
+                            blockedQty > 0
+                              ? "text-amber-600"
+                              : "text-slate-300"
+                          }`}
+                        >
+                          {blockedQty}
                         </div>
                       </div>
                     </div>

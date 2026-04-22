@@ -3,7 +3,8 @@ const mongoose = require("mongoose");
 const CartonSchema = new mongoose.Schema(
   {
     cartonBarcode: { type: String, required: true },
-    itemName: { type: String }, // NEW: tracks which specific item this carton belongs to
+    itemName: { type: String }, 
+    variantId: { type: String }, // NEW: tracks unique variant for precise stock updates
     pairBarcodes: { type: [String], default: [] },
     lockedAt: { type: Date, required: true },
   },
@@ -38,6 +39,7 @@ const GRNDraftSchema = new mongoose.Schema(
 );
 
 GRNDraftSchema.index({ refId: 1, status: 1 });
+GRNDraftSchema.index({ "cartons.variantId": 1, status: 1 }); // Required for dynamic stock calculation
 GRNDraftSchema.index({ grnNo: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model("GRNDraft", GRNDraftSchema);

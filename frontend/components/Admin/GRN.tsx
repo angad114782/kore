@@ -186,54 +186,40 @@ const GRN: React.FC = () => {
         setPoDetail(data);
         // Initialize scan state
         if (data) {
-          // Query previously submitted GRNs for this PO to figure out which cartons are done
-          let doneMap: Record<string, number[]> = {};
           try {
-            const histRes = await grnService.history();
-            const pastGRNs = (histRes.data || []).filter((h: any) => h.refId === selectedPOId);
-            // Collect completed carton indices per article from past GRNs
-            for (const grn of pastGRNs) {
-              try {
-                const detail = await grnService.getGRNDetail(grn.grnId);
-                const grnData = detail.data;
-                if (grnData?.cartons) {
-                  grnData.cartons.forEach((c: any) => {
-                    // Use the itemName stored in the carton if available
-                    // Fallback: If articleName contains commas (legacy multi-item GRN), we can't be 100% sure which carton is which
-                    // but we can at least try to mark it for all items in that list (or the first one)
-                    let articleKeys = [c.itemName || grnData.articleName || data.items[0]?.itemName || ""];
-                    
-                    if (!c.itemName && grnData.articleName && grnData.articleName.includes(", ")) {
-                      articleKeys = grnData.articleName.split(", ").map((s: string) => s.trim());
-                    }
+            const receivedRes = await grnService.getReceivedCartons(selectedPOId);
+            const doneMap = receivedRes.data || {};
+            setDoneCartons(doneMap);
 
-                    articleKeys.forEach(articleKey => {
-                      if (!doneMap[articleKey]) doneMap[articleKey] = [];
-                      
-                      const parts = (c.cartonBarcode || "").split("-");
-                      const cartonNum = parts.length > 0 ? Number(parts[parts.length - 1]) : 1;
-                      
-                      if (!isNaN(cartonNum) && !doneMap[articleKey].includes(cartonNum - 1)) {
-                        doneMap[articleKey].push(cartonNum - 1);
-                      }
-                    });
-                  });
-                }
-              } catch { /* ignore individual GRN fetch errors */ }
+            const state: ScanState = {};
+            data.items.forEach((item) => {
+              state[item.itemName] = Array.from(
+                { length: item.cartonCount || 1 },
+                () => ({})
+              );
+            });
+            setScanState(state);
+            
+            // Auto-select first item if not selected and find its first pending carton
+            if (data.items.length > 0) {
+              const firstItem = data.items[0];
+              setSelectedItemName(firstItem.itemName);
+              
+              const itemDoneIndices = doneMap[firstItem.itemName] || [];
+              let firstPending = 0;
+              while (itemDoneIndices.includes(firstPending) && firstPending < (firstItem.cartonCount || 1)) {
+                firstPending++;
+              }
+              setCurrentCartonIdx(firstPending >= (firstItem.cartonCount || 1) ? 0 : firstPending);
+            } else {
+              setCurrentCartonIdx(0);
             }
-          } catch { /* ignore history fetch errors */ }
-          setDoneCartons(doneMap);
-
-          const state: ScanState = {};
-          data.items.forEach((item) => {
-            state[item.itemName] = Array.from(
-              { length: item.cartonCount || 1 },
-              () => ({})
-            );
-          });
-          setScanState(state);
-          setCurrentCartonIdx(0);
-          setExpandedItems({});
+            
+            setExpandedItems({});
+          } catch (err: any) {
+            console.error("Failed to load received cartons:", err);
+            toast.error("Failed to check already received cartons");
+          }
         }
       })
       .catch(() => {
@@ -360,6 +346,13 @@ const GRN: React.FC = () => {
 
     if (!selectedItem) {
       toast.error("Please select an item first.");
+      setScanInput("");
+      return;
+    }
+
+    // Check if current carton was already received in a past session
+    if (doneCartons[selectedItemName]?.includes(currentCartonIdx)) {
+      toast.error(`Carton ${currentCartonIdx + 1} has already been received. Please select a pending carton.`);
       setScanInput("");
       return;
     }
@@ -790,6 +783,17 @@ const GRN: React.FC = () => {
                           onChange={(val) => {
                             setSelectedItemName(val);
                             setScanInput("");
+                            
+                            // Auto-jump to first pending carton for this item
+                            const item = poDetail.items.find(i => i.itemName === val);
+                            if (item) {
+                              const itemDoneIndices = doneCartons[val] || [];
+                              let firstPending = 0;
+                              while (itemDoneIndices.includes(firstPending) && firstPending < (item.cartonCount || 1)) {
+                                firstPending++;
+                              }
+                              setCurrentCartonIdx(firstPending >= (item.cartonCount || 1) ? 0 : firstPending);
+                            }
                           }}
                           placeholder="Select item to receive..."
                         />

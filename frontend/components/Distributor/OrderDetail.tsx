@@ -23,8 +23,10 @@ import {
   User as UserIcon,
   ShieldCheck,
   Mail,
-  History
+  History,
+  X
 } from 'lucide-react';
+import DocPreviewDialog from '../ui/DocPreviewDialog';
 import { Order, OrderStatus, Article, Inventory, OrderItem, FulfillmentBatch } from '../../types';
 import jsPDF from 'jspdf';
 import autoTable, { UserOptions } from 'jspdf-autotable';
@@ -85,32 +87,86 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
 
   // Allocation state for Admins — re-derive whenever currentOrder changes
   const [allocations, setAllocations] = useState<Record<string, any>>({});
+  const [blockingState, setBlockingState] = useState<Record<string, any>>({});
+  const [scannedItems, setScannedItems] = useState<Record<string, number>>({}); // variantId -> cartonCount verified
+  const [scanInput, setScanInput] = useState("");
+  const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string } | null>(null);
+  
+  // Real-time stock state to align with VariantDetailsPage
+  const [variantStockData, setVariantStockData] = useState<Record<string, { 
+    liveStockMap: Record<string, number>, 
+    blockedStockMap: Record<string, number> 
+  }>>({});
+  const [isLoadingStock, setIsLoadingStock] = useState(false);
 
   // Re-sync allocation state from order data (runs on mount + after save)
   React.useEffect(() => {
-    const initial: Record<string, any> = {};
+    const initialAlloc: Record<string, any> = {};
+    const initialBlock: Record<string, any> = {};
     currentOrder.items.forEach(item => {
       if (item.variantId) {
-        initial[item.variantId] = {
+        initialAlloc[item.variantId] = {
           variantId: item.variantId,
-          allocatedCartonCount: item.allocatedCartonCount ?? item.cartonCount,
-          allocatedPairCount: item.allocatedPairCount ?? item.pairCount,
-          allocatedSizeQuantities: { ...(item.allocatedSizeQuantities ?? item.sizeQuantities ?? {}) }
+          allocatedCartonCount: item.allocatedCartonCount ?? 0,
+          allocatedPairCount: item.allocatedPairCount ?? 0,
+          allocatedSizeQuantities: { ...(item.allocatedSizeQuantities ?? {}) }
+        };
+        initialBlock[item.variantId] = {
+          variantId: item.variantId,
+          blockedCartonCount: item.blockedCartonCount ?? 0,
+          blockedPairCount: item.blockedPairCount ?? 0,
+          blockedSizeQuantities: { ...(item.blockedSizeQuantities ?? {}) }
         };
       }
     });
-    setAllocations(initial);
+    setAllocations(initialAlloc);
+    setBlockingState(initialBlock);
   }, [currentOrder]);
 
+  const fetchAllVariantStock = async () => {
+    const variantIds = Array.from(new Set(currentOrder.items.map(item => item.variantId).filter(Boolean)));
+    if (variantIds.length === 0) return;
+
+    setIsLoadingStock(true);
+    const stockMap: typeof variantStockData = {};
+    
+    try {
+      await Promise.all(variantIds.map(async (vid) => {
+        try {
+          const url = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5005/api') + `/master-catalog/variants/${vid}/stock`;
+          const res = await fetch(url);
+          const json = await res.json();
+          if (json.data) {
+            stockMap[vid!] = {
+              liveStockMap: json.data.liveStockMap || {},
+              blockedStockMap: json.data.blockedStockMap || {}
+            };
+          }
+        } catch (err) {
+          console.error(`Failed to fetch stock for variant ${vid}`, err);
+        }
+      }));
+      setVariantStockData(stockMap);
+    } finally {
+      setIsLoadingStock(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchAllVariantStock();
+  }, [currentOrder.id]);
+
   const handleCartonAllocationChange = (variantId: string, newCartonCount: number, item: OrderItem) => {
+    const article = articles.find(a => a.id === item.articleId);
+    const variant = article?.variants?.find(v => v.id === item.variantId);
+    
     setAllocations(prev => {
-      const fulfilled = item.fulfilledCartonCount || 0;
-      const remaining = item.cartonCount - fulfilled;
-      const cartonCount = Math.max(0, Math.min(newCartonCount, remaining));
+      const blocked = item.blockedCartonCount || 0;
+      const cartonCount = Math.max(0, Math.min(newCartonCount, blocked));
       
       const originalCartonCount = item.cartonCount;
       const originalPairCount = item.pairCount;
-      const originalSizeQuantities = item.sizeQuantities || {};
+      const originalSizeQuantities = item.sizeQuantities || variant?.sizeQuantities || {};
 
       const ratio = originalCartonCount > 0 ? cartonCount / originalCartonCount : 0;
       
@@ -133,17 +189,156 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
     });
   };
 
+  const handleCartonBlockingChange = (variantId: string, newCartonCount: number, item: OrderItem) => {
+    const article = articles.find(a => a.id === item.articleId);
+    const variant = article?.variants?.find(v => v.id === item.variantId);
+
+    // Calculate live limit
+    const stockData = variantStockData[variantId];
+    let maxLive = Infinity;
+    if (stockData?.liveStockMap && variant?.sizeQuantities) {
+      const possibleCartons = Object.entries(variant.sizeQuantities).map(([sz, count]) => {
+        const reqPerCarton = Number(count) || 0;
+        if (reqPerCarton <= 0) return Infinity;
+        const cleanSz = sz.trim();
+        const physical = Number(stockData.liveStockMap[cleanSz] ?? stockData.liveStockMap[sz]) || 0;
+        const currentBlocked = Number(stockData.blockedStockMap[cleanSz] ?? stockData.blockedStockMap[sz]) || 0;
+        const available = Math.max(0, physical - currentBlocked);
+        // We can block what's already blocked in THIS order + what's available unblocked
+        // But simpler: Physical - (TotalBlocked - ItemBlocked)
+        return Math.floor(available / reqPerCarton);
+      });
+      const unblockedCartons = Math.min(...possibleCartons);
+      maxLive = (item.blockedCartonCount || 0) + (unblockedCartons === Infinity ? 0 : unblockedCartons);
+    }
+
+    setBlockingState(prev => {
+      // Blocking is limited by (ordered total - fulfilled) AND live available
+      const remainingOrdered = item.cartonCount - (item.fulfilledCartonCount || 0);
+      const limit = Math.min(remainingOrdered, maxLive);
+      const cartonCount = Math.max(0, Math.min(newCartonCount, limit));
+      
+      const originalCartonCount = item.cartonCount;
+      const originalPairCount = item.pairCount;
+      const originalSizeQuantities = item.sizeQuantities || variant?.sizeQuantities || {};
+
+      const ratio = originalCartonCount > 0 ? cartonCount / originalCartonCount : 0;
+      
+      const newPairCount = Math.round(originalPairCount * ratio);
+      const newSizeQuantities: Record<string, number> = {};
+      
+      Object.entries(originalSizeQuantities).forEach(([size, qty]) => {
+        newSizeQuantities[size] = Math.round(qty * ratio);
+      });
+
+      return {
+        ...prev,
+        [variantId]: {
+          variantId,
+          blockedCartonCount: cartonCount,
+          blockedPairCount: newPairCount,
+          blockedSizeQuantities: newSizeQuantities
+        }
+      };
+    });
+  };
+
+  const handleUpdateBlockedStock = async () => {
+    try {
+      setUploading(true);
+      const blockedItems = Object.values(blockingState);
+      
+      const updated = await distributorOrderService.updateOrderStatus(
+        currentOrder.id, 
+        currentOrder.status, 
+        { blockedItems }
+      );
+      if (updated) {
+        setCurrentOrder(updated);
+        fetchAllVariantStock(); // Refresh live counts after blocking update
+        toast.success("Blocked stock updated successfully!");
+      }
+    } catch (err: any) {
+      console.error("Failed to update blocked stock", err);
+      toast.error(err?.response?.data?.message || "Failed to update blocked stock");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleScanSKU = (sku: string) => {
+    if (!sku.trim()) return;
+    
+    // Normalize input: lower case and remove ALL whitespace
+    const normalizedInput = sku.trim().toLowerCase().replace(/\s+/g, "");
+    
+    // Find which item this Carton SKU belongs to
+    let found = false;
+    currentOrder.items.forEach(item => {
+      const article = articles.find(a => a.id === item.articleId);
+      if (!article) return;
+      const variant = article.variants?.find(v => v.id === item.variantId || v._id === item.variantId);
+      
+      if (!variant) return;
+
+      // 1. Match against Dynamic Carton SKU: [Article Name]-[Color]-[Size Range]
+      const cartonSKU = `${article.name}-${variant.color}-${variant.sizeRange}`
+        .toLowerCase()
+        .replace(/\s+/g, "");
+
+      // 2. Match against actual Variant SKU field
+      const variantSKU = (variant.sku || "").toLowerCase().replace(/\s+/g, "");
+
+      if (normalizedInput === cartonSKU || (variantSKU && normalizedInput === variantSKU)) {
+        // Use live allocations state for limit check to allow immediate verification after adjustments
+        const allocated = allocations[item.variantId!]?.allocatedCartonCount ?? item.allocatedCartonCount ?? 0;
+        const alreadyScanned = scannedItems[item.variantId!] || 0;
+        
+        if (alreadyScanned < allocated) {
+          setScannedItems(prev => ({
+            ...prev,
+            [item.variantId!]: (prev[item.variantId!] || 0) + 1
+          }));
+          toast.success(`Verified: ${article.name} (${variant.color}) - Carton ${alreadyScanned + 1}`);
+          found = true;
+        } else {
+          toast.warning(`All allocated cartons for this item are already verified.`);
+          found = true;
+        }
+      }
+    });
+
+    if (!found) {
+      toast.error("SKU does not match any current allocation batch.");
+    }
+    setScanInput("");
+  };
+
+  const isScanningFinished = () => {
+    return currentOrder.items.every(item => {
+      const allocated = allocations[item.variantId!]?.allocatedCartonCount ?? item.allocatedCartonCount ?? 0;
+      const scanned = scannedItems[item.variantId!] || 0;
+      return scanned >= allocated;
+    });
+  };
+
   const handleAllocateAndProceed = async () => {
     try {
       setUploading(true);
       const allocatedItems = Object.values(allocations);
+      // If order is already in a stage beyond BOOKED, keep its current status during allocation update
+      const targetStatus = [OrderStatus.BOOKED, OrderStatus.PARTIAL].includes(currentOrder.status) 
+        ? OrderStatus.PFD 
+        : currentOrder.status;
+
       const updated = await distributorOrderService.updateOrderStatus(
         currentOrder.id, 
-        OrderStatus.PFD, 
+        targetStatus, 
         { allocatedItems }
       );
       if (updated) {
         setCurrentOrder(updated);
+        fetchAllVariantStock(); // Refresh live counts after allocation update
         toast.success("Allocation saved and Order marked as Preparing for Delivery!");
       }
     } catch (err: any) {
@@ -434,11 +629,30 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
     return `${(import.meta.env.VITE_API_BASE_URL || 'http://localhost:5005/api').replace('/api', '')}${path}`;
   };
 
+  const latestBatch = currentOrder.fulfillmentHistory && currentOrder.fulfillmentHistory.length > 0 
+    ? currentOrder.fulfillmentHistory[currentOrder.fulfillmentHistory.length - 1] 
+    : null;
+
   const docLinks = {
-    invoice: getFullUrl(currentOrder.invoiceUrl),
-    eway: getFullUrl(currentOrder.ewayBillUrl),
-    transport: getFullUrl(currentOrder.transportBillUrl),
-    receiving: getFullUrl(currentOrder.receivingNoteUrl),
+    invoice: getFullUrl(currentOrder.invoiceUrl || latestBatch?.invoiceUrl),
+    eway: getFullUrl(currentOrder.ewayBillUrl || latestBatch?.ewayBillUrl),
+    transport: getFullUrl(currentOrder.transportBillUrl || latestBatch?.transportBillUrl || ""),
+    receiving: getFullUrl(currentOrder.receivingNoteUrl || latestBatch?.receivingNoteUrl),
+  };
+
+  const getAssortment = (variant: any) => {
+    const quantities = variant?.sizeQuantities;
+    if (!quantities || Object.keys(quantities).length === 0) return 'N/A';
+    
+    // Sort sizes for consistent display
+    const sortedSizes = Object.keys(quantities).sort((a, b) => {
+      const numA = parseInt(a);
+      const numB = parseInt(b);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.localeCompare(b);
+    });
+
+    return sortedSizes.map(size => `${size}:${quantities[size]}`).join(', ');
   };
 
 
@@ -508,68 +722,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
               })}
             </div>
 
-            {/* Document Upload Stage (Admin) — Only for RFD -> OFD transition */}
-            {!isDistributor && currentOrder.status === OrderStatus.RFD && (
-              <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col gap-4">
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center mb-1">Necessary Shipping Documents</p>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {/* Invoice Upload */}
-                  <div className="relative">
-                    <input type="file" ref={invoiceInputRef} className="hidden" onChange={(e) => onShippingFileSelected('invoice', e)} />
-                    <button 
-                      onClick={() => invoiceInputRef.current?.click()}
-                      className={`w-full flex flex-col items-center justify-center p-3 rounded-xl border-dashed border-2 transition-all gap-1 ${
-                        shippingFiles.invoice ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                      }`}
-                    >
-                      {shippingFiles.invoice ? <CheckCircle size={16} className="text-emerald-500" /> : <Upload size={16} className="text-slate-400" />}
-                      <span className="text-[9px] font-bold text-slate-600 uppercase">Invoice</span>
-                    </button>
-                    {shippingFiles.invoice && <p className="text-[8px] text-emerald-600 font-bold truncate mt-1 text-center px-2">{shippingFiles.invoice.name}</p>}
-                  </div>
-
-                  {/* E-Way Bill Upload */}
-                  <div className="relative">
-                    <input type="file" ref={ewayInputRef} className="hidden" onChange={(e) => onShippingFileSelected('ewayBill', e)} />
-                    <button 
-                      onClick={() => ewayInputRef.current?.click()}
-                      className={`w-full flex flex-col items-center justify-center p-3 rounded-xl border-dashed border-2 transition-all gap-1 ${
-                        shippingFiles.ewayBill ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                      }`}
-                    >
-                      {shippingFiles.ewayBill ? <CheckCircle size={16} className="text-emerald-500" /> : <Upload size={16} className="text-slate-400" />}
-                      <span className="text-[9px] font-bold text-slate-600 uppercase">E-Way Bill</span>
-                    </button>
-                    {shippingFiles.ewayBill && <p className="text-[8px] text-emerald-600 font-bold truncate mt-1 text-center px-2">{shippingFiles.ewayBill.name}</p>}
-                  </div>
-
-                  {/* Transport Bill Upload */}
-                  <div className="relative">
-                    <input type="file" ref={transportInputRef} className="hidden" onChange={(e) => onShippingFileSelected('transportBill', e)} />
-                    <button 
-                      onClick={() => transportInputRef.current?.click()}
-                      className={`w-full flex flex-col items-center justify-center p-3 rounded-xl border-dashed border-2 transition-all gap-1 ${
-                        shippingFiles.transportBill ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                      }`}
-                    >
-                      {shippingFiles.transportBill ? <CheckCircle size={16} className="text-emerald-500" /> : <Upload size={16} className="text-slate-400" />}
-                      <span className="text-[9px] font-bold text-slate-600 uppercase">Transport Bill</span>
-                    </button>
-                    {shippingFiles.transportBill && <p className="text-[8px] text-emerald-600 font-bold truncate mt-1 text-center px-2">{shippingFiles.transportBill.name}</p>}
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleUpdateStatus(OrderStatus.OFD)}
-                  disabled={uploading || !shippingFiles.invoice || !shippingFiles.ewayBill || !shippingFiles.transportBill}
-                  className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {uploading ? <Loader2 size={16} className="animate-spin" /> : <Truck size={16} />}
-                  Mark as Out for Delivery
-                </button>
-              </div>
-            )}
+            {/* Documentation Stage - Moved to Table Footer for Admin */}
 
             {/* Mark as Received — only for distributors when status is OFD */}
             {isDistributor && currentOrder.status === OrderStatus.OFD && (
@@ -631,7 +784,10 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
           {(docLinks.invoice || docLinks.eway || docLinks.transport || docLinks.receiving) && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 animate-in fade-in zoom-in-95 duration-700 sticky top-4 z-20">
               {docLinks.invoice && (
-                <a href={docLinks.invoice} target="_blank" rel="noopener noreferrer" className="group bg-white p-4 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/10 transition-all flex items-center gap-3">
+                <button 
+                  onClick={() => setPreviewDoc({ url: docLinks.invoice!, title: "Tax Invoice" })}
+                  className="group bg-white p-4 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/10 transition-all flex items-center gap-3 text-left"
+                >
                   <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center group-hover:bg-indigo-500 transition-colors">
                     <FileText size={20} className="text-indigo-600 group-hover:text-white" />
                   </div>
@@ -639,10 +795,13 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Shipping</p>
                     <p className="text-sm font-bold text-slate-900 group-hover:text-indigo-600">Tax Invoice</p>
                   </div>
-                </a>
+                </button>
               )}
               {docLinks.eway && (
-                <a href={docLinks.eway} target="_blank" rel="noopener noreferrer" className="group bg-white p-4 rounded-2xl border-2 border-slate-100 hover:border-emerald-500 hover:shadow-xl hover:shadow-emerald-500/10 transition-all flex items-center gap-3">
+                <button 
+                  onClick={() => setPreviewDoc({ url: docLinks.eway!, title: "E-Way Bill" })}
+                  className="group bg-white p-4 rounded-2xl border-2 border-slate-100 hover:border-emerald-500 hover:shadow-xl hover:shadow-emerald-500/10 transition-all flex items-center gap-3 text-left"
+                >
                   <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center group-hover:bg-emerald-500 transition-colors">
                     <Truck size={20} className="text-emerald-600 group-hover:text-white" />
                   </div>
@@ -650,21 +809,27 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Transport</p>
                     <p className="text-sm font-bold text-slate-900 group-hover:text-emerald-600">E-Way Bill</p>
                   </div>
-                </a>
+                </button>
               )}
               {docLinks.transport && (
-                <a href={docLinks.transport} target="_blank" rel="noopener noreferrer" className="group bg-white p-4 rounded-2xl border-2 border-slate-100 hover:border-amber-500 hover:shadow-xl hover:shadow-amber-500/10 transition-all flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center group-hover:bg-amber-500 transition-colors">
-                    <FilePlus size={20} className="text-amber-600 group-hover:text-white" />
+                <button 
+                  onClick={() => setPreviewDoc({ url: docLinks.transport!, title: "Transport Bill" })}
+                  className="group bg-white p-4 rounded-2xl border-2 border-slate-100 hover:border-blue-500 hover:shadow-xl hover:shadow-blue-500/10 transition-all flex items-center gap-3 text-left"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center group-hover:bg-blue-500 transition-colors">
+                    <Truck size={20} className="text-blue-600 group-hover:text-white" />
                   </div>
                   <div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Logistics</p>
-                    <p className="text-sm font-bold text-slate-900 group-hover:text-amber-600">Transport Bill</p>
+                    <p className="text-sm font-bold text-slate-900 group-hover:text-blue-600">Transport Bill</p>
                   </div>
-                </a>
+                </button>
               )}
               {docLinks.receiving && (
-                <a href={docLinks.receiving} target="_blank" rel="noopener noreferrer" className="group bg-slate-900 p-4 rounded-2xl border-2 border-slate-800 hover:border-emerald-400 hover:shadow-xl hover:shadow-emerald-400/10 transition-all flex items-center gap-3">
+                <button 
+                  onClick={() => setPreviewDoc({ url: docLinks.receiving!, title: "Receiving Note" })}
+                  className="group bg-slate-900 p-4 rounded-2xl border-2 border-slate-800 hover:border-emerald-400 hover:shadow-xl hover:shadow-emerald-400/10 transition-all flex items-center gap-3 text-left"
+                >
                   <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center group-hover:bg-emerald-400 transition-colors">
                     <ShieldCheck size={20} className="text-emerald-400 group-hover:text-slate-900" />
                   </div>
@@ -672,7 +837,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                     <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Confirmation</p>
                     <p className="text-sm font-bold text-white">Receiving Note</p>
                   </div>
-                </a>
+                </button>
               )}
 
               {/* Receiver Details — Dedicated Card in the same row */}
@@ -736,40 +901,159 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
               </div>
 
               <div className="transition-all duration-500 min-h-[400px]">
-            {activeTab === 'items' ? (
+{activeTab === 'items' ? (
               <div className="animate-in fade-in slide-in-from-left-4 duration-500 space-y-6">
+                
+
+
                 {/* Items Detail - Sleek Rows */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                  <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <h3 className="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
                       <Package size={14} className="text-indigo-600" />
-                      Current Order Breakdown
+                      Order Breakdown
                     </h3>
+                    
+                    {!isDistributor && currentOrder.status === OrderStatus.RFD && (
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <div className="relative flex-1 sm:w-64">
+                          <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                          <input 
+                            type="text" 
+                            placeholder="Scan SKU to Verify..." 
+                            value={scanInput}
+                            onChange={(e) => setScanInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleScanSKU(scanInput)}
+                            className="w-full pl-8 pr-3 py-1.5 bg-white border border-indigo-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-bold"
+                            autoFocus
+                          />
+                        </div>
+                        {isScanningFinished() && (
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider animate-in fade-in zoom-in">
+                            <ShieldCheck size={12} /> Verified
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="border-b border-slate-100 bg-slate-50/30">
-                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Image</th>
-                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Article / Variant</th>
-                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Color</th>
-                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ordered</th>
-                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Fulfilled</th>
-                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Remaining</th>
-                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Allocation (Current Batch)</th>
-                          <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Amount</th>
-                        </tr>
+                        {isDistributor ? (
+                          <tr className="border-b border-slate-100 bg-slate-50/30">
+                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Image</th>
+                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Article / Variant</th>
+                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ordered (Ctn)</th>
+                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Fulfilled (Ctn)</th>
+                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center text-rose-500">Remaining (Ctn)</th>
+                            <th className="px-6 py-3 text-[10px] font-black text-indigo-600 uppercase tracking-widest text-center">Allocation (Batch)</th>
+                          </tr>
+                        ) : (
+                          <tr className="border-b border-slate-100 bg-slate-50/30">
+                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Image</th>
+                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Article / Variant</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ordered (Ctn)</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Fulfilled (Ctn)</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-center">Remaining (Ctn)</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center bg-indigo-50/30">Live Stock (Ctn)</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-amber-600 uppercase tracking-widest text-center bg-amber-50/30">Blocked (Ctn)</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-indigo-600 uppercase tracking-widest text-center bg-indigo-50/30">Allocation (Ctn)</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-center">Verified (Ctn)</th>
+                          </tr>
+                        )}
                       </thead>
                       <tbody className="divide-y divide-slate-50">
                         {currentOrder.items.map((item, idx) => {
                           const article = articles.find(a => a.id === item.articleId);
                           const variant = article?.variants?.find(v => v.id === item.variantId);
                           
-                          const itemIsBooked = currentOrder.status === OrderStatus.BOOKED;
-                          const price = variant?.costPrice || 0;
-                          const amount = item.pairCount * price;
+                          // Robust Assortment-aware Live Stock (Min cartons possible by size ratio) using real-time fetched data
+                          const getAssortmentLiveCartons = (delta: number = 0) => {
+                            const stockData = variantStockData[item.variantId!];
+                            if (!stockData?.liveStockMap || !variant?.sizeQuantities) return 0;
+                            
+                            const possibleCartons = Object.entries(variant.sizeQuantities).map(([sz, count]) => {
+                              const reqPerCarton = Number(count) || 0;
+                              if (reqPerCarton <= 0) return Infinity;
 
+                              // Robust lookup: check for trimmed keys and prioritize fetched liveStockMap
+                              const cleanSz = sz.trim();
+                              
+                              // Calculate available stock as (Physical/Live - Blocked)
+                              // We use the real-time stock map instead of variant.sizeMap which might be stale
+                              const physicalSizeStock = Number(stockData.liveStockMap[cleanSz] ?? stockData.liveStockMap[sz]) || 0;
+                              const blockedSizeStock = Number(stockData.blockedStockMap[cleanSz] ?? stockData.blockedStockMap[sz]) || 0;
+                              
+                              const availableSizeStock = Math.max(0, physicalSizeStock - blockedSizeStock);
+
+                              // Factor in pending blocking delta (delta is in cartons)
+                              const previewSizeStock = Math.max(0, availableSizeStock - (delta * reqPerCarton));
+                              return Math.floor(previewSizeStock / reqPerCarton);
+                            });
+                            const result = Math.min(...possibleCartons);
+                            return (result === Infinity || isNaN(result)) ? 0 : result;
+                          };
+
+                          // Pending blocking delta (local state change vs saved state)
+                          const currentBlockedSaved = item.blockedCartonCount || 0;
+                          const pendingBlocked = blockingState[item.variantId!]?.blockedCartonCount ?? currentBlockedSaved;
+                          const blockDelta = pendingBlocked - currentBlockedSaved;
+
+                          const previewLiveStockCartons = getAssortmentLiveCartons(blockDelta);
+
+                          const scanned = scannedItems[item.variantId!] || 0;
+                          const allocatedCount = allocations[item.variantId!]?.allocatedCartonCount ?? item.allocatedCartonCount ?? 0;
+                          const isVerified = scanned >= allocatedCount && allocatedCount > 0;
+
+                          if (isDistributor) {
+                            return (
+                              <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
+                                <td className="px-6 py-4">
+                                  <div className="w-12 h-12 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 flex items-center justify-center">
+                                    {(() => {
+                                      const colorMedia = article?.colorMedia || [];
+                                      const matched = colorMedia.find(cm => cm.color.toLowerCase() === variant?.color?.toLowerCase());
+                                      const vImg = (matched && matched.images && matched.images.length > 0) 
+                                        ? matched.images[0].url 
+                                        : (variant?.images && variant?.images.length > 0 ? variant?.images[0] : article?.imageUrl);
+                                      
+                                      return vImg ? (
+                                        <img src={getImageUrl(vImg)} alt={variant?.color || article?.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                      ) : (
+                                        <ImageIcon size={20} className="text-slate-200" />
+                                      );
+                                    })()}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-bold text-sm text-slate-900 leading-tight">{article?.name}</p>
+                                      <span className="px-1.5 py-0.5 rounded bg-slate-100 text-[8px] font-black text-slate-500 uppercase tracking-tighter">{variant?.color || 'N/A'}</span>
+                                    </div>
+                                    <p className="text-[10px] text-indigo-500 font-black uppercase tracking-wider">{getAssortment(variant)}</p>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                  <p className="text-sm font-black text-slate-900 leading-none">{item.cartonCount}</p>
+                                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">{item.pairCount} Pairs</p>
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                  <p className="text-sm font-black text-emerald-600 leading-none">{item.fulfilledCartonCount || 0}</p>
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                  <p className="text-sm font-black text-rose-500 leading-none">{Math.max(0, item.cartonCount - (item.fulfilledCartonCount || 0))}</p>
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                  <p className="text-sm font-black text-indigo-500 leading-none">{item.allocatedCartonCount || 0}</p>
+                                  <p className="text-[8px] font-bold text-indigo-500 uppercase tracking-widest mt-1">Next Delivery</p>
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          // Admin view (Refined)
                           return (
                             <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
                               <td className="px-6 py-4">
@@ -782,11 +1066,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                                       : (variant?.images && variant?.images.length > 0 ? variant?.images[0] : article?.imageUrl);
                                     
                                     return vImg ? (
-                                      <img 
-                                        src={getImageUrl(vImg)} 
-                                        alt={variant?.color || article?.name}
-                                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
-                                      />
+                                      <img src={getImageUrl(vImg)} alt={variant?.color || article?.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                                     ) : (
                                       <ImageIcon size={20} className="text-slate-200" />
                                     );
@@ -794,67 +1074,63 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                                 </div>
                               </td>
                               <td className="px-6 py-4">
-                                <p className="font-bold text-sm text-slate-900 leading-tight">
-                                  {article?.name}{variant ? `-${variant.color}-${variant.sizeRange}` : ''}
-                                </p>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{variant?.sku || 'NO-SKU'}</p>
-                              </td>
-                              <td className="px-6 py-4">
-                                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-[10px] font-bold text-slate-600 uppercase">
-                                  {variant?.color || 'N/A'}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="text-center">
-                                  <p className="text-sm font-black text-slate-800 leading-none">{item.cartonCount}</p>
-                                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">Ctn</p>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="text-center">
-                                  <p className="text-sm font-black text-emerald-600 leading-none">{item.fulfilledCartonCount || 0}</p>
-                                  <p className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest mt-1">Ctn</p>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="text-center">
-                                  <p className="text-sm font-black text-amber-600 leading-none">{Math.max(0, item.cartonCount - (item.fulfilledCartonCount || 0))}</p>
-                                  <p className="text-[8px] font-bold text-amber-500 uppercase tracking-widest mt-1">Ctn</p>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                {(itemIsBooked || currentOrder.status === OrderStatus.PARTIAL) && !isDistributor ? (
-                                  <div className="flex items-center gap-3">
-                                    <div className="relative w-24">
-                                      <input
-                                        type="number"
-                                        value={allocations[item.variantId!]?.allocatedCartonCount ?? 0}
-                                        max={item.cartonCount - (item.fulfilledCartonCount || 0)}
-                                        onChange={(e) => handleCartonAllocationChange(
-                                          item.variantId!, 
-                                          parseInt(e.target.value) || 0,
-                                          item
-                                        )}
-                                        className="w-full pl-3 pr-8 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs font-black text-indigo-600 focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm"
-                                      />
-                                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-bold text-indigo-300">CTN</span>
-                                    </div>
-                                    <span className="text-[9px] font-bold text-slate-300 uppercase">of {item.cartonCount - (item.fulfilledCartonCount || 0)} Rem</span>
-                                  </div>
-                                ) : (
+                                <div className="flex flex-col gap-1">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-sm font-black text-slate-900">{item.allocatedCartonCount || 0} CTN</span>
-                                    {item.allocatedCartonCount && item.allocatedCartonCount > 0 ? (
-                                      <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">In Transit</span>
-                                    ) : (
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">-</span>
-                                    )}
+                                    <p className="font-bold text-sm text-slate-900 leading-tight">{article?.name}</p>
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-100 text-[8px] font-black text-slate-500 uppercase tracking-tighter">{variant?.color || 'N/A'}</span>
                                   </div>
+                                  <p className="text-[10px] text-indigo-500 font-black uppercase tracking-wider">{getAssortment(variant)}</p>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 text-center">
+                                <p className="text-sm font-black text-slate-900 leading-none">{item.cartonCount}</p>
+                              </td>
+                              <td className="px-4 py-4 text-center">
+                                <p className="text-sm font-black text-emerald-600 leading-none">{item.fulfilledCartonCount || 0}</p>
+                              </td>
+                              <td className="px-4 py-4 text-center">
+                                <p className="text-sm font-black text-rose-500 leading-none">{item.cartonCount - (item.fulfilledCartonCount || 0)}</p>
+                              </td>
+                              <td className="px-4 py-4 text-center bg-indigo-50/20">
+                                <div className="flex flex-col items-center">
+                                  <p className={`text-sm font-black leading-none ${previewLiveStockCartons > 0 ? 'text-indigo-600' : 'text-rose-500'}`}>{previewLiveStockCartons}</p>
+                                  {blockDelta !== 0 && (
+                                    <span className="text-[7px] font-bold text-amber-500 bg-amber-50 px-1 rounded mt-0.5">{blockDelta > 0 ? `-${blockDelta}` : `+${Math.abs(blockDelta)}`}</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 text-center bg-amber-50/20">
+                                <input 
+                                  type="number"
+                                  value={blockingState[item.variantId!]?.blockedCartonCount ?? item.blockedCartonCount ?? 0}
+                                  min={0}
+                                  max={Math.min(
+                                    item.cartonCount - (item.fulfilledCartonCount || 0),
+                                    (item.blockedCartonCount || 0) + getAssortmentLiveCartons(0)
+                                  )}
+                                  onChange={(e) => handleCartonBlockingChange(item.variantId!, parseInt(e.target.value) || 0, item)}
+                                  className="w-14 h-7 text-center bg-white border border-amber-200 rounded text-xs font-black text-amber-600 outline-none focus:ring-1 focus:ring-amber-500"
+                                />
+                              </td>
+                              <td className="px-4 py-4 text-center bg-indigo-50/20">
+                                {[OrderStatus.BOOKED, OrderStatus.PARTIAL, OrderStatus.PFD, OrderStatus.RFD].includes(currentOrder.status) ? (
+                                  <input 
+                                    type="number"
+                                    value={allocations[item.variantId!]?.allocatedCartonCount ?? 0}
+                                    min={0}
+                                    max={blockingState[item.variantId!]?.blockedCartonCount ?? item.blockedCartonCount ?? 0}
+                                    onChange={(e) => handleCartonAllocationChange(item.variantId!, parseInt(e.target.value) || 0, item)}
+                                    className="w-14 h-7 text-center bg-white border border-indigo-200 rounded text-xs font-black text-indigo-600 outline-none focus:ring-1 focus:ring-indigo-500"
+                                  />
+                                ) : (
+                                  <p className="text-sm font-black text-indigo-500 leading-none">{item.allocatedCartonCount || 0}</p>
                                 )}
                               </td>
-                              <td className="px-6 py-4 text-right">
-                                <p className="font-bold text-sm text-slate-900 tracking-tight">₹{amount.toLocaleString()}</p>
-                                <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">{item.pairCount} Pairs</p>
+                              <td className="px-4 py-4 text-center">
+                                <div className="flex flex-col items-center">
+                                  <span className={`text-sm font-black ${isVerified ? 'text-emerald-600' : (scanned > 0 ? 'text-indigo-600' : 'text-slate-400')}`}>{scanned}</span>
+                                  {isVerified && <CheckCircle size={10} className="text-emerald-500 mt-0.5" />}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -863,26 +1139,157 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                     </table>
                   </div>
 
-                  {!isDistributor && (currentOrder.status === OrderStatus.BOOKED || currentOrder.status === OrderStatus.PARTIAL) && (
-                    <div className="p-6 bg-slate-50/50 border-t border-slate-100 flex justify-end items-center gap-4">
-                      <div className="flex flex-col text-right">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Allocation Action</span>
-                        <span className="text-xs font-bold text-indigo-600">Prepare items for the next delivery batch</span>
-                      </div>
-                      <button
-                        disabled={uploading}
-                        onClick={handleAllocateAndProceed}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shadow-md active:scale-95 disabled:opacity-50"
-                      >
-                        {uploading ? (
-                          <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                          <CheckCircle size={16} />
+                  {(() => {
+                    const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + (a.allocatedCartonCount || 0), 0) || 
+                                         currentOrder.items.reduce((sum, i) => sum + (i.allocatedCartonCount || 0), 0);
+
+                    return !isDistributor && (currentOrder.status === OrderStatus.BOOKED || currentOrder.status === OrderStatus.PARTIAL || currentOrder.status === OrderStatus.PFD || currentOrder.status === OrderStatus.RFD) && (
+                      <div className="p-6 bg-slate-50/50 border-t border-slate-100 space-y-6">
+                        {/* Status Transition Header */}
+                        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
+                              <ShieldCheck size={18} className="text-indigo-600" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Administrative Actions</p>
+                              <p className="text-sm font-bold text-slate-900">Current Stage: {STATUS_LABELS[currentOrder.status]}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                             {(currentOrder.status === OrderStatus.PFD || currentOrder.status === OrderStatus.RFD) && (
+                                <button
+                                  onClick={handleDownloadPI}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold text-[10px] uppercase hover:bg-slate-50 transition-all shadow-sm"
+                                >
+                                  <FileText size={12} className="text-indigo-600" />
+                                  PI Download
+                                </button>
+                             )}
+                          </div>
+                        </div>
+
+                        {/* Document Upload Stage — Only for RFD -> OFD transition */}
+                        {currentOrder.status === OrderStatus.RFD && (
+                          <div className="animate-in fade-in slide-in-from-top-2 duration-500 space-y-4">
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center mb-1">Necessary Shipping Documents</p>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              {/* Invoice Upload */}
+                              <div className="relative">
+                                <input type="file" ref={invoiceInputRef} className="hidden" onChange={(e) => onShippingFileSelected('invoice', e)} />
+                                <button 
+                                  onClick={() => invoiceInputRef.current?.click()}
+                                  className={`w-full flex flex-col items-center justify-center p-3 rounded-xl border-dashed border-2 transition-all gap-1 ${
+                                    shippingFiles.invoice ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {shippingFiles.invoice ? <CheckCircle size={16} className="text-emerald-500" /> : <Upload size={16} className="text-slate-400" />}
+                                  <span className="text-[9px] font-bold text-slate-600 uppercase">Invoice</span>
+                                </button>
+                                {shippingFiles.invoice && <p className="text-[8px] text-emerald-600 font-bold truncate mt-1 text-center px-2">{shippingFiles.invoice.name}</p>}
+                              </div>
+
+                              {/* E-Way Bill Upload */}
+                              <div className="relative">
+                                <input type="file" ref={ewayInputRef} className="hidden" onChange={(e) => onShippingFileSelected('ewayBill', e)} />
+                                <button 
+                                  onClick={() => ewayInputRef.current?.click()}
+                                  className={`w-full flex flex-col items-center justify-center p-3 rounded-xl border-dashed border-2 transition-all gap-1 ${
+                                    shippingFiles.ewayBill ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {shippingFiles.ewayBill ? <CheckCircle size={16} className="text-emerald-500" /> : <Upload size={16} className="text-slate-400" />}
+                                  <span className="text-[9px] font-bold text-slate-600 uppercase">E-Way Bill</span>
+                                </button>
+                                {shippingFiles.ewayBill && <p className="text-[8px] text-emerald-600 font-bold truncate mt-1 text-center px-2">{shippingFiles.ewayBill.name}</p>}
+                              </div>
+
+                              {/* Transport Bill Upload */}
+                              <div className="relative">
+                                <input type="file" ref={transportInputRef} className="hidden" onChange={(e) => onShippingFileSelected('transportBill', e)} />
+                                <button 
+                                  onClick={() => transportInputRef.current?.click()}
+                                  className={`w-full flex flex-col items-center justify-center p-3 rounded-xl border-dashed border-2 transition-all gap-1 ${
+                                    shippingFiles.transportBill ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {shippingFiles.transportBill ? <CheckCircle size={16} className="text-emerald-500" /> : <Upload size={16} className="text-slate-400" />}
+                                  <span className="text-[9px] font-bold text-slate-600 uppercase">Transport Bill</span>
+                                </button>
+                                {shippingFiles.transportBill && <p className="text-[8px] text-emerald-600 font-bold truncate mt-1 text-center px-2">{shippingFiles.transportBill.name}</p>}
+                              </div>
+                            </div>
+                          </div>
                         )}
-                        Allocate & Prepare for Delivery
-                      </button>
-                    </div>
-                  )}
+
+                        <div className="flex justify-between items-center gap-4">
+                          <div className="flex gap-4">
+                            {Object.keys(blockingState).length > 0 && (
+                              <div className="flex items-center gap-3 bg-amber-50 px-4 py-2 rounded-xl border border-amber-200">
+                                <div className="flex flex-col text-left">
+                                  <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest leading-none">Pending Blocking</span>
+                                  <span className="text-[8px] font-bold text-amber-500">Unsaved reservations</span>
+                                </div>
+                                <button
+                                  disabled={uploading}
+                                  onClick={handleUpdateBlockedStock}
+                                  className="px-3 py-1.5 bg-amber-600 text-white rounded-lg font-bold text-[9px] uppercase hover:bg-amber-700 transition-all shadow-md flex items-center gap-1.5"
+                                >
+                                  {uploading ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} />}
+                                  Apply Blocking
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-4">
+                            {(currentOrder.status === OrderStatus.BOOKED || currentOrder.status === OrderStatus.PARTIAL || currentOrder.status === OrderStatus.PFD) && (
+                              <div className="flex items-center gap-4 animate-in slide-in-from-right-2">
+                                <div className="flex flex-col text-right">
+                                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Batch Action</span>
+                                  <span className="text-[9px] font-bold text-indigo-600">{totalAllocated > 0 ? `Total Allocation: ${totalAllocated} Cartons` : "Nothing allocated yet"}</span>
+                                </div>
+                                <button
+                                  disabled={uploading || totalAllocated === 0}
+                                  onClick={handleAllocateAndProceed}
+                                  className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:bg-slate-400"
+                                >
+                                  {uploading ? <Loader2 size={16} className="animate-spin" /> : <Package size={16} />}
+                                  {currentOrder.status === OrderStatus.BOOKED || currentOrder.status === OrderStatus.PARTIAL 
+                                    ? "Mark Initial Allocation" 
+                                    : "Update Allocation Count"}
+                                </button>
+                              </div>
+                            )}
+
+                            {currentOrder.status === OrderStatus.PFD && (
+                              <button
+                                disabled={uploading || totalAllocated === 0}
+                                onClick={() => handleUpdateStatus(OrderStatus.RFD)}
+                                className="flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
+                              >
+                                {uploading ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
+                                Mark Ready for Delivery
+                              </button>
+                            )}
+
+                            {currentOrder.status === OrderStatus.RFD && (
+                              <button
+                                onClick={() => handleUpdateStatus(OrderStatus.OFD)}
+                                disabled={uploading || !isScanningFinished() || !shippingFiles.invoice || !shippingFiles.ewayBill || !shippingFiles.transportBill}
+                                className="flex items-center justify-center gap-2 px-8 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {uploading ? <Loader2 size={16} className="animate-spin" /> : <Truck size={16} />}
+                                Mark Out for Delivery
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             ) : (
@@ -922,19 +1329,24 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
 
                               <div className="flex items-center gap-2">
                                 {batch.invoiceUrl && (
-                                  <a href={getFullUrl(batch.invoiceUrl)!} target="_blank" rel="noopener noreferrer" className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm" title="View Invoice">
+                                  <button onClick={() => setPreviewDoc({ url: getFullUrl(batch.invoiceUrl)!, title: "Tax Invoice" })} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm" title="View Invoice">
                                     <FileText size={14} />
-                                  </a>
+                                  </button>
                                 )}
                                 {batch.ewayBillUrl && (
-                                  <a href={getFullUrl(batch.ewayBillUrl)!} target="_blank" rel="noopener noreferrer" className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-all shadow-sm" title="View E-Way Bill">
+                                  <button onClick={() => setPreviewDoc({ url: getFullUrl(batch.ewayBillUrl)!, title: "E-Way Bill" })} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-all shadow-sm" title="View E-Way Bill">
                                     <Truck size={14} />
-                                  </a>
+                                  </button>
+                                )}
+                                {batch.transportBillUrl && (
+                                  <button onClick={() => setPreviewDoc({ url: getFullUrl(batch.transportBillUrl)!, title: "Transport Bill" })} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm" title="View Transport Bill">
+                                    <Truck size={14} />
+                                  </button>
                                 )}
                                 {batch.receivingNoteUrl && (
-                                  <a href={getFullUrl(batch.receivingNoteUrl)!} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-900 text-emerald-400 rounded-lg hover:bg-emerald-400 hover:text-slate-900 transition-all shadow-sm" title="View Receiving Note">
+                                  <button onClick={() => setPreviewDoc({ url: getFullUrl(batch.receivingNoteUrl)!, title: "Receiving Note" })} className="p-2 bg-slate-900 text-emerald-400 rounded-lg hover:bg-emerald-400 hover:text-slate-900 transition-all shadow-sm" title="View Receiving Note">
                                     <ShieldCheck size={14} />
-                                  </a>
+                                  </button>
                                 )}
                               </div>
                             </div>
@@ -944,37 +1356,38 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                               <table className="w-full text-left">
                                 <thead>
                                   <tr className="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
-                                    <th className="pb-2">Article / Variant</th>
-                                    <th className="pb-2 text-center">Batch Delv</th>
-                                    <th className="pb-2 text-right">Value</th>
+                                    <th className="pb-2">Article / Assortment</th>
+                                    <th className="pb-2 text-center text-indigo-600">Batch Dispatch</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                   {batch.items.map((bItem, iIdx) => {
                                     let artName = "Unknown Article";
                                     let varColor = "N/A";
-                                    let itemPrice = 0;
+                                    let variant: any = null;
 
                                     articles.forEach(art => {
-                                      const variant = art.variants?.find(v => v.id === bItem.variantId.toString());
-                                      if (variant) {
+                                      const v = art.variants?.find(v => v.id === bItem.variantId.toString());
+                                      if (v) {
+                                        variant = v;
                                         artName = art.name;
-                                        varColor = variant.color;
-                                        itemPrice = variant.costPrice || 0;
+                                        varColor = v.color;
                                       }
                                     });
 
                                     return (
                                       <tr key={iIdx}>
                                         <td className="py-2.5">
-                                          <p className="text-[11px] font-bold text-slate-800">{artName}</p>
-                                          <p className="text-[9px] font-medium text-slate-400 lowercase">{varColor}</p>
+                                          <div className="flex items-center gap-1.5 mb-0.5">
+                                            <p className="text-[11px] font-bold text-slate-800">{artName}</p>
+                                            <span className="px-1 py-0.5 rounded bg-slate-100 text-[7px] font-black text-slate-500 uppercase">{varColor}</span>
+                                          </div>
+                                          <p className="text-[9px] font-bold text-indigo-500 uppercase tracking-tight">
+                                            {variant ? getAssortment(variant) : 'Assortment N/A'}
+                                          </p>
                                         </td>
                                         <td className="py-2.5 text-center">
-                                          <span className="inline-flex px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[10px] font-black">{bItem.cartonCount} CTN</span>
-                                        </td>
-                                        <td className="py-2.5 text-right font-bold text-slate-700 text-[10px]">
-                                          ₹{(bItem.pairCount * itemPrice).toLocaleString()}
+                                          <span className="inline-flex px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[10px] font-black">{bItem.cartonCount} CTN</span>
                                         </td>
                                       </tr>
                                     );
@@ -1073,7 +1486,9 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                     </div>
                     {(currentOrder.discountPercentage || 0) > 0 && (
                       <div className="flex justify-between items-end">
-                        <span className="text-xs font-bold text-emerald-400">Special Discount ({currentOrder.discountPercentage}%)</span>
+                        <span className="text-xs font-bold text-emerald-400">
+                          Special Discount {!isDistributor && `(${currentOrder.discountPercentage}%)`}
+                        </span>
                         <span className="text-base font-bold text-emerald-400">-₹{(currentOrder.discountAmount || 0).toLocaleString()}</span>
                       </div>
                     )}
@@ -1086,35 +1501,13 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                   </div>
                 </div>
 
-                {/* Admin Status Transitions */}
+                {/* Admin Status Transitions - Consolidated to Table Footer */}
                 {!isDistributor && (
-                  <div className="mt-8 pt-8 border-t border-white/10 space-y-4">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Lifecycle Management</p>
-                    
-                    {currentOrder.status === OrderStatus.PFD && (
-                      <div className="flex flex-col gap-3">
-                        <button
-                          onClick={handleDownloadPI}
-                          className="flex items-center justify-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl font-bold text-xs hover:bg-slate-50 transition-all shadow-lg"
-                        >
-                          <FileText size={16} className="text-indigo-600" />
-                          Download Proforma
-                        </button>
-                        <button
-                          disabled={uploading}
-                          onClick={() => handleUpdateStatus(OrderStatus.RFD)}
-                          className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
-                        >
-                          {uploading ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
-                          Mark Ready for Delivery
-                        </button>
-                      </div>
-                    )}
-                    
+                  <div className="mt-8 pt-8 border-t border-white/10 space-y-4 opacity-50">
                     <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 rounded-xl">
                       <Clock size={12} className="text-slate-500" />
                       <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em]">
-                        Current Stage: {STATUS_LABELS[currentOrder.status]}
+                        View actions at bottom of table
                       </p>
                     </div>
                   </div>
@@ -1173,8 +1566,17 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
             </div>
           </div>
         </div>
-      </div>
-    );
+      {/* Document Preview Dialog */}
+      {previewDoc && (
+        <DocPreviewDialog 
+          open={!!previewDoc}
+          url={previewDoc.url}
+          title={previewDoc.title}
+          onClose={() => setPreviewDoc(null)}
+        />
+      )}
+    </div>
+  );
 };
 
 const StatusBadge: React.FC<{ status: OrderStatus }> = ({ status }) => {

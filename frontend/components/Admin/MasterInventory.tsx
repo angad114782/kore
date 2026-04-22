@@ -150,6 +150,13 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ctns</span>
                     </div>
                   </div>
+                  <div className="text-center w-24 border-l border-slate-100 pl-4">
+                    <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5">Blocked</p>
+                    <div className="flex items-baseline justify-center gap-1">
+                      <span className="text-xl font-black text-slate-900">{Math.abs(inv.blockedStock || 0)}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ctns</span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Actions */}
@@ -172,6 +179,10 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                   <p className="text-[8px] font-black text-rose-600 uppercase tracking-tighter mb-0.5">Booked</p>
                   <p className="text-sm font-black text-slate-900">{Math.abs(inv.reservedStock)} <span className="text-[8px] text-slate-400">CTN</span></p>
                 </div>
+                <div className="bg-amber-50/50 p-2.5 rounded-xl text-center border border-amber-100">
+                  <p className="text-[8px] font-black text-amber-600 uppercase tracking-tighter mb-0.5">Blocked</p>
+                  <p className="text-sm font-black text-slate-900">{Math.abs(inv.blockedStock || 0)} <span className="text-[8px] text-slate-400">CTN</span></p>
+                </div>
               </div>
 
               {/* Variant Dropdown Content */}
@@ -190,6 +201,7 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                                <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Color</th>
                                <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Live Stock</th>
                                <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Booked</th>
+                               <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Blocked</th>
                                <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                              </tr>
                           </thead>
@@ -198,7 +210,8 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                                // Calculate variant stock
                                const livePairs = Object.values(variant.sizeMap || {}).reduce((sum, s) => sum + (s.qty || 0), 0);
                                const bookedPairs = Object.values(variant.bookingMap || {}).reduce((sum, q) => sum + (q || 0), 0);
-                               const physicalPairs = livePairs + bookedPairs;
+                               const blockedPairs = Object.values(variant.sizeMap || {}).reduce((sum, s) => sum + (s.blockedQty || 0), 0);
+                               const physicalPairs = livePairs + bookedPairs + blockedPairs;
 
                                // Convert to cartons (1 Ctn = 24 Pairs)
                                const liveCtns = Math.floor(livePairs / 24);
@@ -231,7 +244,7 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                                            })()}
                                         </div>
                                         <div>
-                                          <p className="text-xs font-bold text-slate-800">{variant.itemName || 'Standard Variant'}</p>
+                                          <p className="text-xs font-bold text-slate-800">{variant.itemName || `${article.name} - ${variant.color} - ${variant.sizeRange}`}</p>
                                           <p className="text-[9px] font-mono text-slate-400 tracking-wider">SKU: {variant.sku || article.sku}</p>
                                         </div>
                                       </div>
@@ -245,14 +258,18 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                                          <span className="text-[10px] font-bold text-slate-600 uppercase">{variant.color}</span>
                                       </div>
                                    </td>
-                                   <td className="px-6 py-3 text-center">
-                                      <span className="text-sm font-black text-emerald-600">{Math.abs(liveCtns)}</span>
-                                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
-                                   </td>
-                                   <td className="px-6 py-3 text-center">
-                                      <span className="text-sm font-black text-rose-500">{Math.abs(bookedCtns)}</span>
-                                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
-                                   </td>
+                                    <td className="px-6 py-3 text-center">
+                                       <span className="text-sm font-black text-emerald-600">{Math.abs(liveCtns)}</span>
+                                       <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
+                                    </td>
+                                    <td className="px-6 py-3 text-center">
+                                       <span className="text-sm font-black text-rose-500">{Math.abs(bookedCtns)}</span>
+                                       <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
+                                    </td>
+                                    <td className="px-6 py-3 text-center">
+                                       <span className="text-sm font-black text-amber-500">{Math.abs(Math.floor(blockedPairs / 24))}</span>
+                                       <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
+                                    </td>
                                    <td className="px-6 py-3">
                                       <div className="flex justify-end items-center gap-2">
                                         <button 

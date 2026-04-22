@@ -90,3 +90,12 @@ exports.getGRNById = async (req, res) => {
     return fail(res, { message: e.message, status: 404 });
   }
 };
+
+exports.getReceivedCartons = async (req, res) => {
+  try {
+    const data = await grnService.getReceivedCartons(req.params.refId);
+    return ok(res, { data });
+  } catch (e) {
+    return fail(res, { message: e.message });
+  }
+};

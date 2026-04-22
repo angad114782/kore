@@ -4,6 +4,7 @@ const grn = require("../controllers/grn.controller");
 
 // References (PO/CAT list)
 router.get("/references", grn.listReferences);
+router.get("/references/:refId/received-cartons", grn.getReceivedCartons);
 
 // Draft GRN
 router.post("/drafts", grn.createDraft);

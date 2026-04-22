@@ -1280,7 +1280,6 @@ const SizeBreakdown: React.FC<{
         {sizes.map((sz) => {
           const rawVal = sizeMap[sz] || 0;
           let qty = getQty(rawVal);
-          if (type === "stock") qty = 0; // Forced to 0 as PO quantities are not GRN inventory
           return (
             <div
               key={sz}
@@ -1308,8 +1307,6 @@ const SizeBreakdown: React.FC<{
       {sizes.map((sz) => {
         const rawVal = sizeMap[sz] || 0;
         let qty = getQty(rawVal);
-        if (type === "stock") qty = 0; // Forced to 0 as PO quantities are not GRN inventory
-
         const isPositive = qty > 0;
         const colorClass =
           type === "stock"

@@ -371,7 +371,7 @@ exports.updateDistributor = async (id, body) => {
       userPatch.email = normalizeEmail(body.email);
     }
 
-    if (body.loginPassword !== undefined) {
+    if (body.loginPassword !== undefined && String(body.loginPassword).trim().length > 0) {
       userPatch.password = await bcrypt.hash(
         String(body.loginPassword),
         SALT_ROUNDS

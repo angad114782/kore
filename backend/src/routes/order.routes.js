@@ -35,4 +35,10 @@ router.post(
   OrderController.processReturn
 );
 
+router.get(
+  "/returns",
+  role(["admin", "superadmin"]),
+  OrderController.getReturnHistory
+);
+
 module.exports = router;

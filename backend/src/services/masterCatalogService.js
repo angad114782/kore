@@ -470,7 +470,6 @@ exports.softDelete = async (id) => {
 
 exports.getVariantStock = async (variantId) => {
   const PurchaseOrder = require("../models/PurchaseOrder");
-  const GRNDraft = require("../models/grn.model");
   const MasterCatalog = require("../models/MasterCatalog");
 
   const catalog = await MasterCatalog.findOne({ "variants._id": variantId });
@@ -487,175 +486,208 @@ exports.getVariantStock = async (variantId) => {
     throw err;
   }
 
-  let normalizedSizeMap = new Map();
+  const GRNDraft = require("../models/grn.model");
+  const Order = require("../models/Order");
+  const Return = require("../models/Return");
 
-  const setSizeCell = (size, cell) => {
-    const sizeKey = String(size || "").trim();
-    if (!sizeKey) return;
-    const qty = Number(cell?.qty || 0);
-    const sku = (cell?.sku || "").trim();
-    normalizedSizeMap.set(sizeKey, { qty, sku });
-  };
+  const liveStockMap = {};
+  const blockedStockMap = {};
+  const poMap = {};
 
-  if (variant.sizeMap instanceof Map) {
-    for (const [size, cell] of variant.sizeMap.entries()) {
-      setSizeCell(size, cell);
+  // 1. Build SKU-to-Size mapping for the variant
+  const skuToSize = {};
+  const variantSizes = [];
+  
+  // Robust Map to JSON conversion for Mongoose
+  const sizeMapData = variant.sizeMap && typeof variant.sizeMap.toJSON === 'function' ? variant.sizeMap.toJSON() : (variant.sizeMap || {});
+  const sizeSkusData = variant.sizeSkus && typeof variant.sizeSkus.toJSON === 'function' ? variant.sizeSkus.toJSON() : (variant.sizeSkus || {});
+
+  Object.entries(sizeMapData).forEach(([size, cell]) => {
+    const cleanSize = size.trim();
+    variantSizes.push(cleanSize);
+    if (cell && cell.sku) {
+      skuToSize[String(cell.sku).trim().toLowerCase()] = cleanSize;
     }
-  } else if (variant.sizeMap && typeof variant.sizeMap === "object") {
-    Object.keys(variant.sizeMap).forEach((size) => {
-      setSizeCell(size, variant.sizeMap[size]);
-    });
-  }
+    blockedStockMap[cleanSize] = Number(cell?.blockedQty || 0);
+  });
 
-  if (
-    normalizedSizeMap.size === 0 &&
-    variant.sizeQuantities &&
-    typeof variant.sizeQuantities === "object"
-  ) {
-    Object.keys(variant.sizeQuantities).forEach((size) => {
-      setSizeCell(size, {
-        qty: variant.sizeQuantities[size],
-        sku: variant.sizeSkus?.[size] || "",
-      });
-    });
-  }
+  Object.entries(sizeSkusData).forEach(([size, sku]) => {
+    if (sku) {
+      const cleanSize = size.trim();
+      skuToSize[String(sku).trim().toLowerCase()] = cleanSize;
+      if (!variantSizes.includes(cleanSize)) variantSizes.push(cleanSize);
+    }
+  });
 
-  const sizes = Array.from(normalizedSizeMap.keys());
-  let skus = sizes
-    .map((sz) => (normalizedSizeMap.get(sz) || {}).sku)
-    .filter((v) => typeof v === "string" && v.trim().length > 0);
+  console.log(`[DEBUG DYNAMIC] SKU to Size Map:`, skuToSize);
+  console.log(`[DEBUG DYNAMIC] Valid Variant Sizes:`, variantSizes);
 
-  if (skus.length === 0) {
-    const posWithSkus = await PurchaseOrder.find({
-      isDeleted: false,
-      $or: [
-        { "items.variantId": variantId.toString() },
-        { "items.itemName": variant.itemName || "" },
-      ],
-    })
-      .lean()
-      .limit(1);
+  // 2. DYNAMIC CALCULATION: Total Received from GRNs
+  const submittedGRNs = await GRNDraft.find({ 
+    $or: [
+      { "cartons.variantId": variantId.toString() },
+      { "cartons.itemName": variant.itemName }
+    ],
+    status: "SUBMITTED" 
+  }).lean();
 
-    if (posWithSkus.length > 0) {
-      const poItem = (posWithSkus[0].items || []).find(
-        (item) =>
-          String(item.variantId) === String(variantId) ||
-          item.itemName === variant.itemName
-      );
+  console.log(`[DEBUG DYNAMIC] Found ${submittedGRNs.length} submitted GRNs for variant "${variant.itemName}"`);
 
-      if (poItem && poItem.sizeMap) {
-        for (const [sz, cell] of Object.entries(poItem.sizeMap)) {
-          if (!normalizedSizeMap.has(sz) && cell && cell.sku) {
-            setSizeCell(sz, cell);
-          } else if (normalizedSizeMap.has(sz)) {
-            const existing = normalizedSizeMap.get(sz);
-            if (!existing.sku && cell && cell.sku) {
-              existing.sku = cell.sku;
-              normalizedSizeMap.set(sz, existing);
-            }
+  const totalReceived = {};
+  submittedGRNs.forEach(grn => {
+    (grn.cartons || []).forEach(carton => {
+      // Precise check: match by ID or by Item Name within this record
+      const isMatch = (carton.variantId && String(carton.variantId) === variantId.toString()) || 
+                      (carton.itemName === variant.itemName);
+      
+      if (!isMatch) return;
+
+      (carton.pairBarcodes || []).forEach(barcode => {
+        const cleanBar = String(barcode).trim().toLowerCase();
+        let sz = skuToSize[cleanBar];
+
+        // ── FALLBACK: Smart Pattern Match ──
+        // If no SKU match, check if barcode ends with "-Size" or " Size"
+        if (!sz) {
+          const matchedSize = variantSizes.find(vSize => {
+            const lowVSize = String(vSize).toLowerCase();
+            return cleanBar.endsWith("-" + lowVSize) || cleanBar.endsWith(" " + lowVSize);
+          });
+          if (matchedSize) {
+            sz = matchedSize;
+            skuToSize[cleanBar] = sz; // Cache it
           }
         }
 
-        skus = Array.from(normalizedSizeMap.values())
-          .map((cell) => (cell && cell.sku ? cell.sku : ""))
-          .filter((v) => typeof v === "string" && v.trim().length > 0);
-      }
-    }
-  }
+        if (sz) {
+          totalReceived[sz] = (totalReceived[sz] || 0) + 1;
+        }
+      });
+    });
+  });
 
-  const poFilter = {
+  console.log(`[DEBUG DYNAMIC] Received per size:`, totalReceived);
+
+  // 3. DYNAMIC CALCULATION: Total Dispatched from Orders
+  const fulfilledOrders = await Order.find({ 
+    "items.variantId": variantId, 
+    status: { $in: ["PFD", "RFD", "OFD", "RECEIVED", "PARTIAL"] } 
+  }).lean();
+
+  const totalDispatched = {};
+  fulfilledOrders.forEach(order => {
+    const item = (order.items || []).find(i => i.variantId && i.variantId.toString() === variantId.toString());
+    if (item && item.fulfilledSizeQuantities) {
+      const entries = item.fulfilledSizeQuantities instanceof Map 
+        ? Array.from(item.fulfilledSizeQuantities.entries()) 
+        : Object.entries(item.fulfilledSizeQuantities);
+      
+      entries.forEach(([size, qty]) => {
+        const cleanSz = size.trim();
+        totalDispatched[cleanSz] = (totalDispatched[cleanSz] || 0) + Number(qty || 0);
+      });
+    }
+  });
+
+  // 4. DYNAMIC CALCULATION: Total Returned from Returns
+  const returnRecords = await Return.find({
+    "items.variantId": variantId
+  }).lean();
+
+  const totalReturned = {};
+  returnRecords.forEach(ret => {
+    const item = (ret.items || []).find(i => i.variantId && i.variantId.toString() === variantId.toString());
+    if (item && item.sizeQuantities) {
+      const entries = item.sizeQuantities instanceof Map 
+        ? Array.from(item.sizeQuantities.entries()) 
+        : Object.entries(item.sizeQuantities);
+      
+      entries.forEach(([size, qty]) => {
+        const cleanSz = size.trim();
+        totalReturned[cleanSz] = (totalReturned[cleanSz] || 0) + Number(qty || 0);
+      });
+    }
+  });
+
+  console.log(`[DEBUG DYNAMIC] Returned per size:`, totalReturned);
+
+  // 5. Combine: Live Stock = Received + Returned - Dispatched
+  variantSizes.forEach(sz => {
+    liveStockMap[sz] = Math.max(0, (totalReceived[sz] || 0) + (totalReturned[sz] || 0) - (totalDispatched[sz] || 0));
+  });
+
+  // Calculate PO Map for upcoming stock
+  const pos = await PurchaseOrder.find({
     isDeleted: false,
     $or: [
       { "items.variantId": variantId.toString() },
       { "items.itemName": variant.itemName || "" },
+      { "items.sku": variant.sku || "" }
     ],
-  };
-
-  if (variant.sku) {
-    poFilter.$or.push({ "items.sku": variant.sku });
-  }
-
-  const pos = await PurchaseOrder.find(poFilter).lean();
-
-  const poMap = {};
-  sizes.forEach((sz) => {
-    poMap[sz] = 0;
-  });
+  }).lean();
 
   pos.forEach((po) => {
     (po.items || []).forEach((item) => {
-      if (
-        String(item.variantId) === String(variantId) ||
-        item.itemName === variant.itemName ||
-        (variant.sku && item.sku === variant.sku)
-      ) {
-        sizes.forEach((sz) => {
-          const qtyPerCarton = item.sizeMap?.[sz]?.qty || 0;
-          const cartonCount = item.cartonCount || 0;
-          poMap[sz] += cartonCount * qtyPerCarton;
+      const isMatch = String(item.variantId) === String(variantId) || 
+                      item.itemName === variant.itemName || 
+                      (variant.sku && item.sku === variant.sku);
+      
+      if (isMatch && item.sizeMap) {
+        Object.entries(item.sizeMap).forEach(([sz, cell]) => {
+          const qtyPerCarton = Number(cell?.qty || 0);
+          const cartonCount = Number(item.cartonCount || 0);
+          const cleanSz = sz.trim();
+          poMap[cleanSz] = (poMap[cleanSz] || 0) + (cartonCount * qtyPerCarton);
         });
       }
     });
   });
 
-  const poNumbers = pos.map((p) => p.poNumber).filter(Boolean);
+  return { poMap, liveStockMap, blockedStockMap };
+};
 
-  const grns = await GRNDraft.find({
-    status: "SUBMITTED",
-    refId: { $in: poNumbers },
-  }).lean();
+// Reset Variant Stock - Surgical Purge of Receipts and Fulfillments
+exports.resetVariantStock = async (variantIdStr) => {
+  const mongoose = require("mongoose");
+  const GRNDraft = require("../models/grn.model");
+  const Order = require("../models/Order");
 
-  const liveStockMap = {};
-  sizes.forEach((sz) => {
-    liveStockMap[sz] = 0;
+  console.log(`[DEBUG RESET] Starting reset for variant ID: ${variantIdStr}`);
+  
+  let variantId;
+  try {
+    variantId = new mongoose.Types.ObjectId(variantIdStr);
+  } catch (e) {
+    throw new Error("Invalid variant ID format");
+  }
+
+  // 1. Delete all SUBMITTED GRNs that contain this variantId
+  const grnResult = await GRNDraft.deleteMany({
+    "cartons.variantId": variantIdStr, // GRN model uses String for variantId
+    status: "SUBMITTED"
   });
+  console.log(`[DEBUG RESET] Deleted ${grnResult.deletedCount} GRN documents.`);
 
-  const skuToSizeFromPO = {};
-  pos.forEach((po) => {
-    (po.items || []).forEach((item) => {
-      if (
-        String(item.variantId) === String(variantId) ||
-        item.itemName === variant.itemName ||
-        (variant.sku && item.sku === variant.sku)
-      ) {
-        if (item.sizeMap) {
-          for (const [size, cell] of Object.entries(item.sizeMap)) {
-            if (cell && cell.sku) {
-              skuToSizeFromPO[cell.sku] = size;
-            }
-          }
-        }
-      }
-    });
-  });
-
-  const skuToSize = { ...skuToSizeFromPO };
-  sizes.forEach((sz) => {
-    const entry = normalizedSizeMap.get(sz);
-    if (entry && entry.sku && !skuToSize[entry.sku]) {
-      skuToSize[entry.sku] = sz;
+  // 2. Surgical Reset of all Order fulfillment data for this variant
+  const orderResult = await Order.updateMany(
+    { "items.variantId": variantId },
+    { 
+      $set: { 
+        "items.$[elem].fulfilledSizeQuantities": {},
+        "items.$[elem].fulfilledCartonCount": 0,
+        "items.$[elem].fulfilledPairCount": 0
+      } 
+    },
+    { 
+      arrayFilters: [{ "elem.variantId": variantId }],
+      multi: true 
     }
-  });
+  );
+  
+  console.log(`[DEBUG RESET] Modified ${orderResult.modifiedCount} Order documents.`);
 
-  grns.forEach((grn) => {
-    (grn.cartons || []).forEach((carton) => {
-      (carton.pairBarcodes || []).forEach((barcode) => {
-        let sz = skuToSize[barcode];
-
-        if (!sz && variant.itemName && typeof barcode === "string") {
-          const fallbackPrefix = `${variant.itemName}-`;
-          if (barcode.startsWith(fallbackPrefix)) {
-            const parts = barcode.split("-");
-            sz = parts[parts.length - 1];
-          }
-        }
-
-        if (sz && liveStockMap[sz] !== undefined) {
-          liveStockMap[sz] += 1;
-        }
-      });
-    });
-  });
-
-  return { poMap, liveStockMap };
+  return { 
+    success: true, 
+    message: `Reset complete. ${grnResult.deletedCount} GRNs removed, ${orderResult.modifiedCount} Orders cleaned.` 
+  };
 };

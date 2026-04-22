@@ -124,6 +124,10 @@ export const grnService = {
     return apiFetch(`/grn/${grnId}`);
   },
 
+  async getReceivedCartons(refId: string) {
+    return apiFetch(`/grn/references/${refId}/received-cartons`);
+  },
+
   async create(payload: any) {
     const { poId, scanState } = payload;
     const listRes = await apiFetch(`/purchase-orders/${poId}`);
@@ -137,7 +141,7 @@ export const grnService = {
     if (!draftRes.data || !draftRes.data._id) throw new Error("Failed to create GRN Draft");
     const draftId = draftRes.data._id;
     
-    const scannedCartons: { cartonIndex: number; itemName: string; pairBarcodes: string[] }[] = [];
+    const scannedCartons: { cartonIndex: number; itemName: string; variantId: string; pairBarcodes: string[] }[] = [];
     const scannedItemNames: string[] = [];
     
     Object.keys(scanState).forEach((itemName) => {
@@ -159,7 +163,8 @@ export const grnService = {
         if (cartonPairs.length > 0) {
           scannedCartons.push({ 
             cartonIndex: cIdx + 1, 
-            itemName: itemName, // NEW: Include itemName
+            itemName: itemName,
+            variantId: poItem.variantId, // NEW: Include accurate variant ID
             pairBarcodes: cartonPairs 
           });
         }

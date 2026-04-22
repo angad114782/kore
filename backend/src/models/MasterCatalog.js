@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const SizeCellSchema = new mongoose.Schema(
   {
     qty: { type: Number, default: 0, min: 0 },
+    blockedQty: { type: Number, default: 0, min: 0 },
     sku: { type: String, trim: true, default: "" },
   },
   { _id: false }
