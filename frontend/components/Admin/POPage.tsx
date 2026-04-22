@@ -479,7 +479,7 @@ const QuantityGridModal: React.FC<{
 
     const aggregatedItem: Partial<PurchaseOrderItem> = {
       variantId: vId,
-      articleId: article.id,
+      articleId: article.id || (article as any)._id || "",
       itemName: `${article.name}-${variant.color || "Default"}-${
         variant.sizeRange || "Range"
       }`,
@@ -798,7 +798,8 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
     openUp: false,
   });
   const [itemPickerSearch, setItemPickerSearch] = useState("");
-  const itemPickerRef = useRef<HTMLDivElement>(null);
+  const itemPickerTriggerRef = useRef<HTMLDivElement>(null);
+const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
 
   // ── Quantity Grid Modal state ──
   const [showQtyModal, setShowQtyModal] = useState(false);
@@ -812,23 +813,29 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
 
   // ── Click outside handlers ──
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (
-        vendorDropdownRef.current &&
-        !vendorDropdownRef.current.contains(e.target as Node)
-      ) {
-        setShowVendorDropdown(false);
-      }
-      if (
-        itemPickerRef.current &&
-        !itemPickerRef.current.contains(e.target as Node)
-      ) {
-        setActiveItemPickerIdx(null);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+  const handleClick = (e: MouseEvent) => {
+    const target = e.target as Node;
+
+    if (
+      vendorDropdownRef.current &&
+      !vendorDropdownRef.current.contains(target)
+    ) {
+      setShowVendorDropdown(false);
+    }
+
+    const clickedInsideTrigger =
+      itemPickerTriggerRef.current?.contains(target) ?? false;
+    const clickedInsideDropdown =
+      itemPickerDropdownRef.current?.contains(target) ?? false;
+
+    if (!clickedInsideTrigger && !clickedInsideDropdown) {
+      setActiveItemPickerIdx(null);
+    }
+  };
+
+  document.addEventListener("mousedown", handleClick);
+  return () => document.removeEventListener("mousedown", handleClick);
+}, []);
 
   // ── Selected vendor object ──
   const selectedVendor = vendors.find((v) => v.id === selectedVendorId);
@@ -841,68 +848,76 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
   );
 
   // ── Build item list from variants (Article-Color-SizeRange) ──
-  const itemOptions = useMemo(() => {
-    const list: {
-      articleId: string;
-      variantId: string;
-      masterName: string;
-      name: string; // Fmt: Urban-Pink-4-7
-      sku: string;
-      brand: string;
-      hsnCode: string;
-      image: string;
-      basePrice: number;
-      mrp: number;
-    }[] = [];
+ const itemOptions = useMemo(() => {
+  const list: {
+    articleId: string;
+    variantId: string;
+    masterName: string;
+    name: string;
+    sku: string;
+    brand: string;
+    hsnCode: string;
+    image: string;
+    basePrice: number;
+    mrp: number;
+  }[] = [];
 
-    articles.forEach((article) => {
-      if (article.variants && article.variants.length > 0) {
-        article.variants.forEach((variant) => {
-          list.push({
-            articleId: article.id,
-            masterName: article.name,
-            variantId: variant.id,
-            name: `${article.name}-${variant.color || "Default"}-${
-              variant.sizeRange || "NoRange"
-            }`,
-            sku: variant.sku || article.sku,
-            brand: article.brand || "",
-            hsnCode: variant.hsnCode || article.sku || "",
-            image: (() => {
-              const colorMedia = article.colorMedia || [];
-              const variantColor = (variant.color || "").toLowerCase().trim();
-              const mediaMatch = colorMedia.find(
-                (m: any) => (m.color || "").toLowerCase().trim() === variantColor
-              );
-              const imgData = mediaMatch?.images?.[0];
-              return (typeof imgData === "object" ? (imgData as any)?.url : (imgData as string)) || article.imageUrl || "";
-            })(),
-            basePrice:
-              variant.costPrice ||
-              variant.sellingPrice ||
-              article.pricePerPair ||
-              0,
-            mrp: variant.mrp || article.mrp || 0,
-          });
-        });
-      } else {
-        // Fallback for articles without variants
+  articles.forEach((article) => {
+    const articleId = article.id || (article as any)._id || "";
+
+    if (article.variants && article.variants.length > 0) {
+      article.variants.forEach((variant: any) => {
         list.push({
-          articleId: article.id,
+          articleId,
           masterName: article.name,
-          variantId: "",
-          name: article.name,
-          sku: article.sku,
+          variantId: variant.id || variant._id || "",
+          name: `${article.name}-${variant.color || "Default"}-${
+            variant.sizeRange || "NoRange"
+          }`,
+          sku: variant.sku || article.sku,
           brand: article.brand || "",
-          hsnCode: article.sku || "",
-          image: article.imageUrl || "",
-          basePrice: article.pricePerPair || 0,
-          mrp: article.mrp || 0,
+          hsnCode: variant.hsnCode || article.sku || "",
+          image: (() => {
+            const colorMedia = article.colorMedia || [];
+            const variantColor = (variant.color || "").toLowerCase().trim();
+            const mediaMatch = colorMedia.find(
+              (m: any) => (m.color || "").toLowerCase().trim() === variantColor
+            );
+            const imgData = mediaMatch?.images?.[0];
+            return (
+              (typeof imgData === "object"
+                ? (imgData as any)?.url
+                : (imgData as string)) ||
+              article.imageUrl ||
+              ""
+            );
+          })(),
+          basePrice:
+            variant.costPrice ||
+            variant.sellingPrice ||
+            article.pricePerPair ||
+            0,
+          mrp: variant.mrp || article.mrp || 0,
         });
-      }
-    });
-    return list;
-  }, [articles]);
+      });
+    } else {
+      list.push({
+        articleId,
+        masterName: article.name,
+        variantId: "",
+        name: article.name,
+        sku: article.sku,
+        brand: article.brand || "",
+        hsnCode: article.sku || "",
+        image: article.imageUrl || "",
+        basePrice: article.pricePerPair || 0,
+        mrp: article.mrp || 0,
+      });
+    }
+  });
+
+  return list;
+}, [articles]);
 
   // ── Grouped items (Articles) for picker ──
   const groupedItems = useMemo(() => {
@@ -1058,10 +1073,12 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
 
   const selectItemForRow = (rowId: string, option: (typeof itemOptions)[0]) => {
     // Find matching article and variant to extract default sizing
-    const targetArticle = articles.find((a) => a.id === option.articleId);
-    const targetVariant = targetArticle?.variants?.find(
-      (v) => v.id === option.variantId || v._id === option.variantId
-    );
+  const targetArticle = articles.find(
+  (a) => (a.id || (a as any)._id) === option.articleId
+);
+   const targetVariant = targetArticle?.variants?.find(
+  (v: any) => v.id === option.variantId || v._id === option.variantId
+);
 
     // Construct default sizeMap with 0 quantities for a new PO item
     const defaultSizeMap: Record<string, { qty: number; sku: string }> = {};
@@ -2121,12 +2138,12 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
                     {/* Item Details (Picker) */}
                     <td className="px-3 py-3 relative">
                       <div
-                        ref={
-                          activeItemPickerIdx === idx
-                            ? itemPickerRef
-                            : undefined
-                        }
-                      >
+  ref={
+    activeItemPickerIdx === idx
+      ? itemPickerTriggerRef
+      : undefined
+  }
+>
                         <button
                           type="button"
                           className={`w-full text-left px-3 py-2 border rounded-lg text-sm transition-all flex items-center justify-between ${
@@ -2144,22 +2161,22 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
 
                         {activeItemPickerIdx === idx &&
                           createPortal(
-                            <div
-                              ref={itemPickerRef}
-                              style={{
-                                position: "absolute",
-                                top: pickerPos.openUp
-                                  ? pickerPos.top - 10
-                                  : pickerPos.top + 42,
-                                left: pickerPos.left,
-                                width: pickerPos.width * 2,
-                                transform: pickerPos.openUp
-                                  ? "translateY(-100%)"
-                                  : "none",
-                                zIndex: 9999,
-                              }}
-                              className="bg-white border border-slate-200 rounded-xl shadow-2xl max-h-80 overflow-hidden"
-                            >
+                           <div
+  ref={itemPickerDropdownRef}
+  style={{
+    position: "absolute",
+    top: pickerPos.openUp
+      ? pickerPos.top - 10
+      : pickerPos.top + 42,
+    left: pickerPos.left,
+    width: pickerPos.width * 2,
+    transform: pickerPos.openUp
+      ? "translateY(-100%)"
+      : "none",
+    zIndex: 9999,
+  }}
+  className="bg-white border border-slate-200 rounded-xl shadow-2xl max-h-80 overflow-hidden"
+>
                               <div className="p-2 border-b border-slate-100">
                                 <div className="relative">
                                   <Search
@@ -2195,7 +2212,7 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
                                         </div>
                                         {variants.map((option) => (
                                           <button
-                                            key={`${option.articleId}-${option.variantId}`}
+                                            key={`${option.articleId}-${option.variantId}-${option.name}`}
                                             type="button"
                                             className="w-full text-left px-4 py-2.5 text-sm hover:bg-indigo-50 transition-colors flex items-center gap-3 border-b border-slate-50"
                                             onClick={() =>
@@ -2567,21 +2584,23 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
       </div>
 
       <QuantityGridModal
-        key={`${qtyModalRowId}-${
+  key={`${qtyModalRowId}-${
+    items.find((it) => it.id === qtyModalRowId)?.sizeMap
+      ? JSON.stringify(
           items.find((it) => it.id === qtyModalRowId)?.sizeMap
-            ? JSON.stringify(
-                items.find((it) => it.id === qtyModalRowId)?.sizeMap
-              )
-            : "empty"
-        }`}
-        isOpen={showQtyModal}
-        onClose={() => setShowQtyModal(false)}
-        article={articles.find((a) => a.id === qtyModalArticleId)}
-        variantId={qtyModalVariantId}
-        rowId={qtyModalRowId}
-        existingItems={items}
-        onSave={handleSaveQtyGrid}
-      />
+        )
+      : "empty"
+  }`}
+  isOpen={showQtyModal}
+  onClose={() => setShowQtyModal(false)}
+  article={articles.find(
+    (a) => (a.id || (a as any)._id) === qtyModalArticleId
+  )}
+  variantId={qtyModalVariantId}
+  rowId={qtyModalRowId}
+  existingItems={items}
+  onSave={handleSaveQtyGrid}
+/>
     </div>
   );
 };
