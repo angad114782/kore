@@ -33,6 +33,7 @@ import {
   MockPORef,
 } from "../../services/grnService";
 import SearchableSelect from "../SearchableSelect";
+import { formatAssortment } from "../../utils/assortmentUtils";
 
 /* ═══════════════════ Types ═══════════════════ */
 
@@ -550,7 +551,12 @@ const GRN: React.FC = () => {
   const selectedPOLabel = poRefs.find((p) => p.id === selectedPOId)?.poNo || "";
 
   /* ── Item dropdown options ── */
-  const itemOptions = (poDetail?.items || []).map((i) => i.itemName);
+  const itemOptions = (poDetail?.items || []).map((i) => {
+    const ratio = formatAssortment(Object.fromEntries(
+      Object.entries(i.sizeMap).map(([sz, d]) => [sz, d.qty])
+    ));
+    return ratio ? `${i.itemName} (${ratio})` : i.itemName;
+  });
 
 
   /* ═══════════════════ RENDER ═══════════════════ */
@@ -785,7 +791,13 @@ const GRN: React.FC = () => {
                             setScanInput("");
                             
                             // Auto-jump to first pending carton for this item
-                            const item = poDetail.items.find(i => i.itemName === val);
+                            const item = poDetail.items.find(i => {
+                              const ratio = formatAssortment(Object.fromEntries(
+                                Object.entries(i.sizeMap).map(([sz, d]) => [sz, d.qty])
+                              ));
+                              const label = ratio ? `${i.itemName} (${ratio})` : i.itemName;
+                              return label === val;
+                            });
                             if (item) {
                               const itemDoneIndices = doneCartons[val] || [];
                               let firstPending = 0;
@@ -796,6 +808,25 @@ const GRN: React.FC = () => {
                             }
                           }}
                           placeholder="Select item to receive..."
+                          renderOption={(opt) => {
+                            const item = poDetail?.items.find(i => {
+                              const ratio = formatAssortment(Object.fromEntries(
+                                Object.entries(i.sizeMap).map(([sz, d]) => [sz, d.qty])
+                              ));
+                              const label = ratio ? `${i.itemName} (${ratio})` : i.itemName;
+                              return label === opt;
+                            });
+                            if (!item) return opt;
+                            const ratio = formatAssortment(Object.fromEntries(
+                              Object.entries(item.sizeMap).map(([sz, d]) => [sz, d.qty])
+                            ));
+                            return (
+                              <div className="flex flex-col">
+                                <span className="font-bold">{item.itemName}</span>
+                                {ratio && <span className="text-[10px] text-indigo-500 font-bold">Assortment: {ratio}</span>}
+                              </div>
+                            );
+                          }}
                         />
 
                         {/* Selected Item Summary Area */}
@@ -807,7 +838,9 @@ const GRN: React.FC = () => {
                                  <StatusPill label="ACTIVE" tone="indigo" />
                                </div>
                                <p className="font-bold text-indigo-900 break-all leading-snug">{selectedItem.itemName}</p>
-                               <p className="text-xs text-indigo-600 font-medium">{selectedItem.color} • {Object.keys(selectedItem.sizeMap).join(", ")}</p>
+                               <p className="text-xs text-indigo-600 font-medium">
+                                 {selectedItem.color} • {formatAssortment(Object.fromEntries(Object.entries(selectedItem.sizeMap).map(([sz, d]) => [sz, d.qty])))}
+                               </p>
                             </div>
                             
                             {/* Simple Progress text */}

@@ -280,12 +280,20 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
           );
 
           if (existing) {
-            newVariants.push(existing);
+            // Always keep itemName in sync with the current article name
+            newVariants.push({
+              ...existing,
+              itemName: formData.artname
+                ? `${formData.artname}-${color}-${rangeEntry.label}`
+                : existing.itemName,
+            });
           } else {
             newVariants.push({
               id: `var-${color}-${rangeEntry.id}`,
               sizeRangeId: rangeEntry.id,
-              itemName: `${formData.artname || "Item"}-${color}-${rangeEntry.label}-${idx + 1}`,
+              itemName: formData.artname
+                ? `${formData.artname}-${color}-${rangeEntry.label}`
+                : `${color}-${rangeEntry.label}`,
               sku: "",
               sizeSkus: {},
               color,

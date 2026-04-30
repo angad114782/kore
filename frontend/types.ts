@@ -313,6 +313,7 @@ export interface PurchaseOrderItem {
   unitTotal: number;
   sizeMap?: Record<string, { qty: number; sku: string }>;
   cartonCount?: number;
+  assortment?: string;
 }
 
 export type POStatus = "DRAFT" | "SENT";

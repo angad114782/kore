@@ -311,9 +311,9 @@ exports.submitDraft = async (draftId, { scannedItemNames } = {}) => {
   draft.totalPairs = totalPairs;
 
   // ─── Inventory Update Logic ──────────────────────────────
-  // Group cartons by either variantId (reliable) or itemName (fallback)
+  // Group cartons by variantId (reliable)
   const cartonsByVariant = (draft.cartons || []).reduce((acc, c) => {
-    const key = c.variantId || c.itemName || articleName;
+    const key = c.variantId || "UNKNOWN";
     if (!acc[key]) acc[key] = { count: 0, itemName: c.itemName || articleName, variantId: c.variantId };
     acc[key].count += 1;
     return acc;
@@ -321,19 +321,12 @@ exports.submitDraft = async (draftId, { scannedItemNames } = {}) => {
 
   for (const [key, info] of Object.entries(cartonsByVariant)) {
     const { variantId, itemName } = info;
+    if (!variantId) continue;
     
-    let query = variantId 
-      ? { "variants._id": variantId } 
-      : { "variants.itemName": itemName };
-
-    const catalog = await MasterCatalog.findOne(query);
+    const catalog = await MasterCatalog.findOne({ "variants._id": variantId });
     if (!catalog) continue;
 
-    let variant = variantId ? catalog.variants.id(variantId) : null;
-    if (!variant) {
-      variant = catalog.variants.find(v => v.itemName === itemName);
-    }
-
+    const variant = catalog.variants.id(variantId);
     if (!variant) continue;
 
     // ─── Actual Scanned Quantity Calculation ───
@@ -341,8 +334,7 @@ exports.submitDraft = async (draftId, { scannedItemNames } = {}) => {
     // ⚡ CRITICAL: We prioritize the Purchase Order's sizeMap because barcodes are generated 
     // from the PO's SKU entries, which might differ from the Master Catalog defaults.
     const poItem = po ? po.items.find(it => 
-      (it.variantId && String(it.variantId) === String(variant._id)) || 
-      (it.itemName === variant.itemName)
+      (it.variantId && String(it.variantId) === String(variant._id))
     ) : null;
 
     console.log(`[GRN-SUBMIT-DEBUG] Processing variant "${variant.itemName}" (ID: ${variant._id})`);
@@ -376,8 +368,7 @@ exports.submitDraft = async (draftId, { scannedItemNames } = {}) => {
 
     // Filter cartons that belong to THIS specific variant
     const variantCartons = (draft.cartons || []).filter(c => 
-      (c.variantId && String(c.variantId) === String(variant._id)) || 
-      (c.itemName === variant.itemName)
+      (c.variantId && String(c.variantId) === String(variant._id))
     );
 
     console.log(`[GRN-SUBMIT-DEBUG] Found ${variantCartons.length} cartons for this variant in the draft.`);
@@ -449,16 +440,17 @@ exports.getReceivedCartons = async (refId) => {
 
   submittedGRNs.forEach(grn => {
     (grn.cartons || []).forEach(c => {
-      const itemName = c.itemName || (grn.articleName.includes(",") ? grn.articleName.split(",")[0].trim() : grn.articleName);
-      if (!doneMap[itemName]) doneMap[itemName] = [];
+      // Prefer variantId over itemName for the map key to prevent collisions
+      const key = c.variantId || c.itemName || (grn.articleName.includes(",") ? grn.articleName.split(",")[0].trim() : grn.articleName);
+      if (!doneMap[key]) doneMap[key] = [];
       
       // Extract serial from barcode e.g. CTN-260422-PO-1023-001 -> 0
       const parts = (c.cartonBarcode || "").split("-");
       const serialStr = parts[parts.length - 1]; // "001"
       const serial = parseInt(serialStr, 10);
       
-      if (!isNaN(serial) && !doneMap[itemName].includes(serial - 1)) {
-        doneMap[itemName].push(serial - 1);
+      if (!isNaN(serial) && !doneMap[key].includes(serial - 1)) {
+        doneMap[key].push(serial - 1);
       }
     });
   });

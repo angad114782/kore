@@ -23,6 +23,7 @@ import { Article, AssortmentType } from "../../types";
 import Switch from "../ui/Switch";
 import { masterCatalogService } from "../../services/masterCatalogService";
 import { getImageUrl } from "../../utils/imageUtils";
+import { formatAssortment } from "../../utils/assortmentUtils";
 
 type CatalogStatus = "AVAILABLE" | "WISHLIST";
 
@@ -718,7 +719,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                                         {vName}
                                       </p>
                                       <p className="text-[10px] font-mono text-slate-400 tracking-wider mt-0.5">
-                                        {v.sku || article.sku || ""}
+                                        {v.sku || article.sku || ""} · {formatAssortment(v.sizeQuantities)}
                                       </p>
                                     </td>
                                     <td className="px-6 py-3">
@@ -806,7 +807,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                                           {vName}
                                         </p>
                                         <p className="text-[10px] font-mono text-slate-400 tracking-wider mt-0.5">
-                                          {v.sku || article.sku || ""}
+                                          {v.sku || article.sku || ""} · {formatAssortment(v.sizeQuantities)}
                                         </p>
                                       </div>
                                       <span className="text-[10px] font-bold text-indigo-500 uppercase shrink-0">

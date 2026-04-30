@@ -154,12 +154,6 @@ exports.create = async (req) => {
   const body = req.body || {};
 
   const articleName = (body.articleName || "").trim();
-  const existing = await MasterCatalog.findOne({ articleName, isDeleted: false });
-  if (existing) {
-    const err = new Error(`Product with name "${articleName}" already exists.`);
-    err.statusCode = 409;
-    throw err;
-  }
 
   const productColors = parseMaybeJson(body.productColors, []);
   const sizeRanges = parseMaybeJson(body.sizeRanges, []);
@@ -532,10 +526,7 @@ exports.getVariantStock = async (variantId) => {
 
   // 2. DYNAMIC CALCULATION: Total Received from GRNs
   const submittedGRNs = await GRNDraft.find({ 
-    $or: [
-      { "cartons.variantId": variantId.toString() },
-      { "cartons.itemName": variant.itemName }
-    ],
+    "cartons.variantId": variantId.toString(),
     status: "SUBMITTED" 
   }).lean();
 
@@ -551,8 +542,7 @@ exports.getVariantStock = async (variantId) => {
   // Expand skuToSize with SKUs from all relevant POs
   poDocs.forEach(po => {
     const poItem = po.items.find(it => 
-      (it.variantId && String(it.variantId) === variantId.toString()) || 
-      (it.itemName === variant.itemName)
+      (it.variantId && String(it.variantId) === variantId.toString())
     );
     if (poItem && poItem.sizeMap) {
       const poSizeMap = poItem.sizeMap && typeof poItem.sizeMap.toJSON === 'function' ? poItem.sizeMap.toJSON() : poItem.sizeMap;
@@ -577,8 +567,7 @@ exports.getVariantStock = async (variantId) => {
   // ── PRIMARY: SKU-based barcode matching (using Master + all PO SKUs) ──
   submittedGRNs.forEach(grn => {
     (grn.cartons || []).forEach(carton => {
-      const isMatch = (carton.variantId && String(carton.variantId) === variantId.toString()) || 
-                      (carton.itemName === variant.itemName);
+      const isMatch = (carton.variantId && String(carton.variantId) === variantId.toString());
       if (!isMatch) return;
 
       (carton.pairBarcodes || []).forEach(barcode => {
@@ -622,8 +611,7 @@ exports.getVariantStock = async (variantId) => {
     submittedGRNs.forEach(grn => {
       const po = poLookup[grn.refId];
       const poItem = po ? po.items.find(it => 
-        (it.variantId && String(it.variantId) === variantId.toString()) || 
-        (it.itemName === variant.itemName)
+        (it.variantId && String(it.variantId) === variantId.toString())
       ) : null;
       
       const poSizeMap = poItem ? (poItem.sizeMap && typeof poItem.sizeMap.toJSON === 'function' ? poItem.sizeMap.toJSON() : (poItem.sizeMap || {})) : {};
@@ -632,8 +620,7 @@ exports.getVariantStock = async (variantId) => {
       // Count matching cartons for THIS specific GRN
       let cartonCount = 0;
       (grn.cartons || []).forEach(carton => {
-        const isMatch = (carton.variantId && String(carton.variantId) === variantId.toString()) || 
-                        (carton.itemName === variant.itemName);
+        const isMatch = (carton.variantId && String(carton.variantId) === variantId.toString());
         if (isMatch) cartonCount++;
       });
 
@@ -721,20 +708,14 @@ exports.getVariantStock = async (variantId) => {
   const pos = await PurchaseOrder.find({
     isDeleted: false,
     billStatus: "APPROVED",
-    $or: [
-      { "items.variantId": variantId.toString() },
-      { "items.itemName": variant.itemName || "" },
-      { "items.sku": variant.sku || "" }
-    ],
+    "items.variantId": variantId.toString()
   }).lean();
 
   pos.forEach((po) => {
     const receivedForThisPO = receivedPerPO[po.poNumber] || {};
 
     (po.items || []).forEach((item) => {
-      const isMatch = String(item.variantId) === String(variantId) || 
-                      item.itemName === variant.itemName || 
-                      (variant.sku && item.sku === variant.sku);
+      const isMatch = String(item.variantId) === String(variantId);
       
       if (isMatch && item.sizeMap) {
         Object.entries(item.sizeMap).forEach(([sz, cell]) => {

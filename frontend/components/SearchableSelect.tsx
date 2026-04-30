@@ -10,6 +10,7 @@ interface SearchableSelectProps {
   onDelete?: (valueToDelete: string) => void;
   placeholder?: string;
   required?: boolean;
+  renderOption?: (option: string) => React.ReactNode;
 }
 
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -21,6 +22,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   onDelete,
   placeholder = "Select...",
   required = false,
+  renderOption,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -106,7 +108,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                   }}
                 >
                   <span className={`text-sm ${value === opt ? 'text-indigo-600 font-bold' : 'text-slate-700'}`}>
-                    {opt}
+                    {renderOption ? renderOption(opt) : opt}
                   </span>
                   {onDelete && (
                     <button

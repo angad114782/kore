@@ -1,5 +1,5 @@
 const router = require("express").Router();
-const { upload } = require("../middlewares/upload");
+const { upload, compressImages } = require("../middlewares/upload");
 const ctrl = require("../controllers/masterCatalogController");
 
 // ✅ dynamic fields allow:
@@ -14,10 +14,10 @@ const maybeUpload = (req, res, next) => {
   return next();
 };
 
-router.post("/", maybeUpload, ctrl.createMasterCatalog);
+router.post("/", maybeUpload, compressImages, ctrl.createMasterCatalog);
 router.get("/", ctrl.getMasterCatalogList);
 router.get("/:id", ctrl.getMasterCatalogById);
-router.put("/:id", maybeUpload, ctrl.updateMasterCatalog);
+router.put("/:id", maybeUpload, compressImages, ctrl.updateMasterCatalog);
 
 router.patch("/:id/toggle-status", ctrl.toggleMasterCatalogStatus);
 router.delete("/:id", ctrl.deleteMasterCatalog);

@@ -15,6 +15,7 @@ import {
 import { Article, Variant } from "../../types";
 import { toast } from "sonner";
 import { getImageUrl } from "../../utils/imageUtils";
+import { formatAssortment } from "../../utils/assortmentUtils";
 
 interface VariantDetailsPageProps {
   article: Article;
@@ -310,12 +311,19 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                 <h1 className="text-lg font-bold text-slate-900 leading-snug truncate">
                   {variantName}
                 </h1>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Master:{" "}
-                  <span className="font-medium text-slate-500">
-                    {article.name}
-                  </span>
-                </p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-xs text-slate-400">
+                    Master:{" "}
+                    <span className="font-medium text-slate-500">
+                      {article.name}
+                    </span>
+                  </p>
+                  {variant.sizeQuantities && (
+                    <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-bold rounded border border-indigo-100">
+                      Assortment: {formatAssortment(variant.sizeQuantities)}
+                    </span>
+                  )}
+                </div>
               </div>
               <span
                 className={`shrink-0 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${

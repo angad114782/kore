@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Search, Plus, Minus, Database, ArrowUpCircle, ArrowDownCircle, AlertTriangle, X, ChevronDown, ImageIcon, Package, Layers } from 'lucide-react';
 import { Inventory, Article } from '../../types';
 import { getImageUrl } from '../../utils/imageUtils';
+import { formatAssortment } from '../../utils/assortmentUtils';
 
 interface MasterInventoryProps {
   inventory: Inventory[];
@@ -245,7 +246,9 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                                         </div>
                                         <div>
                                           <p className="text-xs font-bold text-slate-800">{variant.itemName || `${article.name} - ${variant.color} - ${variant.sizeRange}`}</p>
-                                          <p className="text-[9px] font-mono text-slate-400 tracking-wider">SKU: {variant.sku || article.sku}</p>
+                                          <p className="text-[9px] font-mono text-slate-400 tracking-wider">
+                                            SKU: {variant.sku || article.sku} · {formatAssortment(variant.sizeQuantities)}
+                                          </p>
                                         </div>
                                       </div>
                                    </td>

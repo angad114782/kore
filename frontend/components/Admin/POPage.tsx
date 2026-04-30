@@ -38,6 +38,7 @@ import { vendorService } from "../../services/vendorService";
 import { masterCatalogService } from "../../services/masterCatalogService";
 import { billService } from "../../services/billService";
 import { exportPOToPDF, exportOrderToExcel } from "../../utils/exportPO";
+import { formatAssortment } from "../../utils/assortmentUtils";
 
 // ─── Reusable styles ───────────────────────────────────
 const inputClass =
@@ -892,6 +893,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
     image: string;
     basePrice: number;
     mrp: number;
+    assortment?: string;
   }[] = [];
 
   articles.forEach((article) => {
@@ -930,6 +932,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
             article.pricePerPair ||
             0,
           mrp: variant.mrp || article.mrp || 0,
+          assortment: formatAssortment(variant.sizeQuantities),
         });
       });
     } else {
@@ -1139,6 +1142,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
           basePrice: option.basePrice,
           mrp: option.mrp || 0,
           sizeMap: defaultSizeMap,
+          assortment: option.assortment,
         });
       });
       if (isLastRow) {
@@ -2185,9 +2189,16 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                           } ${isApprovedPO ? 'cursor-not-allowed opacity-75' : ''}`}
                           onClick={(e) => !isApprovedPO && toggleItemPicker(idx, e)}
                         >
-                          <span className="truncate">
-                            {item.itemName || "Click to select item..."}
-                          </span>
+                          <div className="flex flex-col truncate">
+                            <span className="truncate">
+                              {item.itemName || "Click to select item..."}
+                            </span>
+                            {item.assortment && (
+                              <span className="text-[10px] text-indigo-500 font-bold">
+                                {item.assortment}
+                              </span>
+                            )}
+                          </div>
                           <ChevronDown size={14} className="shrink-0 ml-1" />
                         </button>
 
@@ -2269,12 +2280,17 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                                               <p className="font-semibold text-slate-800 truncate">
                                                 {option.name}
                                               </p>
-                                              <p className="text-[10px] text-slate-400 font-mono">
-                                                {option.sku}
-                                                {option.brand
-                                                  ? ` · ${option.brand}`
-                                                  : ""}
-                                              </p>
+                                              <div className="flex items-center gap-2 mt-0.5">
+                                                <p className="text-[10px] text-slate-400 font-mono">
+                                                  {option.sku}
+                                                  {option.brand ? ` · ${option.brand}` : ""}
+                                                </p>
+                                                {option.assortment && (
+                                                  <span className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded-md font-bold border border-indigo-100">
+                                                    {option.assortment}
+                                                  </span>
+                                                )}
+                                              </div>
                                             </div>
                                             <span className="ml-auto text-xs font-bold text-slate-600 shrink-0">
                                               ₹{option.basePrice}
