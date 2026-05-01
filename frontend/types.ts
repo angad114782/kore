@@ -141,10 +141,12 @@ export interface OrderItem {
   blockedCartonCount?: number;
   allocatedCartonCount?: number;
   fulfilledCartonCount?: number;
+  returnedCartonCount?: number;
   pairCount: number;
   blockedPairCount?: number;
   allocatedPairCount?: number;
   fulfilledPairCount?: number;
+  returnedPairCount?: number;
   price: number;
 }
 
@@ -154,7 +156,9 @@ export interface FulfillmentBatch {
   date: string;
   items: {
     variantId: string;
+    articleId: string;
     cartonCount: number;
+    returnedCartonCount?: number;
     pairCount: number;
     sizeQuantities: Record<string, number>;
   }[];
@@ -219,6 +223,30 @@ export interface MovementRecord {
   cartonCount: number;
   date: string;
   note: string;
+}
+
+export interface ReturnItem {
+  variantId: string;
+  articleId: string;
+  cartonCount: number;
+  pairCount: number;
+  sizeQuantities: Record<string, number>;
+}
+
+export interface Return {
+  id: string;
+  returnNumber: string;
+  orderId: string;
+  orderNumber: string;
+  distributorId: string;
+  distributorName: string;
+  items: ReturnItem[];
+  totalCartons: number;
+  totalPairs: number;
+  date: string;
+  createdAt: string;
+  reason?: string;
+  batchNumber?: number;
 }
 
 // Vendor-related types

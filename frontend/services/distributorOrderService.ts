@@ -135,10 +135,10 @@ class DistributorOrderService {
     return this.mapOrder(res.data.data);
   }
 
-  async processReturn(orderId: string, items: { variantId: string; cartons: number }[], reason?: string): Promise<any> {
+  async processReturn(orderId: string, items: { variantId: string; cartons: number }[], reason?: string, batchNumber?: number): Promise<any> {
     const res = await axios.post(
       `${API_URL}/return`,
-      { orderId, items, reason },
+      { orderId, items, reason, batchNumber },
       { headers: getAuthHeaders() }
     );
     return res.data.data;

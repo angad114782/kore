@@ -1,4 +1,5 @@
 const OrderService = require("../services/order.service");
+const Order = require("../models/Order");
 const { emitOrderUpdate } = require("../socket");
 
 const createOrder = async (req, res) => {
@@ -117,7 +118,7 @@ const updateOrderStatus = async (req, res) => {
 
 const processReturn = async (req, res) => {
   try {
-    const { orderId, items, reason } = req.body;
+    const { orderId, items, reason, batchNumber } = req.body;
 
     if (!orderId || !items || !Array.isArray(items)) {
       return res.status(400).json({
@@ -126,10 +127,13 @@ const processReturn = async (req, res) => {
       });
     }
 
-    const returnDoc = await OrderService.processReturn(orderId, { items, reason });
+    const returnDoc = await OrderService.processReturn(orderId, { items, reason, batchNumber });
 
-    // Real-time: notify distributor and admin of return status
-    emitOrderUpdate(returnDoc);
+    // Real-time: notify distributor and admin of return status (emit the UPDATED ORDER)
+    const updatedOrder = await Order.findById(orderId).populate('distributorId');
+    if (updatedOrder) {
+      emitOrderUpdate(updatedOrder);
+    }
 
     res.status(200).json({
       success: true,

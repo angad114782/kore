@@ -64,6 +64,7 @@ const ReturnSchema = new mongoose.Schema(
       default: Date.now,
     },
     reason: String,
+    batchNumber: Number,
   },
   { timestamps: true }
 );

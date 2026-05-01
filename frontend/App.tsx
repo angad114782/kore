@@ -266,17 +266,25 @@ const App: React.FC = () => {
       if (!u) return;
 
       const isDistributor = u.role === UserRole.DISTRIBUTOR;
-      const isMyOrder = String(data.distributorId) === String(u.id) || String(data.distributorId) === String(u.distributorId);
+      const orderId = String(data.orderId);
+      const distributorId = String(data.distributorId);
+      
+      const isMyOrder = distributorId === String(u.id) || distributorId === String(u.distributorId);
 
       // Distributors only care about their own orders
       if (isDistributor && !isMyOrder) return;
       
-      toast.success(`Real-time update received for Order ${data.orderId}`);
+      toast.success(`Order Update: ${orderId.slice(-6).toUpperCase()}`, {
+        description: `Status changed to ${data.status?.replace(/_/g, ' ') || 'updated'}`,
+        duration: 3000
+      });
 
       // Re-fetch orders for data consistency
-      fetchOrdersRef.current?.(true);
+      if (fetchOrdersRef.current) {
+        fetchOrdersRef.current(true);
+      }
 
-      // Always refresh credit limits for distributors on ANY order status change
+      // Always refresh credit limits for distributors
       if (isDistributor) {
         checkAuthRef.current?.(true);
       }

@@ -71,6 +71,14 @@ const OrderItemSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    returnedCartonCount: {
+      type: Number,
+      default: 0,
+    },
+    returnedPairCount: {
+      type: Number,
+      default: 0,
+    },
     price: {
       type: Number,
       required: true,
@@ -85,8 +93,11 @@ const FulfillmentHistorySchema = new mongoose.Schema({
   date: { type: Date, default: Date.now },
   items: [{
     variantId: mongoose.Schema.Types.ObjectId,
+    articleId: mongoose.Schema.Types.ObjectId,
     cartonCount: Number,
+    returnedCartonCount: { type: Number, default: 0 },
     pairCount: Number,
+    returnedPairCount: { type: Number, default: 0 },
     sizeQuantities: { type: Map, of: Number }
   }],
   totalAmount: Number,

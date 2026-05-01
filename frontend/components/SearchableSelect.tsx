@@ -11,6 +11,7 @@ interface SearchableSelectProps {
   placeholder?: string;
   required?: boolean;
   renderOption?: (option: string) => React.ReactNode;
+  renderValue?: (option: string) => React.ReactNode;
 }
 
 const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -23,6 +24,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   placeholder = "Select...",
   required = false,
   renderOption,
+  renderValue,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -77,8 +79,8 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         onClick={() => setIsOpen(!isOpen)}
         className={`w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between cursor-pointer hover:border-indigo-300 transition-colors ${isOpen ? 'ring-2 ring-indigo-500/20 border-indigo-500' : ''}`}
       >
-        <span className={value ? "text-slate-900 font-medium" : "text-slate-400"}>
-          {value || placeholder}
+        <span className={value ? "text-slate-900 font-bold truncate" : "text-slate-400"}>
+          {value ? (renderValue ? renderValue(value) : value) : placeholder}
         </span>
         <ChevronDown size={18} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </div>

@@ -388,6 +388,7 @@ const updateOrderStatus = async (orderId, status, {
           // record in current batch
           currentBatchItems.push({
             variantId: item.variantId,
+            articleId: item.articleId,
             cartonCount: item.allocatedCartonCount,
             pairCount: item.allocatedPairCount,
             sizeQuantities: item.allocatedSizeQuantities
@@ -503,7 +504,7 @@ const updateOrderStatus = async (orderId, status, {
 
 const processReturn = async (orderId, returnData) => {
   try {
-    const { items: returnItems, reason } = returnData;
+    const { items: returnItems, reason, batchNumber } = returnData;
     const order = await Order.findById(orderId);
     if (!order) throw new Error("Order not found");
     
@@ -521,25 +522,28 @@ const processReturn = async (orderId, returnData) => {
       const orderItem = order.items.find(item => item.variantId.toString() === variantId.toString());
       if (!orderItem) throw new Error(`Item ${variantId} not found in this order`);
 
-      // Calculate total previously returned for this variant
-      const previousReturns = await Return.aggregate([
-        { $match: { orderId: order._id } },
-        { $unwind: "$items" },
-        { $match: { "items.variantId": orderItem.variantId } },
-        { $group: { _id: null, total: { $sum: "$items.cartonCount" } } }
-      ]);
-      const alreadyReturned = previousReturns[0]?.total || 0;
-      
-      const deliveredCartons = orderItem.fulfilledCartonCount || 0;
-      const availableToReturn = deliveredCartons - alreadyReturned;
-
-      if (cartons > availableToReturn) {
-        throw new Error(`Cannot return ${cartons} cartons for ${variantId}. Only ${availableToReturn} cartons remain from delivery.`);
+      // Find the specific batch if provided
+      let targetBatch = null;
+      if (batchNumber) {
+        targetBatch = order.fulfillmentHistory.find(b => b.batchNumber === Number(batchNumber));
+        if (!targetBatch) throw new Error(`Batch #${batchNumber} not found in order history`);
+        
+        // Update batch-level returned count safely
+        const updatedItems = targetBatch.items.map(bi => {
+          if (bi.variantId.toString() === variantId.toString()) {
+            return {
+              ...bi.toObject(),
+              returnedCartonCount: (bi.returnedCartonCount || 0) + cartons
+            };
+          }
+          return bi;
+        });
+        targetBatch.items = updatedItems;
       }
 
-      // Proportional calculation for size restoration
-      const ratio = cartons / (orderItem.fulfilledCartonCount || 1);
-      const fulfilledSizes = orderItem.fulfilledSizeQuantities ? Object.fromEntries(orderItem.fulfilledSizeQuantities) : {};
+      // Proportional calculation for size restoration (based on this return's carton count)
+      const ratio = cartons / (orderItem.cartonCount || 1);
+      const originalSizes = orderItem.sizeQuantities ? Object.fromEntries(orderItem.sizeQuantities) : {};
       
       const catalogItem = await MasterCatalog.findById(orderItem.articleId);
       if (!catalogItem) throw new Error("Article not found in catalog");
@@ -551,7 +555,7 @@ const processReturn = async (orderId, returnData) => {
       let itemPairs = 0;
 
       if (variant.sizeMap) {
-        for (const [size, qty] of Object.entries(fulfilledSizes)) {
+        for (const [size, qty] of Object.entries(originalSizes)) {
           const qtyToReturn = Math.round(qty * ratio);
           if (qtyToReturn > 0) {
             returnSizeQuantities[size] = qtyToReturn;
@@ -568,6 +572,14 @@ const processReturn = async (orderId, returnData) => {
         await catalogItem.save();
       }
 
+      // Update Order-level counts
+      orderItem.returnedCartonCount = (orderItem.returnedCartonCount || 0) + cartons;
+      orderItem.returnedPairCount = (orderItem.returnedPairCount || 0) + itemPairs;
+      
+      // OPTIONAL: "Remove from fulfilled" as requested
+      orderItem.fulfilledCartonCount = Math.max(0, (orderItem.fulfilledCartonCount || 0) - cartons);
+      orderItem.fulfilledPairCount = Math.max(0, (orderItem.fulfilledPairCount || 0) - itemPairs);
+
       processedItems.push({
         variantId: orderItem.variantId,
         articleId: orderItem.articleId,
@@ -580,6 +592,7 @@ const processReturn = async (orderId, returnData) => {
       totalPairs += itemPairs;
     }
 
+    // Record the Return Document
     const returnNumber = await generateNextReturnNumber();
     const newReturn = new Return({
       returnNumber,
@@ -590,9 +603,18 @@ const processReturn = async (orderId, returnData) => {
       items: processedItems,
       totalCartons,
       totalPairs,
-      reason
+      reason,
+      batchNumber // Store which batch this return belongs to
     });
 
+    // Finalize order updates
+    if (order.status === "RECEIVED") {
+      order.status = "PARTIAL"; // Revert to partial if items are returned
+    }
+    order.markModified("items");
+    order.markModified("fulfillmentHistory");
+    await order.save();
+    
     await newReturn.save();
     return newReturn;
   } catch (error) {

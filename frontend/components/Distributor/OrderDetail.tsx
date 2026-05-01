@@ -1,5 +1,5 @@
-
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { io } from 'socket.io-client';
 import { 
   ArrowLeft, 
   Package, 
@@ -25,7 +25,8 @@ import {
   Mail,
   History,
   X,
-  Barcode
+  Barcode,
+  RotateCcw
 } from 'lucide-react';
 import DocPreviewDialog from '../ui/DocPreviewDialog';
 import { Order, OrderStatus, Article, Inventory, OrderItem, FulfillmentBatch } from '../../types';
@@ -68,8 +69,41 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
   const [currentOrder, setCurrentOrder] = useState<Order>(order);
   const [activeTab, setActiveTab] = useState<'items' | 'history'>('items');
 
+  // Real-time updates via Socket.io
+  useEffect(() => {
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5005/api";
+    const socketBase = API_BASE_URL.replace("/api", "");
+    const socket = io(socketBase);
+
+    socket.on("connect", () => {
+      console.log("🔌 OrderDetail socket connected");
+    });
+
+    socket.on("orderUpdated", async (data) => {
+      const updatedOrderId = String(data.orderId);
+      const currentId = String(currentOrder.id || (currentOrder as any)._id);
+
+      if (updatedOrderId === currentId) {
+        console.log("📦 Current order updated via socket:", updatedOrderId);
+        // Manual refresh of the current order data
+        try {
+          const res = await distributorOrderService.getOrderById(updatedOrderId);
+          if (res) {
+            setCurrentOrder(res);
+          }
+        } catch (err) {
+          console.error("Failed to refresh order via socket", err);
+        }
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [currentOrder.id, (currentOrder as any)._id]);
+
   // Sync state if order prop changes (real-time updates from parent/socket)
-  React.useEffect(() => {
+  useEffect(() => {
     setCurrentOrder(order);
   }, [order]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -1098,7 +1132,8 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                             <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Article / Variant</th>
                             <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ordered (Ctn)</th>
                             <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Fulfilled (Ctn)</th>
-                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center text-rose-500">Remaining (Ctn)</th>
+                            <th className="px-6 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-center">Returned (Ctn)</th>
+                            <th className="px-6 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-center">Remaining (Ctn)</th>
                             <th className="px-6 py-3 text-[10px] font-black text-indigo-600 uppercase tracking-widest text-center">Allocation (Batch)</th>
                           </tr>
                         ) : (
@@ -1107,6 +1142,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                             <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Article / Variant</th>
                             <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ordered (Ctn)</th>
                             <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Fulfilled (Ctn)</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-center">Returned (Ctn)</th>
                             <th className="px-4 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-center">Remaining (Ctn)</th>
                             <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center bg-indigo-50/30">Live Stock (Ctn)</th>
                             <th className="px-4 py-3 text-[10px] font-black text-amber-600 uppercase tracking-widest text-center bg-amber-50/30">Blocked (Ctn)</th>
@@ -1197,6 +1233,9 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                                   <p className="text-sm font-black text-emerald-600 leading-none">{item.fulfilledCartonCount || 0}</p>
                                 </td>
                                 <td className="px-6 py-4 text-center">
+                                  <p className="text-sm font-black text-rose-600 leading-none">{item.returnedCartonCount || 0}</p>
+                                </td>
+                                <td className="px-6 py-4 text-center">
                                   <p className="text-sm font-black text-rose-500 leading-none">{Math.max(0, item.cartonCount - (item.fulfilledCartonCount || 0))}</p>
                                 </td>
                                 <td className="px-6 py-4 text-center">
@@ -1241,6 +1280,9 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                               </td>
                               <td className="px-4 py-4 text-center">
                                 <p className="text-sm font-black text-emerald-600 leading-none">{item.fulfilledCartonCount || 0}</p>
+                              </td>
+                              <td className="px-4 py-4 text-center">
+                                <p className="text-sm font-black text-rose-600 leading-none">{item.returnedCartonCount || 0}</p>
                               </td>
                               <td className="px-4 py-4 text-center">
                                 <p className="text-sm font-black text-rose-500 leading-none">{item.cartonCount - (item.fulfilledCartonCount || 0)}</p>
@@ -1537,6 +1579,12 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                                     <ShieldCheck size={14} />
                                   </button>
                                 )}
+                                {batch.items.some(i => Number((i as any).returnedCartonCount || 0) > 0) && (
+                                  <div className="px-3 py-1 bg-rose-50 text-rose-600 rounded-lg border border-rose-100 flex items-center gap-1.5 shadow-sm">
+                                    <RotateCcw size={12} className="animate-spin-slow" />
+                                    <span className="text-[10px] font-black uppercase tracking-tight">Return Linked to this Batch</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -1564,8 +1612,9 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                                       }
                                     });
 
+                                    const hasReturn = Number(bItem.returnedCartonCount || 0) > 0;
                                     return (
-                                      <tr key={iIdx}>
+                                      <tr key={iIdx} className={hasReturn ? 'bg-rose-50/30' : ''}>
                                         <td className="py-2.5">
                                           <div className="flex items-center gap-1.5 mb-0.5">
                                             <p className="text-[11px] font-bold text-slate-800">{artName}</p>
@@ -1575,8 +1624,13 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                                             {variant ? getAssortment(variant) : 'Assortment N/A'}
                                           </p>
                                         </td>
-                                        <td className="py-2.5 text-center">
+                                        <td className="py-2.5 text-center flex flex-col items-center gap-1">
                                           <span className="inline-flex px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 text-[10px] font-black">{bItem.cartonCount} CTN</span>
+                                          {bItem.returnedCartonCount && bItem.returnedCartonCount > 0 && (
+                                            <span className="inline-flex px-2 py-1 rounded bg-rose-600 text-white text-[9px] font-black uppercase tracking-widest shadow-sm shadow-rose-200 mt-1">
+                                              {bItem.returnedCartonCount} Returned
+                                            </span>
+                                          )}
                                         </td>
                                       </tr>
                                     );
@@ -1591,6 +1645,11 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                                     </td>
                                     <td className="pt-3 text-right">
                                       <p className="text-xs font-black text-indigo-600">₹{batch.totalAmount.toLocaleString()}</p>
+                                      {batch.items.some(i => (i as any).returnedCartonCount > 0) && (
+                                        <p className="text-[9px] font-black text-rose-500 uppercase mt-1">
+                                          {batch.items.reduce((sum, i) => sum + ((i as any).returnedCartonCount || 0), 0)} Returned
+                                        </p>
+                                      )}
                                     </td>
                                   </tr>
                                 </tfoot>
