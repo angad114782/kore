@@ -1,9 +1,9 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 import { PurchaseOrder, Vendor } from "../types";
 import { COMPANY_CONFIG } from "../constants";
-
-// Removed local COMPANY_CONFIG to use centralized COMPANY_CONFIG from constants.tsx
 
 const formatDate = (dateStr: string) => {
   if (!dateStr) return "";
@@ -22,10 +22,8 @@ export const exportPOToPDF = (
   opts?: { isBill?: boolean }
 ) => {
   const isBill = opts?.isBill ?? !!(po as any).billStatus;
-
   const doc = new jsPDF("portrait", "pt", "a4");
 
-  // We construct the info table
   const vendorAddress = vendor
     ? [
         vendor.billingAddress?.address1,
@@ -40,20 +38,13 @@ export const exportPOToPDF = (
 
   const poDate = formatDate(po.date);
   const deliveryDate = formatDate(po.deliveryDate);
-  // Estimate an expiry date if none exists, else just leave blank if our schema lacks it
   const expiryDate = "";
 
-  // Calculate total order qty
   const totalQty = po.items.reduce((sum, item) => sum + item.quantity, 0);
 
   const topTableData: any[] = [];
-  // always output the full PO-style header; vendor object should supply
-  // the code/address/contact/phone values (caller must pass it in)
   topTableData.push([
-    {
-      content: "Company Name",
-      styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
-    },
+    { content: "Company Name", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
     vendor?.companyName || vendor?.displayName || COMPANY_CONFIG.name,
     { content: "Vendor Name", styles: { fontStyle: "bold" } },
     vendor?.displayName || po.vendorName,
@@ -62,10 +53,7 @@ export const exportPOToPDF = (
   ]);
 
   topTableData.push([
-    {
-      content: "CIN No.",
-      styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
-    },
+    { content: "CIN No.", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
     vendor?.cinNumber || COMPANY_CONFIG.cin,
     { content: "Vendor Code", styles: { fontStyle: "bold" } },
     vendor?.vendorCode || "",
@@ -74,10 +62,7 @@ export const exportPOToPDF = (
   ]);
 
   topTableData.push([
-    {
-      content: "GST No.",
-      styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
-    },
+    { content: "GST No.", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
     vendor?.gstNumber || COMPANY_CONFIG.gst,
     { content: "Brand", styles: { fontStyle: "bold" } },
     vendor?.brand || COMPANY_CONFIG.brand,
@@ -86,34 +71,16 @@ export const exportPOToPDF = (
   ]);
 
   topTableData.push([
-    {
-      content: "PAN No.",
-      styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
-    },
+    { content: "PAN No.", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
     vendor?.pan || COMPANY_CONFIG.pan,
-    {
-      content: "Total Value INR",
-      styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
-    },
-    po.total.toLocaleString("en-IN", {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
-    }),
-    {
-      content: "Total Order Qty.",
-      styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
-    },
-    totalQty.toLocaleString("en-IN", {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
-    }),
+    { content: "Total Value INR", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
+    po.total.toLocaleString("en-IN", { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+    { content: "Total Order Qty.", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
+    totalQty.toLocaleString("en-IN", { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
   ]);
 
   topTableData.push([
-    {
-      content: "Invoice To",
-      styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
-    },
+    { content: "Invoice To", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
     vendorAddress || COMPANY_CONFIG.invoiceTo,
     { content: "Vendor address", styles: { fontStyle: "bold" } },
     vendorAddress,
@@ -122,10 +89,7 @@ export const exportPOToPDF = (
   ]);
 
   topTableData.push([
-    {
-      content: "Ship To",
-      styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
-    },
+    { content: "Ship To", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
     vendorAddress || COMPANY_CONFIG.shipTo,
     { content: "Contact Person", styles: { fontStyle: "bold" } },
     vendor?.displayName || "",
@@ -133,339 +97,165 @@ export const exportPOToPDF = (
     vendor?.mobile || vendor?.workPhone || "",
   ]);
 
-  // append remark row only if it's a bill with a remark
   if ((po as any).billRemark) {
     topTableData.push([
-      {
-        content: "Bill Remark",
-        styles: { fontStyle: "bold", fillColor: [240, 245, 240] },
-      },
-      (po as any).billRemark,
-      "",
-      "",
-      "",
-      "",
+      { content: "Bill Remark", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
+      (po as any).billRemark, "", "", "", "",
     ]);
   }
 
-  // Draw the Title
   autoTable(doc, {
     startY: 20,
     margin: { left: 40, right: 40 },
     theme: "plain",
-    styles: {
-      cellPadding: 5,
-      fontSize: 10,
-      textColor: [0, 0, 0],
-      lineColor: [0, 0, 0],
-      lineWidth: 0.5,
-    },
-    body: [
-      [
-        {
-          content: vendor?.companyName || COMPANY_CONFIG.name,
-          styles: { halign: "left", fontStyle: "bold", fontSize: 11 },
-        },
-        {
-          content:"Purchase Order",
-          styles: {
-            halign: "center",
-            fontSize: 14,
-            fontStyle: "bold",
-            fillColor: [240, 245, 240],
-          },
-        },
-        { content: "", styles: { halign: "right" } },
-      ],
-    ],
-    columnStyles: {
-      0: { cellWidth: 200 },
-      1: { cellWidth: 200 },
-      2: { cellWidth: "auto" },
-    },
+    styles: { cellPadding: 5, fontSize: 10, textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.5 },
+    body: [[
+      { content: vendor?.companyName || COMPANY_CONFIG.name, styles: { halign: "left", fontStyle: "bold", fontSize: 11 } },
+      { content: isBill ? "Proforma Invoice / Bill" : "Purchase Order", styles: { halign: "center", fontSize: 14, fontStyle: "bold", fillColor: [240, 245, 240] } },
+      { content: "", styles: { halign: "right" } },
+    ]],
+    columnStyles: { 0: { cellWidth: 200 }, 1: { cellWidth: 200 }, 2: { cellWidth: "auto" } },
   });
 
   autoTable(doc, {
     startY: (doc as any).lastAutoTable.finalY,
     margin: { left: 40, right: 40 },
     theme: "grid",
-    styles: {
-      fontSize: 8,
-      cellPadding: 4,
-      textColor: [0, 0, 0],
-      lineColor: [0, 0, 0],
-      lineWidth: 0.5,
-      valign: "middle",
-    },
-    columnStyles: {
-      0: { cellWidth: 80, fontStyle: "bold" },
-      1: { cellWidth: 140 }, // Expanded for address and company name
-      2: { cellWidth: 80, fontStyle: "bold" },
-      3: { cellWidth: 120 }, // Vendor value
-      4: { cellWidth: 60, fontStyle: "bold" },
-      5: { cellWidth: "auto" }, // Last col
-    },
-    body: topTableData as any,
+    styles: { fontSize: 8, cellPadding: 4, textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.5, valign: "middle" },
+    columnStyles: { 0: { cellWidth: 80, fontStyle: "bold" }, 1: { cellWidth: 140 }, 2: { cellWidth: 80, fontStyle: "bold" }, 3: { cellWidth: 120 }, 4: { cellWidth: 60, fontStyle: "bold" }, 5: { cellWidth: "auto" } },
+    body: topTableData,
   });
 
-  // Table Data Mapping
-  // EAN | HSN | STYLE NAME | STYLE NO. | SKU | MARKETED COLOR | GENDER | MRP | PO QTY | UNIT PRICE | TOTAL W/O GST | GST (%) | TOTAL VALUE
-  // Table Data Mapping - Flattening by size
   const itemRows: any[] = [];
-
   po.items.forEach((item) => {
-    // Robustly extract style and color
-    // itemName is often "Style-Color-Range" or "Brand - Style - Color"
     const parts = item.itemName.split("-").map((p) => p.trim());
-    const masterName = parts[0] || ""; // e.g. "Urban"
-    const styleBase = parts.slice(0, 2).join("-"); // e.g. "Urban-Red"
+    const masterName = parts[0] || "";
+    const styleBase = parts.slice(0, 2).join("-");
     const styleNo = styleBase;
     const color = parts.length > 1 ? parts[1] : "";
     const gender = "M";
 
-    // Handle potential Map types or plain objects more safely
     let sizeMap: any = {};
     if (item.sizeMap) {
       if (typeof (item.sizeMap as any).get === "function") {
-        // It's likely a Map
-        (item.sizeMap as any).forEach((v: any, k: string) => {
-          sizeMap[k] = v;
-        });
+        (item.sizeMap as any).forEach((v: any, k: string) => { sizeMap[k] = v; });
       } else {
         sizeMap = item.sizeMap;
       }
     }
 
-    const cartonCount = item.cartonCount || 1;
+    const cartonCount = item.cartonCount || Math.floor((item.quantity || 0) / 24) || 0;
     const sizeEntries = Object.entries(sizeMap);
-    const validSizes = sizeEntries.filter(
-      ([_, data]: [string, any]) => data && data.qty > 0
-    );
+    const validSizes = sizeEntries.filter(([_, data]: [string, any]) => data && data.qty > 0);
 
     if (validSizes.length > 0) {
-      // Create a row for each size in the sizeMap with qty > 0
       validSizes.forEach(([size, data]: [string, any]) => {
         const totalQtyForItem = data.qty * cartonCount;
         const totalWoGst = totalQtyForItem * item.basePrice;
-        const totalValue = totalWoGst + (totalWoGst * item.taxRate) / 100;
-
-        // styleName should be master name + size
-        const rowStyleName = `${masterName}-${size}`;
-        // SKU as urban-red-4 (styleBase + size)
-        const rowSku = data.sku || `${styleBase}-${size}`;
-
-        const qtyFormula = `${data.qty} x ${cartonCount} = ${totalQtyForItem}`;
+        const taxVal = totalQtyForItem * (item.taxRate || 0);
+        const totalValue = totalWoGst + taxVal;
 
         itemRows.push([
-          "", // EAN (empty per user request)
-          item.itemTaxCode || "", // HSN
-          rowStyleName, // STYLE NAME
-          styleNo, // STYLE NO.
-          rowSku, // SKU
-          color, // MARKETED COLOR
-          gender, // GENDER
-          item.mrp.toFixed(1), // MRP
-          qtyFormula, // PO QTY (Now Formula)
-          item.basePrice.toFixed(1), // UNIT PRICE
-          totalWoGst.toFixed(2), // TOTAL W/O GST
-          item.taxRate.toFixed(1), // GST (%)
-          totalValue.toFixed(2), // TOTAL VALUE
+          "", item.itemTaxCode || "", `${masterName}-${size}`, styleNo, data.sku || `${styleBase}-${size}`,
+          color, gender, item.mrp.toFixed(1), `${data.qty}x${cartonCount}=${totalQtyForItem}`,
+          item.basePrice.toFixed(1), totalWoGst.toFixed(2), taxVal.toFixed(2), totalValue.toFixed(2),
         ]);
       });
     } else {
-      // Fallback: original row if no sizes found
       const totalQtyForItem = item.quantity * cartonCount;
       const totalWoGst = totalQtyForItem * item.basePrice;
-      const qtyFormula = `${item.quantity} x ${cartonCount} = ${totalQtyForItem}`;
-
+      const taxVal = totalQtyForItem * (item.taxRate || 0);
       itemRows.push([
-        "", // EAN
-        item.itemTaxCode || "",
-        item.itemName,
-        styleNo,
-        item.sku,
-        color,
-        gender,
-        item.mrp.toFixed(1),
-        qtyFormula,
-        item.basePrice.toFixed(1),
-        totalWoGst.toFixed(2),
-        item.taxRate.toFixed(1),
-        (totalWoGst + (totalWoGst * item.taxRate) / 100).toFixed(2),
+        "", item.itemTaxCode || "", item.itemName, styleNo, item.sku, color, gender,
+        item.mrp.toFixed(1), `${item.quantity}x${cartonCount}=${totalQtyForItem}`,
+        item.basePrice.toFixed(1), totalWoGst.toFixed(2), taxVal.toFixed(2), (totalWoGst + taxVal).toFixed(2),
       ]);
     }
   });
 
   autoTable(doc, {
     startY: (doc as any).lastAutoTable.finalY + 10,
-    margin: { left: 40, right: 40 }, // Resetting to 40 to match the header table exactly
+    margin: { left: 40, right: 40 },
     theme: "grid",
-    headStyles: {
-      fillColor: [240, 245, 240],
-      textColor: [0, 0, 0],
-      fontStyle: "bold",
-      fontSize: 6.5,
-      lineColor: [0, 0, 0],
-      lineWidth: 0.5,
-      halign: "center",
-      valign: "middle",
-    },
-    styles: {
-      fontSize: 6.5,
-      cellPadding: 2,
-      textColor: [0, 0, 0],
-      lineColor: [0, 0, 0],
-      lineWidth: 0.5,
-      halign: "center",
-      valign: "middle",
-      overflow: "linebreak",
-    },
-    columnStyles: {
-      0: { cellWidth: 25 }, // EAN (narrower since empty)
-      1: { cellWidth: 35 }, // HSN
-      2: { cellWidth: 45.28, halign: "left" }, // STYLE NAME (reduced to give room to formula)
-      3: { cellWidth: 55 }, // STYLE NO
-      4: { cellWidth: 55 }, // SKU
-      5: { cellWidth: 40 }, // COLOR
-      6: { cellWidth: 25 }, // GENDER
-      7: { cellWidth: 30 }, // MRP
-      8: { cellWidth: 55, fontStyle: "bold" }, // PO QTY (Formula) (expanded from 30)
-      9: { cellWidth: 35 }, // UNIT PRICE
-      10: { cellWidth: 40 }, // TOTAL W/O GST
-      11: { cellWidth: 25 }, // GST %
-      12: { cellWidth: 50 }, // TOTAL VALUE (slightly wider)
-    },
-    head: [
-      [
-        "EAN",
-        "HSN",
-        "STYLE\nNAME",
-        "STYLE\nNO.",
-        "SKU",
-        "MARKETED\nCOLOR",
-        "GENDER",
-        "MRP",
-        "PO QTY\n(Asst x Ctn)",
-        "UNIT\nPRICE",
-        "TOTAL\nW/O GST",
-        "GST (%)",
-        "TOTAL\nVALUE",
-      ],
-    ],
+    headStyles: { fillColor: [240, 245, 240], textColor: [0, 0, 0], fontStyle: "bold", fontSize: 6.5, lineColor: [0, 0, 0], lineWidth: 0.5, halign: "center", valign: "middle" },
+    styles: { fontSize: 6.5, cellPadding: 2, textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.5, halign: "center", valign: "middle", overflow: "linebreak" },
+    columnStyles: { 0: { cellWidth: 25 }, 1: { cellWidth: 35 }, 2: { cellWidth: 45, halign: "left" }, 3: { cellWidth: 55 }, 4: { cellWidth: 55 }, 5: { cellWidth: 40 }, 6: { cellWidth: 25 }, 7: { cellWidth: 30 }, 8: { cellWidth: 55, fontStyle: "bold" }, 9: { cellWidth: 35 }, 10: { cellWidth: 40 }, 11: { cellWidth: 35 }, 12: { cellWidth: 50 } },
+    head: [["EAN", "HSN", "STYLE\nNAME", "STYLE\nNO.", "SKU", "COLOR", "GENDER", "MRP", "QTY\n(Formula)", "PRICE", "TOTAL\nW/O GST", "TAX", "TOTAL\nVALUE"]],
     body: itemRows,
   });
 
-  // Save the PDF
   doc.save(`${po.poNumber}.pdf`);
 };
 
-/**
- * Export a purchase order or bill to a detailed Excel CSV file with professional formatting.
- * Includes header details, vendor information, item table, and financial summary.
- */
-export const exportOrderToExcel = (po: PurchaseOrder, vendor?: Vendor) => {
-  const sanitize = (v: any) => {
-    if (v === null || v === undefined) return "";
-    return String(v).replace(/"/g, '""');
+export const exportOrderToExcel = async (po: PurchaseOrder, vendor?: Vendor) => {
+  const isBill = !!(po as any).billStatus;
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet(isBill ? "Bill" : "Purchase Order");
+
+  worksheet.columns = [
+    { header: "EAN", key: "ean", width: 15 },
+    { header: "HSN", key: "hsn", width: 15 },
+    { header: "STYLE NAME", key: "styleName", width: 30 },
+    { header: "STYLE NO.", key: "styleNo", width: 25 },
+    { header: "SKU", key: "sku", width: 25 },
+    { header: "COLOR", key: "color", width: 20 },
+    { header: "GENDER", key: "gender", width: 10 },
+    { header: "MRP (₹)", key: "mrp", width: 12 },
+    { header: "QTY (Formula)", key: "qtyFormula", width: 20 },
+    { header: "TOTAL QTY", key: "totalQty", width: 12 },
+    { header: "UNIT PRICE (₹)", key: "unitPrice", width: 15 },
+    { header: "TOTAL W/O GST (₹)", key: "totalWoGst", width: 20 },
+    { header: "TAX (₹)", key: "taxVal", width: 15 },
+    { header: "GST (%)", key: "gstPercent", width: 10 },
+    { header: "TOTAL VALUE (₹)", key: "totalValue", width: 20 },
+  ];
+
+  const titleRow = worksheet.insertRow(1, [isBill ? "PROFORMA INVOICE / BILL" : "PURCHASE ORDER"]);
+  titleRow.font = { size: 18, bold: true, color: { argb: "FF000000" } };
+  worksheet.mergeCells(1, 1, 1, 15);
+  titleRow.alignment = { horizontal: "center", vertical: "middle" };
+  titleRow.height = 35;
+
+  const addHeaderInfo = (rowIdx: number, label1: string, val1: any, label2: string, val2: any, label3: string, val3: any) => {
+    const row = worksheet.insertRow(rowIdx, [label1, val1, "", label2, val2, "", label3, val3]);
+    row.font = { bold: false, size: 10 };
+    row.getCell(1).font = { bold: true };
+    row.getCell(4).font = { bold: true };
+    row.getCell(7).font = { bold: true };
+    worksheet.mergeCells(rowIdx, 1, rowIdx, 1);
+    worksheet.mergeCells(rowIdx, 2, rowIdx, 3);
+    worksheet.mergeCells(rowIdx, 4, rowIdx, 4);
+    worksheet.mergeCells(rowIdx, 5, rowIdx, 6);
+    worksheet.mergeCells(rowIdx, 7, rowIdx, 7);
+    worksheet.mergeCells(rowIdx, 8, rowIdx, 15);
+    row.height = 20;
+    return row;
   };
 
-  const isBill = !!(po as any).billStatus;
+  addHeaderInfo(2, "Company Name", vendor?.companyName || COMPANY_CONFIG.name, "Vendor Name", po.vendorName, "PO Number", po.poNumber);
+  addHeaderInfo(3, "CIN No.", vendor?.cinNumber || COMPANY_CONFIG.cin, "Vendor Code", vendor?.vendorCode || "—", "PO Date", formatDate(po.date));
+  addHeaderInfo(4, "GST No.", vendor?.gstNumber || COMPANY_CONFIG.gst, "Vendor GST", vendor?.gstNumber || "—", "Delivery Date", formatDate(po.deliveryDate));
+  addHeaderInfo(5, "PAN No.", vendor?.pan || COMPANY_CONFIG.pan, "Vendor PAN", vendor?.pan || "—", "Total Value (₹)", po.total?.toFixed(2));
 
-  const rows: string[][] = [];
+  const vendorAddress = vendor ? [
+    vendor.billingAddress?.address1, vendor.billingAddress?.address2, vendor.billingAddress?.city, vendor.billingAddress?.state, vendor.billingAddress?.pinCode,
+  ].filter(Boolean).join(", ") : "";
 
-  // Title
-  rows.push([isBill ? "BILL" : "PURCHASE ORDER"]);
-  rows.push([]);
+  addHeaderInfo(6, "Vendor Address", vendorAddress || "—", "Contact", vendor?.displayName || "—", "Phone", vendor?.mobile || "—");
+  addHeaderInfo(7, "Brand", vendor?.brand || COMPANY_CONFIG.brand, "Terms", "—", "Total Qty", po.items.reduce((sum, item) => sum + item.quantity, 0).toFixed(0));
 
-  // Company & Vendor Info Header
-  rows.push([
-    "Company Name",
-    vendor?.companyName || vendor?.displayName || COMPANY_CONFIG.name,
-    "Vendor Name",
-    vendor?.displayName || po.vendorName,
-    "PO Number",
-    po.poNumber,
-  ]);
-  rows.push([
-    "CIN No.",
-    vendor?.cinNumber || COMPANY_CONFIG.cin,
-    "Vendor Code",
-    vendor?.vendorCode || "",
-    "PO Date",
-    formatDate(po.date),
-  ]);
-  rows.push([
-    "GST No.",
-    vendor?.gstNumber || COMPANY_CONFIG.gst,
-    "Vendor GST",
-    vendor?.gstNumber || "",
-    "Delivery Date",
-    formatDate(po.deliveryDate),
-  ]);
-  rows.push([
-    "PAN No.",
-    vendor?.pan || COMPANY_CONFIG.pan,
-    "Vendor PAN",
-    vendor?.pan || "",
-    "Total Value (₹)",
-    po.total?.toFixed(2) || "—",
-  ]);
+  worksheet.addRow([]);
 
-  const vendorAddress = vendor
-    ? [
-        vendor.billingAddress?.address1,
-        vendor.billingAddress?.address2,
-        vendor.billingAddress?.city,
-        vendor.billingAddress?.state,
-        vendor.billingAddress?.pinCode,
-      ]
-        .filter(Boolean)
-        .join(", ")
-    : "";
+  const tableHeaderRow = worksheet.getRow(9);
+  tableHeaderRow.values = ["EAN", "HSN", "STYLE NAME", "STYLE NO.", "SKU", "COLOR", "GENDER", "MRP (₹)", "QTY (Formula)", "TOTAL QTY", "UNIT PRICE (₹)", "TOTAL W/O GST (₹)", "TAX (₹)", "GST (%)", "TOTAL VALUE (₹)"];
+  tableHeaderRow.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+  tableHeaderRow.height = 25;
+  tableHeaderRow.eachCell((cell) => {
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E293B" } };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+    cell.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "medium" }, right: { style: "thin" } };
+  });
 
-  rows.push([
-    "Vendor Address",
-    vendorAddress || "",
-    "Contact Person",
-    vendor?.displayName || "",
-    "Phone",
-    vendor?.mobile || vendor?.workPhone || "",
-  ]);
-  rows.push([
-    "Brand",
-    vendor?.brand || COMPANY_CONFIG.brand,
-    "Payment Terms",
-    "",
-    "Total Order Qty",
-    po.items.reduce((sum, item) => sum + item.quantity, 0).toFixed(1),
-  ]);
-
-  // Bill Remark if present
-  if ((po as any).billRemark) {
-    rows.push(["Bill Remark", (po as any).billRemark, "", "", "", ""]);
-  }
-
-  // Empty row for spacing
-  rows.push([]);
-
-  // Item Table Header
-  rows.push([
-    "EAN",
-    "HSN",
-    "STYLE NAME",
-    "STYLE NO.",
-    "SKU",
-    "MARKETED COLOR",
-    "GENDER",
-    "MRP (₹)",
-    "PO QTY (Asst x Ctn)",
-    "UNIT PRICE (₹)",
-    "TOTAL W/O GST (₹)",
-    "GST (%)",
-    "TOTAL VALUE (₹)",
-  ]);
-
-  // Item rows
   po.items.forEach((item) => {
     const parts = item.itemName.split("-").map((p) => p.trim());
     const masterName = parts[0] || "";
@@ -473,95 +263,73 @@ export const exportOrderToExcel = (po: PurchaseOrder, vendor?: Vendor) => {
     const color = parts.length > 1 ? parts[1] : "";
     const gender = "M";
 
-    // Handle potential Map types
     let sizeMap: any = {};
     if (item.sizeMap) {
-      if (typeof (item.sizeMap as any).get === "function") {
-        (item.sizeMap as any).forEach((v: any, k: string) => {
-          sizeMap[k] = v;
-        });
-      } else {
-        sizeMap = item.sizeMap;
-      }
+      if (typeof (item.sizeMap as any).get === "function") { (item.sizeMap as any).forEach((v: any, k: string) => { sizeMap[k] = v; }); }
+      else { sizeMap = item.sizeMap; }
     }
 
-    const cartonCount = item.cartonCount || 1;
-    const sizeEntries = Object.entries(sizeMap);
-    const validSizes = sizeEntries.filter(
-      ([_, data]: [string, any]) => data && data.qty > 0
-    );
+    const cartonCount = item.cartonCount || Math.floor((item.quantity || 0) / 24) || 0;
+    const validSizes = Object.entries(sizeMap).filter(([_, data]: [string, any]) => data && data.qty > 0);
 
     if (validSizes.length > 0) {
       validSizes.forEach(([size, data]: [string, any]) => {
-        const totalQtyForItem = data.qty * cartonCount;
-        const totalWoGst = totalQtyForItem * item.basePrice;
-        const totalValue = totalWoGst + (totalWoGst * item.taxRate) / 100;
-        const qtyFormula = `${data.qty} x ${cartonCount} = ${totalQtyForItem}`;
-        const rowStyleName = `${masterName}-${size}`;
-        const rowSku = data.sku || `${styleBase}-${size}`;
-
-        rows.push([
-          "", // EAN
-          sanitize(item.itemTaxCode || ""),
-          sanitize(rowStyleName),
-          sanitize(styleBase),
-          sanitize(rowSku),
-          sanitize(color),
-          sanitize(gender),
-          item.mrp.toFixed(2),
-          qtyFormula,
-          item.basePrice.toFixed(2),
-          totalWoGst.toFixed(2),
-          item.taxRate.toFixed(1),
-          totalValue.toFixed(2),
-        ]);
+        const totalQty = data.qty * cartonCount;
+        const totalWoGst = totalQty * item.basePrice;
+        const taxVal = totalQty * (item.taxRate || 0);
+        const totalValue = totalWoGst + taxVal;
+        worksheet.addRow({
+          ean: "", hsn: item.itemTaxCode || "", styleName: `${masterName}-${size}`, styleNo: styleBase, sku: data.sku || `${styleBase}-${size}`,
+          color: color, gender: gender, mrp: item.mrp, qtyFormula: `${data.qty}x${cartonCount}`, totalQty: totalQty,
+          unitPrice: item.basePrice, totalWoGst: totalWoGst, taxVal: taxVal, gstPercent: item.taxRate, totalValue: totalValue,
+        });
       });
     } else {
-      const totalQtyForItem = item.quantity * cartonCount;
-      const totalWoGst = totalQtyForItem * item.basePrice;
-      const qtyFormula = `${item.quantity} x ${cartonCount} = ${totalQtyForItem}`;
-
-      rows.push([
-        "", // EAN
-        sanitize(item.itemTaxCode || ""),
-        sanitize(item.itemName),
-        sanitize(styleBase),
-        sanitize(item.sku),
-        sanitize(color),
-        sanitize(gender),
-        item.mrp.toFixed(2),
-        qtyFormula,
-        item.basePrice.toFixed(2),
-        totalWoGst.toFixed(2),
-        item.taxRate.toFixed(1),
-        (totalWoGst + (totalWoGst * item.taxRate) / 100).toFixed(2),
-      ]);
+      const totalQty = item.quantity * cartonCount;
+      const totalWoGst = totalQty * item.basePrice;
+      const taxVal = totalQty * (item.taxRate || 0);
+      worksheet.addRow({
+        ean: "", hsn: item.itemTaxCode || "", styleName: item.itemName, styleNo: styleBase, sku: item.sku, color: color, gender: gender,
+        mrp: item.mrp, qtyFormula: `${item.quantity}x${cartonCount}`, totalQty: totalQty, unitPrice: item.basePrice,
+        totalWoGst: totalWoGst, taxVal: taxVal, gstPercent: item.taxRate, totalValue: totalWoGst + taxVal,
+      });
     }
   });
 
-  // Empty row for spacing
-  rows.push([]);
+  worksheet.addRow([]);
+  const addSummaryRow = (label: string, value: any) => {
+    const row = worksheet.addRow(["", "", "", "", "", "", "", "", "", "", "", label, "", "", value]);
+    row.font = { bold: true };
+    worksheet.mergeCells(row.number, 12, row.number, 14);
+    row.getCell(12).alignment = { horizontal: "right" };
+    row.getCell(15).alignment = { horizontal: "right" };
+    return row;
+  };
 
-  // Summary Section
-  rows.push(["SUMMARY"]);
-  rows.push(["Sub Total (₹)", po.subTotal?.toFixed(2) || "—"]);
-  rows.push(["Discount (%)", po.discountPercent?.toFixed(1) || "—"]);
-  rows.push(["Discount Amount (₹)", po.discountAmount?.toFixed(2) || "—"]);
-  rows.push(["Total Tax (₹)", po.totalTax?.toFixed(2) || "—"]);
-  rows.push(["TOTAL AMOUNT (₹)", po.total?.toFixed(2) || "—"]);
+  addSummaryRow("Sub Total (₹)", po.subTotal?.toFixed(2));
+  addSummaryRow(`Discount (${po.discountPercent || 0}%) (₹)`, po.discountAmount?.toFixed(2));
+  addSummaryRow("Total Tax (₹)", po.totalTax?.toFixed(2));
+  const finalRow = addSummaryRow("TOTAL AMOUNT (₹)", po.total?.toFixed(2));
+  finalRow.font = { bold: true, size: 12 };
 
-  // convert to CSV text
-  const csv = rows
-    .map((r) => r.map((c) => `"${sanitize(c)}"`).join(","))
-    .join("\r\n");
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber < 9) return;
+    row.eachCell((cell) => {
+      cell.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: false };
+    });
+  });
 
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${po.poNumber}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  worksheet.columns.forEach(col => {
+    let maxLen = 0;
+    col.eachCell?.({ includeEmpty: true }, cell => {
+      const len = cell.value ? String(cell.value).length : 0;
+      if (len > maxLen) maxLen = len;
+    });
+    col.width = Math.min(Math.max(maxLen + 5, 12), 60);
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  saveAs(blob, `${po.poNumber}.xlsx`);
 };

@@ -458,13 +458,44 @@ exports.getReceivedCartons = async (refId) => {
   return doneMap;
 };
 
-exports.getHistory = async (search = "") => {
-  const q = (search || "").trim();
+exports.getHistory = async (params = {}) => {
+  const { search, dateFrom, dateTo, refId, vendor, sortBy, sortOrder } = params;
   const filter = { status: "SUBMITTED" };
-  if (q)
-    filter.$or = [{ grnNo: new RegExp(q, "i") }, { refId: new RegExp(q, "i") }];
 
-  const list = await GRNDraft.find(filter).sort({ submittedAt: -1 }).limit(50);
+  // Text search across multiple fields
+  if (search) {
+    const regex = makeRegex(search);
+    filter.$or = [
+      { grnNo: regex },
+      { refId: regex },
+      { articleName: regex },
+      { vendorName: regex },
+    ];
+  }
+
+  // Date range filter on submittedAt
+  if (dateFrom || dateTo) {
+    filter.submittedAt = {};
+    if (dateFrom) filter.submittedAt.$gte = new Date(dateFrom);
+    if (dateTo) {
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
+      filter.submittedAt.$lte = end;
+    }
+  }
+
+  // PO reference exact match
+  if (refId) filter.refId = refId;
+
+  // Vendor regex search
+  if (vendor) filter.vendorName = makeRegex(vendor);
+
+  // Sorting
+  const validSortFields = ["submittedAt", "grnNo", "totalPairs", "vendorName", "refId", "articleName"];
+  const field = validSortFields.includes(sortBy) ? sortBy : "submittedAt";
+  const order = sortOrder === "asc" ? 1 : -1;
+
+  const list = await GRNDraft.find(filter).sort({ [field]: order }).lean();
 
   return list.map((d) => ({
     grnId: d._id,
@@ -473,8 +504,68 @@ exports.getHistory = async (search = "") => {
     vendorName: d.vendorName,
     articleName: d.articleName,
     totalPairs: d.totalPairs,
-    cartons: d.cartons.length,
+    cartons: (d.cartons || []).length,
     createdAt: d.submittedAt,
+  }));
+};
+
+exports.getHistoryForExport = async (params = {}) => {
+  const { search, dateFrom, dateTo, refId, vendor, sortBy, sortOrder } = params;
+  const filter = { status: "SUBMITTED" };
+
+  if (search) {
+    const regex = makeRegex(search);
+    filter.$or = [
+      { grnNo: regex },
+      { refId: regex },
+      { articleName: regex },
+      { vendorName: regex },
+    ];
+  }
+
+  if (dateFrom || dateTo) {
+    filter.submittedAt = {};
+    if (dateFrom) filter.submittedAt.$gte = new Date(dateFrom);
+    if (dateTo) {
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
+      filter.submittedAt.$lte = end;
+    }
+  }
+
+  if (refId) filter.refId = refId;
+  if (vendor) filter.vendorName = makeRegex(vendor);
+
+  const validSortFields = ["submittedAt", "grnNo", "totalPairs", "vendorName", "refId", "articleName"];
+  const field = validSortFields.includes(sortBy) ? sortBy : "submittedAt";
+  const order = sortOrder === "asc" ? 1 : -1;
+
+  const list = await GRNDraft.find(filter).sort({ [field]: order }).lean();
+
+  return list.map((d) => ({
+    grnId: d._id,
+    grnNo: d.grnNo || "",
+    refId: d.refId || "",
+    refType: d.refType || "",
+    vendorName: d.vendorName || "",
+    articleName: d.articleName || "",
+    totalPairs: d.totalPairs || 0,
+    status: d.status || "",
+    submittedAt: d.submittedAt || "",
+    createdAt: d.createdAt || "",
+    cartons: (d.cartons || []).map((c, idx) => ({
+      index: idx + 1,
+      cartonBarcode: c.cartonBarcode || "",
+      itemName: c.itemName || "",
+      variantId: c.variantId || "",
+      pairsCount: (c.pairBarcodes || []).length,
+      lockedAt: c.lockedAt || "",
+      // SKU breakdown: count of each unique barcode (SKU)
+      skuBreakdown: (c.pairBarcodes || []).reduce((acc, b) => {
+        acc[b] = (acc[b] || 0) + 1;
+        return acc;
+      }, {}),
+    })),
   }));
 };
 
@@ -483,3 +574,4 @@ exports.getGRNById = async (grnId) => {
   if (!grn) throw new Error("GRN not found");
   return grn;
 };
+

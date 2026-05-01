@@ -27,6 +27,7 @@ interface ProductMasterProps {
   editingId?: string | null;
   onCancelEdit?: () => void;
   onSuccess?: () => void;
+  initialArticle?: Article;
 }
 
 type SizeRangeEntry = {
@@ -40,6 +41,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
   editingId,
   onCancelEdit,
   onSuccess,
+  initialArticle,
 }) => {
   const isEditingDataLoaded = useRef(false);
 
@@ -107,6 +109,52 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
   useEffect(() => {
     fetchTaxonomy();
   }, []);
+
+  useEffect(() => {
+    if (!editingId || !initialArticle || isEditingDataLoaded.current) return;
+    
+    // Optimistic Load: Populate from initialArticle immediately
+    const populateFromArticle = (item: Article) => {
+      setFormData({
+        artname: item.name || "",
+        soleColor: item.soleColor || "",
+        mrp: item.mrp || 0,
+        hsnCode: item.variants?.[0]?.hsnCode || "",
+        gender: item.category as AssortmentType || AssortmentType.MEN,
+        assortmentId: item.assortmentId || ASSORTMENTS[0].id,
+        status: (item.status as any) || "AVAILABLE",
+        wishlistDate: item.expectedDate || "",
+        manufacturer: item.manufacturer || "",
+        unit: item.unit || "",
+        unitId: (item as any).unitId?._id || (item as any).unitId || "",
+        category: item.productCategory || "",
+        brand: item.brand || "",
+      });
+
+      if (item.selectedColors) {
+        setSelectedColors(item.selectedColors);
+      }
+
+      const normalizedSizeRanges: SizeRangeEntry[] = Array.isArray(item.selectedSizes)
+        ? item.selectedSizes.map((r: any) => ({
+            id: makeRangeId(),
+            label: typeof r === "string" ? r : r?.label || "",
+          }))
+        : [];
+      setSizeRanges(normalizedSizeRanges);
+
+      if (item.variants) {
+        setVariants(item.variants.map((v: any) => ({
+          ...v,
+          id: v.id || v._id,
+        })));
+      }
+    };
+
+    populateFromArticle(initialArticle);
+    // Note: We don't set isEditingDataLoaded.current = true here 
+    // because we still want the background fetch to run and refresh with server data.
+  }, [editingId, initialArticle]);
 
   useEffect(() => {
     if (!editingId) return;
@@ -284,7 +332,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
             newVariants.push({
               ...existing,
               itemName: formData.artname
-                ? `${formData.artname}-${color}-${rangeEntry.label}`
+                ? `${formData.artname}-${color}-${rangeEntry.label}-${idx + 1}`
                 : existing.itemName,
             });
           } else {
@@ -292,8 +340,8 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
               id: `var-${color}-${rangeEntry.id}`,
               sizeRangeId: rangeEntry.id,
               itemName: formData.artname
-                ? `${formData.artname}-${color}-${rangeEntry.label}`
-                : `${color}-${rangeEntry.label}`,
+                ? `${formData.artname}-${color}-${rangeEntry.label}-${idx + 1}`
+                : `${color}-${rangeEntry.label}-${idx + 1}`,
               sku: "",
               sizeSkus: {},
               color,
@@ -803,14 +851,6 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
             </p>
           </div>
         </div>
-        {editingId && (
-          <button
-            onClick={onCancelEdit}
-            className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
-          >
-            Cancel Edit
-          </button>
-        )}
       </div>
 
       <form
@@ -1610,6 +1650,15 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
             with <span className="text-rose-500">*</span>
           </p>
           <div className="flex items-center gap-3 w-full sm:w-auto">
+            {editingId && (
+              <button
+                type="button"
+                onClick={onCancelEdit}
+                className="flex-1 sm:flex-none px-6 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition-all shadow-sm"
+              >
+                Cancel Edit
+              </button>
+            )}
             <button
               type="button"
               disabled={loading}
@@ -1630,7 +1679,7 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
               ) : (
                 <>
                   <CheckCircle2 size={18} />
-                  <span>Save Product</span>
+                  <span>{editingId ? "Update Product" : "Save Product"}</span>
                 </>
               )}
             </button>

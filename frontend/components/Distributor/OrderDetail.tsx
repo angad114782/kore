@@ -24,12 +24,15 @@ import {
   ShieldCheck,
   Mail,
   History,
-  X
+  X,
+  Barcode
 } from 'lucide-react';
 import DocPreviewDialog from '../ui/DocPreviewDialog';
 import { Order, OrderStatus, Article, Inventory, OrderItem, FulfillmentBatch } from '../../types';
 import jsPDF from 'jspdf';
 import autoTable, { UserOptions } from 'jspdf-autotable';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 // Extend jsPDF with autoTable for type safety if needed, but we'll use autoTable(doc, ...)
 interface jsPDFWithAutoTable extends jsPDF {
@@ -435,37 +438,47 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
   const handleDownloadPI = () => {
     const doc = new jsPDF("portrait", "pt", "a4") as jsPDFWithAutoTable;
     
+    const dist = typeof currentOrder.distributorId === 'object' ? currentOrder.distributorId : null;
+    const distDetails = dist?.distributorId;
+    
+    const formatAddr = (addr: any) => {
+      if (!addr) return '-';
+      const parts = [addr.attention, addr.address1, addr.address2, addr.city, addr.state, addr.pinCode].filter(Boolean);
+      return parts.join(', ') || '-';
+    };
+
     // Header Section - adapted from exportPO.ts for professional look
     const topTableData: any[] = [];
     
     // Row 1: Company Info vs Distributor Details
     topTableData.push([
       { content: "Company Name", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
-      COMPANY_CONFIG.name,
+      distDetails?.companyName || '-',
       { content: "Party Name", styles: { fontStyle: "bold" } },
-      currentOrder.distributorName,
+      currentOrder.distributorName || '-',
       { content: "PI Date", styles: { fontStyle: "bold" } },
-      currentOrder.date,
+      currentOrder.date || '-',
     ]);
 
     // Row 2
     topTableData.push([
       { content: "CIN No.", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
-      COMPANY_CONFIG.cin,
+      '-',
       { content: "Order ID", styles: { fontStyle: "bold" } },
       currentOrder.orderNumber || currentOrder.id.toUpperCase(),
       { content: "Status", styles: { fontStyle: "bold" } },
-      STATUS_LABELS[currentOrder.status],
+      STATUS_LABELS[currentOrder.status] || '-',
     ]);
 
     // Row 3
+    const orderBrand = articles.find(a => currentOrder.items.some(i => i.articleId === a.id))?.brand;
     topTableData.push([
       { content: "GST No.", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
-      COMPANY_CONFIG.gst,
+      (dist as any)?.gstNumber || (distDetails as any)?.gstNumber || '-',
       { content: "Brand", styles: { fontStyle: "bold" } },
-      COMPANY_CONFIG.brand,
+      orderBrand || '-',
       { content: "Payment Terms", styles: { fontStyle: "bold" } },
-      "Net 30 Days",
+      (distDetails as any)?.paymentTerms || '-',
     ]);
 
     // Dynamic batch values for PI
@@ -478,7 +491,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
     // Row 4
     topTableData.push([
       { content: "PAN No.", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
-      COMPANY_CONFIG.pan,
+      '-',
       { content: "Total Pairs", styles: { fontStyle: "bold" } },
       totalBatchPairs,
       { content: "Total Cartons", styles: { fontStyle: "bold" } },
@@ -488,11 +501,11 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
     // Row 5: Addresses
     topTableData.push([
       { content: "Invoice To", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
-      COMPANY_CONFIG.invoiceTo,
+      formatAddr(distDetails?.billingAddress),
       { content: "Ship To", styles: { fontStyle: "bold" } },
-      COMPANY_CONFIG.shipTo,
+      formatAddr(distDetails?.shippingAddress),
       { content: "Contact", styles: { fontStyle: "bold" } },
-      COMPANY_CONFIG.phone,
+      distDetails?.phone || COMPANY_CONFIG.phone || '-',
     ]);
 
     // Draw Main Title Bar
@@ -548,7 +561,6 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
         hsn, // HSN
         variant ? `${article?.name}-${variant.color}-${variant.sizeRange}` : (article?.name || 'Item'),
         article?.name || 'Style', // Style No
-        variant?.sku || 'SKU',
         variant?.color || 'N/A',
         gender,
         article?.mrp || item.price / (item.pairCount || 1), // MRP
@@ -581,7 +593,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
         halign: "center", 
         valign: "middle" 
       },
-      head: [["#", "HSN", "STYLE NAME", "STYLE NO", "SKU", "COLOR", "GDR", "MRP", "QTY", "RATE", "TOTAL"]],
+      head: [["#", "HSN", "STYLE NAME", "STYLE NO", "COLOR", "GDR", "MRP", "QTY", "RATE", "TOTAL"]],
       body: itemRows,
     });
 
@@ -611,6 +623,168 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
 
     doc.save(`PI-${currentOrder.orderNumber || currentOrder.id}.pdf`);
     toast.success("Professional Proforma Invoice downloaded!");
+  };
+
+  const handleDownloadExcelPI = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Proforma Invoice');
+
+    const dist = typeof currentOrder.distributorId === 'object' ? currentOrder.distributorId : null;
+    const distDetails = dist?.distributorId;
+    
+    const formatAddr = (addr: any) => {
+      if (!addr) return '-';
+      const parts = [addr.attention, addr.address1, addr.address2, addr.city, addr.state, addr.pinCode].filter(Boolean);
+      return parts.join(', ') || '-';
+    };
+
+    // Header Title
+    worksheet.mergeCells('A1:J1');
+    const titleCell = worksheet.getCell('A1');
+    titleCell.value = 'PROFORMA INVOICE';
+    titleCell.font = { bold: true, size: 16 };
+    titleCell.alignment = { horizontal: 'center' };
+
+    // Company Title
+    worksheet.mergeCells('A2:J2');
+    const companyCell = worksheet.getCell('A2');
+    companyCell.value = COMPANY_CONFIG.name || '-';
+    companyCell.font = { bold: true, size: 14 };
+    companyCell.alignment = { horizontal: 'center' };
+
+    worksheet.addRow([]); // Gap
+
+    // Info Grid
+    const getBatchPairs = (item: any) => ['PFD', 'RFD', 'OFD'].includes(currentOrder.status) ? (item.allocatedPairCount || 0) : item.pairCount;
+    const getBatchCartons = (item: any) => ['PFD', 'RFD', 'OFD'].includes(currentOrder.status) ? (item.allocatedCartonCount || 0) : item.cartonCount;
+    const totalBatchPairs = currentOrder.items.reduce((sum, item) => sum + getBatchPairs(item), 0);
+    const totalBatchCartons = currentOrder.items.reduce((sum, item) => sum + getBatchCartons(item), 0);
+
+    const orderBrand = articles.find(a => currentOrder.items.some(i => i.articleId === a.id))?.brand;
+
+    const addInfoRow = (l1: string, v1: any, l2: string, v2: any, l3: string, v3: any) => {
+      const row = worksheet.addRow([l1, v1, '', '', l2, v2, '', l3, v3, '']);
+      const rNum = row.number;
+      worksheet.mergeCells(rNum, 2, rNum, 4);
+      worksheet.mergeCells(rNum, 6, rNum, 7);
+      worksheet.mergeCells(rNum, 9, rNum, 10);
+      row.height = 25;
+      
+      [1, 5, 8].forEach(c => {
+        const cell = row.getCell(c);
+        cell.font = { bold: true };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F0F5F0' } };
+      });
+
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        cell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left' };
+      });
+    };
+
+    addInfoRow('Company Name', distDetails?.companyName || '-', 'Party Name', currentOrder.distributorName || '-', 'PI Date', currentOrder.date || '-');
+    addInfoRow('CIN No.', '-', 'Order ID', currentOrder.orderNumber || currentOrder.id.toUpperCase(), 'Status', STATUS_LABELS[currentOrder.status] || '-');
+    addInfoRow('GST No.', (dist as any)?.gstNumber || (distDetails as any)?.gstNumber || '-', 'Brand', orderBrand || '-', 'Payment Terms', (distDetails as any)?.paymentTerms || '-');
+    addInfoRow('PAN No.', '-', 'Total Pairs', totalBatchPairs, 'Total Cartons', totalBatchCartons);
+
+    // Dedicated taller rows for Addresses
+    const addrRow = worksheet.addRow(['Invoice To', formatAddr(distDetails?.billingAddress), '', '', '', 'Ship To', formatAddr(distDetails?.shippingAddress), '', '', '']);
+    const arNum = addrRow.number;
+    worksheet.mergeCells(arNum, 2, arNum, 5);
+    worksheet.mergeCells(arNum, 7, arNum, 10);
+    addrRow.height = 60; // Tall enough for 3-4 lines of address
+    
+    [1, 6].forEach(c => {
+      const cell = addrRow.getCell(c);
+      cell.font = { bold: true };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F0F5F0' } };
+    });
+    addrRow.eachCell({ includeEmpty: true }, (cell) => {
+      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+      cell.alignment = { wrapText: true, vertical: 'top', horizontal: 'left' };
+    });
+
+    const contactRow = worksheet.addRow(['Contact', distDetails?.phone || '-', '', '', '', '', '', '', '', '']);
+    const crNum = contactRow.number;
+    worksheet.mergeCells(crNum, 2, crNum, 10);
+    contactRow.height = 25;
+    contactRow.getCell(1).font = { bold: true };
+    contactRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F0F5F0' } };
+    contactRow.eachCell({ includeEmpty: true }, (cell) => {
+      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+      cell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left' };
+    });
+
+    worksheet.addRow([]); // Gap
+
+    // Items Table Header
+    const tableHeader = ["#", "HSN", "STYLE NAME", "STYLE NO", "COLOR", "GDR", "MRP", "QTY", "RATE", "TOTAL"];
+    const headerRow = worksheet.addRow(tableHeader);
+    headerRow.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: '000000' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F0F5F0' } };
+      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+      cell.alignment = { horizontal: 'center' };
+    });
+
+    // Items Table Body
+    let subTotal = 0;
+    currentOrder.items
+      .filter(item => getBatchPairs(item) > 0)
+      .forEach((item, idx) => {
+        const article = articles.find(a => a.id === item.articleId);
+        const variant = article?.variants?.find(v => v.id === item.variantId);
+        const price = variant?.costPrice || 0;
+        const batchPairs = getBatchPairs(item);
+        const totalValue = batchPairs * price;
+        subTotal += totalValue;
+        
+        const hsn = article?.sku || '6404';
+        const gender = article?.category?.toString().charAt(0) || 'M';
+
+        const row = [
+          idx + 1,
+          hsn,
+          variant ? `${article?.name}-${variant.color}-${variant.sizeRange}` : (article?.name || 'Item'),
+          article?.name || 'Style',
+          variant?.color || 'N/A',
+          gender,
+          article?.mrp || item.price / (item.pairCount || 1),
+          batchPairs,
+          price.toFixed(2),
+          totalValue.toFixed(2)
+        ];
+        const r = worksheet.addRow(row);
+        r.eachCell(cell => {
+          cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+          cell.alignment = { horizontal: 'center' };
+        });
+      });
+
+    worksheet.addRow([]); // Gap
+
+    // Totals - Aligned to the table columns (Total column is J / 10)
+    const stRow = worksheet.addRow(['', '', '', '', '', '', '', '', 'Sub Total:', subTotal]);
+    stRow.getCell(9).font = { bold: true };
+    stRow.getCell(10).font = { bold: true };
+    
+    const qtyRow = worksheet.addRow(['', '', '', '', '', '', '', '', 'Total Qty:', `${totalBatchPairs} Pairs`]);
+    qtyRow.getCell(9).font = { bold: true };
+    qtyRow.getCell(10).font = { bold: true };
+
+    const finalRow = worksheet.addRow(['', '', '', '', '', '', '', '', 'FINAL AMOUNT:', subTotal]);
+    finalRow.getCell(9).font = { bold: true, size: 12, color: { argb: '4F46E5' } };
+    finalRow.getCell(10).font = { bold: true, size: 12, color: { argb: '4F46E5' } };
+
+    // Set Column Widths
+    worksheet.columns = [
+      { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 },
+      { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 20 }, { width: 15 }
+    ];
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `PI-${currentOrder.orderNumber || currentOrder.id}.xlsx`);
+    toast.success("Excel Proforma Invoice downloaded!");
   };
 
   const statusSteps = [
@@ -913,28 +1087,6 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                       <Package size={14} className="text-indigo-600" />
                       Order Breakdown
                     </h3>
-                    
-                    {!isDistributor && currentOrder.status === OrderStatus.RFD && (
-                      <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <div className="relative flex-1 sm:w-64">
-                          <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                          <input 
-                            type="text" 
-                            placeholder="Scan SKU to Verify..." 
-                            value={scanInput}
-                            onChange={(e) => setScanInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleScanSKU(scanInput)}
-                            className="w-full pl-8 pr-3 py-1.5 bg-white border border-indigo-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-bold"
-                            autoFocus
-                          />
-                        </div>
-                        {isScanningFinished() && (
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider animate-in fade-in zoom-in">
-                            <ShieldCheck size={12} /> Verified
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                   
                   <div className="overflow-x-auto">
@@ -959,7 +1111,9 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                             <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center bg-indigo-50/30">Live Stock (Ctn)</th>
                             <th className="px-4 py-3 text-[10px] font-black text-amber-600 uppercase tracking-widest text-center bg-amber-50/30">Blocked (Ctn)</th>
                             <th className="px-4 py-3 text-[10px] font-black text-indigo-600 uppercase tracking-widest text-center bg-indigo-50/30">Allocation (Ctn)</th>
-                            <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-center">Verified (Ctn)</th>
+                            {[OrderStatus.RFD, OrderStatus.OFD, OrderStatus.RECEIVED].includes(currentOrder.status) && (
+                              <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-center">Scanned (Ctn)</th>
+                            )}
                           </tr>
                         )}
                       </thead>
@@ -1126,12 +1280,14 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                                   <p className="text-sm font-black text-indigo-500 leading-none">{item.allocatedCartonCount || 0}</p>
                                 )}
                               </td>
-                              <td className="px-4 py-4 text-center">
-                                <div className="flex flex-col items-center">
-                                  <span className={`text-sm font-black ${isVerified ? 'text-emerald-600' : (scanned > 0 ? 'text-indigo-600' : 'text-slate-400')}`}>{scanned}</span>
-                                  {isVerified && <CheckCircle size={10} className="text-emerald-500 mt-0.5" />}
-                                </div>
-                              </td>
+                              {[OrderStatus.RFD, OrderStatus.OFD, OrderStatus.RECEIVED].includes(currentOrder.status) && (
+                                <td className="px-4 py-4 text-center">
+                                  <div className="flex flex-col items-center">
+                                    <span className={`text-sm font-black ${isVerified ? 'text-emerald-600' : (scanned > 0 ? 'text-indigo-600' : 'text-slate-400')}`}>{scanned}</span>
+                                    {isVerified && <CheckCircle size={10} className="text-emerald-500 mt-0.5" />}
+                                  </div>
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
@@ -1158,15 +1314,24 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                           </div>
 
                           <div className="flex items-center gap-2">
-                             {(currentOrder.status === OrderStatus.PFD || currentOrder.status === OrderStatus.RFD) && (
-                                <button
-                                  onClick={handleDownloadPI}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold text-[10px] uppercase hover:bg-slate-50 transition-all shadow-sm"
-                                >
-                                  <FileText size={12} className="text-indigo-600" />
-                                  PI Download
-                                </button>
-                             )}
+                              {(currentOrder.status === OrderStatus.PFD || currentOrder.status === OrderStatus.RFD) && (
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={handleDownloadPI}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold text-[10px] uppercase hover:bg-slate-50 transition-all shadow-sm"
+                                  >
+                                    <FileText size={12} className="text-indigo-600" />
+                                    PI PDF
+                                  </button>
+                                  <button
+                                    onClick={handleDownloadExcelPI}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold text-[10px] uppercase hover:bg-slate-50 transition-all shadow-sm"
+                                  >
+                                    <Download size={12} className="text-green-600" />
+                                    PI Excel
+                                  </button>
+                                </div>
+                              )}
                           </div>
                         </div>
 
@@ -1226,7 +1391,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
 
                         <div className="flex justify-between items-center gap-4">
                           <div className="flex gap-4">
-                            {Object.keys(blockingState).length > 0 && (
+                            {Object.keys(blockingState).length > 0 && (currentOrder.status === OrderStatus.BOOKED || currentOrder.status === OrderStatus.PARTIAL) && (
                               <div className="flex items-center gap-3 bg-amber-50 px-4 py-2 rounded-xl border border-amber-200">
                                 <div className="flex flex-col text-left">
                                   <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest leading-none">Pending Blocking</span>
@@ -1275,16 +1440,40 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                               </button>
                             )}
 
-                            {currentOrder.status === OrderStatus.RFD && (
-                              <button
-                                onClick={() => handleUpdateStatus(OrderStatus.OFD)}
-                                disabled={uploading || !isScanningFinished() || !shippingFiles.invoice || !shippingFiles.ewayBill || !shippingFiles.transportBill}
-                                className="flex items-center justify-center gap-2 px-8 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {uploading ? <Loader2 size={16} className="animate-spin" /> : <Truck size={16} />}
-                                Mark Out for Delivery
-                              </button>
-                            )}
+                             {currentOrder.status === OrderStatus.RFD && (
+                               <div className="flex items-center gap-4">
+                                 <div className="flex items-center gap-3 animate-in slide-in-from-right-2">
+                                   <div className="relative">
+                                     <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                                       <Barcode size={14} className="text-slate-400" />
+                                     </div>
+                                     <input
+                                       type="text"
+                                       placeholder="Scan SKU to Verify..."
+                                       value={scanInput}
+                                       onChange={(e) => setScanInput(e.target.value)}
+                                       onKeyDown={(e) => e.key === 'Enter' && handleScanSKU(scanInput)}
+                                       className="w-48 pl-8 pr-3 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-bold shadow-sm"
+                                       autoFocus
+                                     />
+                                   </div>
+                                   {isScanningFinished() && (
+                                     <div className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-wider animate-in fade-in zoom-in shadow-md">
+                                       <ShieldCheck size={12} /> Verified
+                                     </div>
+                                   )}
+                                 </div>
+
+                                 <button
+                                   onClick={() => handleUpdateStatus(OrderStatus.OFD)}
+                                   disabled={uploading || !isScanningFinished() || !shippingFiles.invoice || !shippingFiles.ewayBill || !shippingFiles.transportBill}
+                                   className="flex items-center justify-center gap-2 px-8 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                 >
+                                   {uploading ? <Loader2 size={16} className="animate-spin" /> : <Truck size={16} />}
+                                   Mark Out for Delivery
+                                 </button>
+                               </div>
+                             )}
                           </div>
                         </div>
                       </div>

@@ -29,6 +29,9 @@ const getIO = () => {
   return io;
 };
 
+// ──────────────────────────────────────────────
+// ORDER events  (Admin ↔ Distributor)
+// ──────────────────────────────────────────────
 const emitOrderUpdate = (order) => {
   if (io) {
     io.emit("orderUpdated", {
@@ -39,6 +42,10 @@ const emitOrderUpdate = (order) => {
   }
 };
 
+// ──────────────────────────────────────────────
+// DISTRIBUTOR profile events  (Admin → Distributor)
+// e.g. when admin changes credit limit, discount etc.
+// ──────────────────────────────────────────────
 const emitDistributorUpdate = (distributorId) => {
   if (io) {
     io.emit("distributorUpdated", {

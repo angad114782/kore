@@ -38,6 +38,21 @@ const BillDetails: React.FC<BillDetailsProps> = ({
   const [actionLoading, setActionLoading] = useState(false);
   const po = bill; // bill is now the PO itself
 
+  // Recalculate totals based on the new logic (Cartons * 24)
+  let recalculatedSubTotal = 0;
+  let recalculatedTotalTax = 0;
+  po.items.forEach((item) => {
+    const cartons = item.cartonCount || Math.floor((item.quantity || 0) / 24) || 0;
+    const totalPairs = cartons * 24;
+    const itemSubTotal = totalPairs * item.basePrice;
+    const itemTax = totalPairs * (item.taxRate || 0);
+    recalculatedSubTotal += itemSubTotal;
+    recalculatedTotalTax += itemTax;
+  });
+
+  const recalculatedDiscountAmount = (recalculatedSubTotal * (po.discountPercent || 0)) / 100;
+  const recalculatedFinalTotal = recalculatedSubTotal - recalculatedDiscountAmount + recalculatedTotalTax;
+
   const handleApprove = async () => {
     console.log("handleApprove called with bill:", bill);
     console.log("bill.id in handleApprove:", bill.id);
@@ -152,7 +167,7 @@ const BillDetails: React.FC<BillDetailsProps> = ({
                 } catch {
                   v = undefined;
                 }
-                exportOrderToExcel(bill, v);
+                await exportOrderToExcel(bill, v);
               }}
               className="flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-semibold hover:bg-emerald-100 transition-all"
             >
@@ -259,7 +274,7 @@ const BillDetails: React.FC<BillDetailsProps> = ({
                     Unit Price (₹)
                   </th>
                   <th className="px-2 py-3 text-[10px] font-bold text-emerald-600 uppercase tracking-wider text-right">
-                    Tax/Item
+                    Tax
                   </th>
                   <th className="px-2 py-3 text-[10px] font-bold text-emerald-600 uppercase tracking-wider text-right">
                     Unit Total
@@ -267,89 +282,93 @@ const BillDetails: React.FC<BillDetailsProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {po.items.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-slate-50/50 transition-colors"
-                  >
-                    {/* Item Details */}
-                    <td className="px-3 py-3">
-                      <div className="text-sm">
-                        <p className="font-semibold text-slate-900">
-                          {item.itemName || "—"}
-                        </p>
-                        {/* <p className="text-[10px] text-slate-500 mt-1">
-                          SKU: {item.sku || "—"}
-                        </p> */}
-                        <p className="text-[10px] text-slate-500">
-                          Brand: {item.skuCompany || "—"}
-                        </p>
-                      </div>
-                    </td>
+                {po.items.map((item) => {
+                  const cartons = item.cartonCount || Math.floor((item.quantity || 0) / 24) || 0;
+                  const totalPairs = cartons * 24;
+                  const calculatedTax = totalPairs * (item.taxRate || 0);
+                  const calculatedUnitTotal = totalPairs * item.basePrice;
 
-                    {/* Image */}
-                    <td className="px-2 py-3">
-                      {item.image ? (
-                        <img
-                          src={getImageUrl(item.image)}
-                          alt={item.itemName}
-                          className="w-10 h-10 rounded-lg object-cover border border-slate-200"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center">
-                          <Package size={14} className="text-slate-400" />
+                  return (
+                    <tr
+                      key={item.id}
+                      className="hover:bg-slate-50/50 transition-colors"
+                    >
+                      {/* Item Details */}
+                      <td className="px-3 py-3">
+                        <div className="text-sm">
+                          <p className="font-semibold text-slate-900">
+                            {item.itemName || "—"}
+                          </p>
+                          <p className="text-[10px] text-slate-500">
+                            Brand: {item.skuCompany || "—"}
+                          </p>
                         </div>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* Tax Code */}
-                    <td className="px-2 py-3 text-sm text-slate-700">
-                      {item.itemTaxCode || "—"}
-                    </td>
+                      {/* Image */}
+                      <td className="px-2 py-3">
+                        {item.image ? (
+                          <img
+                            src={getImageUrl(item.image)}
+                            alt={item.itemName}
+                            className="w-10 h-10 rounded-lg object-cover border border-slate-200"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center">
+                            <Package size={14} className="text-slate-400" />
+                          </div>
+                        )}
+                      </td>
 
-                    {/* Quantity */}
-                    <td className="px-2 py-3 text-center">
-                      <div className="text-sm font-semibold text-slate-900">
-                        {item.cartonCount || Math.floor((item.quantity || 0) / 24) || 0}
-                      </div>
-                    </td>
+                      {/* Tax Code */}
+                      <td className="px-2 py-3 text-sm text-slate-700">
+                        {item.itemTaxCode || "—"}
+                      </td>
 
-                    {/* Tax Rate */}
-                    <td className="px-2 py-3 text-center">
-                      <div className="text-sm font-semibold text-slate-900">
-                        {item.taxRate}%
-                      </div>
-                    </td>
+                      {/* Quantity */}
+                      <td className="px-2 py-3 text-center">
+                        <div className="text-sm font-semibold text-slate-900">
+                          {cartons}
+                        </div>
+                      </td>
 
-                    {/* MRP */}
-                    <td className="px-2 py-3 text-right">
-                      <div className="text-sm font-semibold text-slate-900">
-                        ₹{item.mrp?.toFixed(2) || "0.00"}
-                      </div>
-                    </td>
+                      {/* Tax Rate */}
+                      <td className="px-2 py-3 text-center">
+                        <div className="text-sm font-semibold text-slate-900">
+                          {item.taxRate}%
+                        </div>
+                      </td>
 
-                    {/* Unit Price */}
-                    <td className="px-2 py-3 text-right">
-                      <div className="text-sm font-semibold text-slate-900">
-                        ₹{item.basePrice?.toFixed(2) || "0.00"}
-                      </div>
-                    </td>
+                      {/* MRP */}
+                      <td className="px-2 py-3 text-right">
+                        <div className="text-sm font-semibold text-slate-900">
+                          ₹{item.mrp?.toFixed(2) || "0.00"}
+                        </div>
+                      </td>
 
-                    {/* Tax Per Item */}
-                    <td className="px-2 py-3 text-right">
-                      <div className="text-sm font-semibold text-slate-900">
-                        ₹{item.taxPerItem?.toFixed(2) || "0.00"}
-                      </div>
-                    </td>
+                      {/* Unit Price */}
+                      <td className="px-2 py-3 text-right">
+                        <div className="text-sm font-semibold text-slate-900">
+                          ₹{item.basePrice?.toFixed(2) || "0.00"}
+                        </div>
+                      </td>
 
-                    {/* Unit Total */}
-                    <td className="px-2 py-3 text-right">
-                      <div className="text-sm font-bold text-slate-900">
-                        ₹{item.unitTotal?.toFixed(2) || "0.00"}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      {/* Tax */}
+                      <td className="px-2 py-3 text-right">
+                        <div className="text-sm font-semibold text-slate-900">
+                          ₹{calculatedTax.toFixed(2)}
+                        </div>
+                      </td>
+
+                      {/* Unit Total */}
+                      <td className="px-2 py-3 text-right">
+                        <div className="text-sm font-bold text-slate-900">
+                          ₹{calculatedUnitTotal.toFixed(2)}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -379,23 +398,23 @@ const BillDetails: React.FC<BillDetailsProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-600">Sub Total</span>
                 <span className="text-sm font-bold text-slate-900">
-                  ₹{po.subTotal?.toFixed(2) || "0.00"}
+                  ₹{recalculatedSubTotal.toFixed(2)}
                 </span>
               </div>
 
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm text-slate-600">
-                  Discount ({po.discountPercent}%)
+                  Discount ({po.discountPercent || 0}%)
                 </span>
                 <span className="text-sm font-bold text-red-600">
-                  -₹{po.discountAmount?.toFixed(2) || "0.00"}
+                  -₹{recalculatedDiscountAmount.toFixed(2)}
                 </span>
               </div>
 
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-600">Total Tax</span>
                 <span className="text-sm font-bold text-slate-700">
-                  ₹{po.totalTax?.toFixed(2) || "0.00"}
+                  ₹{recalculatedTotalTax.toFixed(2)}
                 </span>
               </div>
 
@@ -404,7 +423,7 @@ const BillDetails: React.FC<BillDetailsProps> = ({
                   Total
                 </span>
                 <span className="text-lg font-black text-emerald-600">
-                  ₹{po.total?.toFixed(2) || "0.00"}
+                  ₹{recalculatedFinalTotal.toFixed(2)}
                 </span>
               </div>
             </div>

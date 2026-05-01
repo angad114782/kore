@@ -372,7 +372,7 @@ const Bill: React.FC = () => {
                             } catch {
                               v = undefined;
                             }
-                            exportOrderToExcel(bill, v);
+                            await exportOrderToExcel(bill, v);
                           }}
                           className="p-2 text-emerald-600 hover:bg-emerald-100 rounded-xl transition-all inline-flex items-center gap-1 font-semibold text-xs"
                           title="Download Excel"

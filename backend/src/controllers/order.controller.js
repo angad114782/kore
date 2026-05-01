@@ -128,6 +128,9 @@ const processReturn = async (req, res) => {
 
     const returnDoc = await OrderService.processReturn(orderId, { items, reason });
 
+    // Real-time: notify distributor and admin of return status
+    emitOrderUpdate(returnDoc);
+
     res.status(200).json({
       success: true,
       message: "Return processed successfully",

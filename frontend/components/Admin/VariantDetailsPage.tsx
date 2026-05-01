@@ -487,190 +487,195 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
           </div>
 
           {/* Four-column grid for size, booking, PO and Blocked */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-            {/* Left Column - Size Stock Breakdown */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
-                  <Package size={14} /> Live Stock
-                </h4>
-                <span className="text-[10px] font-bold text-slate-400">
-                  pairs
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {sizes.map((sz) => {
-                  const cleanSz = sz.trim();
-                  const qty = Number(currentLiveStockMap[cleanSz] ?? currentLiveStockMap[sz]) || 0;
-                  const blocked = Number(currentBlockedStockMap[cleanSz] ?? currentBlockedStockMap[sz]) || 0;
-                  const available = availableStockMap[sz] || 0;
-                  const sku = variant.sizeSkus?.[sz] || 
-                    (typeof currentSizeMap[sz] === "object" ? (currentSizeMap[sz] as any)?.sku : "") || "";
-
-                  let bgClass =
-                    qty > 0
-                      ? "bg-indigo-50/60 border-indigo-200"
-                      : "bg-rose-50/60 border-rose-200";
-                  let qtyClass = qty > 0 ? "text-indigo-600" : "text-rose-600";
-
-                  return (
-                    <div
-                      key={sz}
-                      className={`p-3 rounded-xl border transition-all hover:shadow-md ${bgClass}`}
-                    >
-                      <div className="flex flex-col items-start justify-between mb-1">
-                        <span className="text-[10px] font-bold text-slate-500">Size {sz}</span>
-                        <div className="flex items-baseline gap-1.5">
-                          <span className={`text-xl font-black leading-none ${qtyClass}`}>{available}</span>
-                          {blocked > 0 && (
-                            <span className="text-[10px] font-bold text-rose-500">(-{blocked} blk)</span>
-                          )}
-                        </div>
-                        <p className="text-[8px] font-bold text-slate-400 mt-1 uppercase">Live: {qty}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+          {loadingStock ? (
+            <div className="flex flex-col items-center justify-center py-12 space-y-3 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+              <Loader2 className="animate-spin text-indigo-500" size={32} />
+              <p className="text-sm font-medium text-slate-500 uppercase tracking-widest">Fetching live inventory...</p>
             </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+              {/* Left Column - Size Stock Breakdown */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
+                    <Package size={14} /> Live Stock
+                  </h4>
+                  <span className="text-[10px] font-bold text-slate-400">
+                    pairs
+                  </span>
+                </div>
 
-            {/* Right Column - Booking Breakdown */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black text-emerald-600 uppercase tracking-wider flex items-center gap-1.5">
-                  <ShoppingBag size={14} /> Booked Qty
-                </h4>
-                <span className="text-[10px] font-bold text-slate-400">
-                  per size
-                </span>
-              </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {sizes.map((sz) => {
+                    const cleanSz = sz.trim();
+                    const qty = Number(currentLiveStockMap[cleanSz] ?? currentLiveStockMap[sz]) || 0;
+                    const blocked = Number(currentBlockedStockMap[cleanSz] ?? currentBlockedStockMap[sz]) || 0;
+                    const available = availableStockMap[sz] || 0;
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {sizes.map((sz) => {
-                  const cleanSz = sz.trim();
-                  const bookedQty = Number(currentBookingMap[cleanSz] ?? currentBookingMap[sz]) || 0;
-                  const statusColor = bookedQty === 0 ? "slate" : "emerald";
+                    let bgClass =
+                      qty > 0
+                        ? "bg-indigo-50/60 border-indigo-200"
+                        : "bg-rose-50/60 border-rose-200";
+                    let qtyClass = qty > 0 ? "text-indigo-600" : "text-rose-600";
 
-                  return (
-                    <div
-                      key={sz}
-                      className={`p-3 rounded-xl border transition-all hover:shadow-md ${
-                        statusColor === "emerald"
-                          ? "bg-emerald-50/60 border-emerald-200"
-                          : "bg-slate-50/60 border-slate-200"
-                      }`}
-                    >
-                      <div className="flex flex-col items-start justify-between">
-                        <span className="text-xs font-bold text-slate-500">
-                          Size {sz}
-                        </span>
-                        <div
-                          className={`text-xl font-black leading-none ${
-                            bookedQty > 0
-                              ? "text-emerald-600"
-                              : "text-slate-300"
-                          }`}
-                        >
-                          {bookedQty}
+                    return (
+                      <div
+                        key={sz}
+                        className={`p-3 rounded-xl border transition-all hover:shadow-md ${bgClass}`}
+                      >
+                        <div className="flex flex-col items-start justify-between mb-1">
+                          <span className="text-[10px] font-bold text-slate-500">Size {sz}</span>
+                          <div className="flex items-baseline gap-1.5">
+                            <span className={`text-xl font-black leading-none ${qtyClass}`}>{available}</span>
+                            {blocked > 0 && (
+                              <span className="text-[10px] font-bold text-rose-500">(-{blocked} blk)</span>
+                            )}
+                          </div>
+                          <p className="text-[8px] font-bold text-slate-400 mt-1 uppercase">Live: {qty}</p>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Third Column - PO Breakdown */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black text-orange-600 uppercase tracking-wider flex items-center gap-1.5">
-                  <ShoppingBag size={14} /> PO Quantity
-                </h4>
-                <span className="text-[10px] font-bold text-slate-400">
-                  per size
-                </span>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {sizes.map((sz) => {
-                  const cleanSz = sz.trim();
-                  const poQty = Number(currentPOMap[cleanSz] ?? currentPOMap[sz]) || 0;
-                  const statusColor = poQty === 0 ? "slate" : "orange";
+              {/* Right Column - Booking Breakdown */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black text-emerald-600 uppercase tracking-wider flex items-center gap-1.5">
+                    <ShoppingBag size={14} /> Booked Qty
+                  </h4>
+                  <span className="text-[10px] font-bold text-slate-400">
+                    per size
+                  </span>
+                </div>
 
-                  return (
-                    <div
-                      key={sz}
-                      className={`p-3 rounded-xl border transition-all hover:shadow-md ${
-                        statusColor === "orange"
-                          ? "bg-orange-50/60 border-orange-200"
-                          : "bg-slate-50/60 border-slate-200"
-                      }`}
-                    >
-                      <div className="flex flex-col items-start justify-between">
-                        <span className="text-xs font-bold text-slate-500">
-                          Size {sz}
-                        </span>
-                        <div
-                          className={`text-xl font-black leading-none ${
-                            poQty > 0 ? "text-orange-600" : "text-slate-300"
-                          }`}
-                        >
-                          {poQty}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {sizes.map((sz) => {
+                    const cleanSz = sz.trim();
+                    const bookedQty = Number(currentBookingMap[cleanSz] ?? currentBookingMap[sz]) || 0;
+                    const statusColor = bookedQty === 0 ? "slate" : "emerald";
+
+                    return (
+                      <div
+                        key={sz}
+                        className={`p-3 rounded-xl border transition-all hover:shadow-md ${
+                          statusColor === "emerald"
+                            ? "bg-emerald-50/60 border-emerald-200"
+                            : "bg-slate-50/60 border-slate-200"
+                        }`}
+                      >
+                        <div className="flex flex-col items-start justify-between">
+                          <span className="text-xs font-bold text-slate-500">
+                            Size {sz}
+                          </span>
+                          <div
+                            className={`text-xl font-black leading-none ${
+                              bookedQty > 0
+                                ? "text-emerald-600"
+                                : "text-slate-300"
+                            }`}
+                          >
+                            {bookedQty}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Fourth Column - Blocked Breakdown */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black text-amber-600 uppercase tracking-wider flex items-center gap-1.5">
-                  <Package size={14} /> Blocked Stock
-                </h4>
-                <span className="text-[10px] font-bold text-slate-400">
-                  per size
-                </span>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                {sizes.map((sz) => {
-                  const cleanSz = sz.trim();
-                  const blockedQty = Number(currentBlockedStockMap[cleanSz] ?? currentBlockedStockMap[sz]) || 0;
-                  const statusColor = blockedQty === 0 ? "slate" : "amber";
+              {/* Third Column - PO Breakdown */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black text-orange-600 uppercase tracking-wider flex items-center gap-1.5">
+                    <ShoppingBag size={14} /> PO Quantity
+                  </h4>
+                  <span className="text-[10px] font-bold text-slate-400">
+                    per size
+                  </span>
+                </div>
 
-                  return (
-                    <div
-                      key={sz}
-                      className={`p-3 rounded-xl border transition-all hover:shadow-md ${
-                        statusColor === "amber"
-                          ? "bg-amber-50/60 border-amber-200"
-                          : "bg-slate-50/60 border-slate-200"
-                      }`}
-                    >
-                      <div className="flex flex-col items-start justify-between">
-                        <span className="text-xs font-bold text-slate-500">
-                          Size {sz}
-                        </span>
-                        <div
-                          className={`text-xl font-black leading-none ${
-                            blockedQty > 0
-                              ? "text-amber-600"
-                              : "text-slate-300"
-                          }`}
-                        >
-                          {blockedQty}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {sizes.map((sz) => {
+                    const cleanSz = sz.trim();
+                    const poQty = Number(currentPOMap[cleanSz] ?? currentPOMap[sz]) || 0;
+                    const statusColor = poQty === 0 ? "slate" : "orange";
+
+                    return (
+                      <div
+                        key={sz}
+                        className={`p-3 rounded-xl border transition-all hover:shadow-md ${
+                          statusColor === "orange"
+                            ? "bg-orange-50/60 border-orange-200"
+                            : "bg-slate-50/60 border-slate-200"
+                        }`}
+                      >
+                        <div className="flex flex-col items-start justify-between">
+                          <span className="text-xs font-bold text-slate-500">
+                            Size {sz}
+                          </span>
+                          <div
+                            className={`text-xl font-black leading-none ${
+                              poQty > 0 ? "text-orange-600" : "text-slate-300"
+                            }`}
+                          >
+                            {poQty}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Fourth Column - Blocked Breakdown */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black text-amber-600 uppercase tracking-wider flex items-center gap-1.5">
+                    <Package size={14} /> Blocked Stock
+                  </h4>
+                  <span className="text-[10px] font-bold text-slate-400">
+                    per size
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {sizes.map((sz) => {
+                    const cleanSz = sz.trim();
+                    const blockedQty = Number(currentBlockedStockMap[cleanSz] ?? currentBlockedStockMap[sz]) || 0;
+                    const statusColor = blockedQty === 0 ? "slate" : "amber";
+
+                    return (
+                      <div
+                        key={sz}
+                        className={`p-3 rounded-xl border transition-all hover:shadow-md ${
+                          statusColor === "amber"
+                            ? "bg-amber-50/60 border-amber-200"
+                            : "bg-slate-50/60 border-slate-200"
+                        }`}
+                      >
+                        <div className="flex flex-col items-start justify-between">
+                          <span className="text-xs font-bold text-slate-500">
+                            Size {sz}
+                          </span>
+                          <div
+                            className={`text-xl font-black leading-none ${
+                              blockedQty > 0
+                                ? "text-amber-600"
+                                : "text-slate-300"
+                            }`}
+                          >
+                            {blockedQty}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>

@@ -1,5 +1,6 @@
 const distributorService = require("../services/distributor.service");
 const { created, ok, fail } = require("../utils/apiResponse");
+const { emitDistributorUpdate } = require("../socket");
 
 exports.createDistributor = async (req, res, next) => {
   try {
@@ -47,6 +48,10 @@ exports.getDistributorById = async (req, res, next) => {
 exports.updateDistributor = async (req, res, next) => {
   try {
     const distributor = await distributorService.updateDistributor(req.params.id, req.body);
+
+    // Real-time: notify distributor dashboard of profile/credit changes
+    emitDistributorUpdate(req.params.id);
+
     return ok(res, {
       message: "Distributor updated successfully",
       data: distributor,
@@ -59,6 +64,10 @@ exports.updateDistributor = async (req, res, next) => {
 exports.toggleDistributorStatus = async (req, res, next) => {
   try {
     const distributor = await distributorService.toggleDistributorStatus(req.params.id);
+
+    // Real-time: notify distributor dashboard of status change
+    emitDistributorUpdate(req.params.id);
+
     return ok(res, {
       message: `Distributor ${distributor.isActive ? "activated" : "deactivated"} successfully`,
       data: distributor,

@@ -368,9 +368,10 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
         payload.loginPassword = formData.loginPassword;
       }
 
+      let updatedDistributor = null;
       if (editingId) {
         // Update existing distributor
-        await distributorService.updateDistributor(editingId, payload);
+        updatedDistributor = await distributorService.updateDistributor(editingId, payload);
       } else {
         // Create new distributor
         // For new distributors, password might be required by backend
@@ -388,7 +389,17 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
       }));
       setDistributors(mapped);
 
-      setView("LIST");
+      // Instant UI Update: If we were editing, update the selected distributor and show details
+      if (editingId && updatedDistributor) {
+        const normalized = {
+          ...updatedDistributor,
+          id: updatedDistributor._id || updatedDistributor.id
+        };
+        setSelectedDistributor(normalized);
+        setView("DETAILS");
+      } else {
+        setView("LIST");
+      }
 
       // Reset form
       setEditingId(null);

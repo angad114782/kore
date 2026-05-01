@@ -25,7 +25,14 @@ import {
   Activity,
   Calendar,
   PackageSearch,
+  Download,
+  Filter,
+  ArrowUpDown,
+  SortAsc,
+  SortDesc,
 } from "lucide-react";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 import {
   grnService,
   MockPODetail,
@@ -129,10 +136,29 @@ const GRN: React.FC = () => {
   const [viewingGRN, setViewingGRN] = useState<any | null>(null);
   const [loadingHistoryDetail, setLoadingHistoryDetail] = useState(false);
 
+  /* ── History Filters ── */
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyDateFrom, setHistoryDateFrom] = useState("");
+  const [historyDateTo, setHistoryDateTo] = useState("");
+  const [historyPORef, setHistoryPORef] = useState("");
+  const [historySortBy, setHistorySortBy] = useState("submittedAt");
+  const [historySortOrder, setHistorySortOrder] = useState<"asc" | "desc">("desc");
+  const [exportingExcel, setExportingExcel] = useState(false);
+
+  const historyFilterParams = useMemo(() => {
+    const p: Record<string, string> = {};
+    if (historySearch) p.search = historySearch;
+    if (historyDateFrom) p.dateFrom = historyDateFrom;
+    if (historyDateTo) p.dateTo = historyDateTo;
+    if (historyPORef) p.refId = historyPORef;
+    if (historySortBy) p.sortBy = historySortBy;
+    if (historySortOrder) p.sortOrder = historySortOrder;
+    return p;
+  }, [historySearch, historyDateFrom, historyDateTo, historyPORef, historySortBy, historySortOrder]);
+
   /* ── Load PO list ── */
   useEffect(() => {
     grnService.listReferences("").then((res) => {
-      // Filter out Catalogue IDs (starting with CAT-)
       const filtered = (res.data || []).filter(
         (ref) => !ref.poNo.startsWith("CAT-")
       );
@@ -143,7 +169,7 @@ const GRN: React.FC = () => {
   /* ── Load GRN History ── */
   useEffect(() => {
     grnService
-      .history()
+      .history(historyFilterParams)
       .then((res) => {
         setGrnHistory(
           (res.data || []).map((h: any) => ({
@@ -159,7 +185,194 @@ const GRN: React.FC = () => {
         );
       })
       .catch(() => {});
-  }, [activeTab]);
+  }, [activeTab, historyFilterParams]);
+
+  const clearHistoryFilters = () => {
+    setHistorySearch("");
+    setHistoryDateFrom("");
+    setHistoryDateTo("");
+    setHistoryPORef("");
+    setHistorySortBy("submittedAt");
+    setHistorySortOrder("desc");
+  };
+
+  const exportGRNExcel = async () => {
+    setExportingExcel(true);
+    try {
+      const res = await grnService.exportHistory(historyFilterParams);
+      const grns = res.data || [];
+      if (grns.length === 0) {
+        toast.error("No GRN data to export");
+        return;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("GRN History");
+
+      // Set columns with initial widths
+      worksheet.columns = [
+        { header: "S.No", key: "sno", width: 10 },
+        { header: "GRN Number", key: "grnNo", width: 20 },
+        { header: "PO Reference", key: "refId", width: 20 },
+        { header: "Vendor", key: "vendorName", width: 30 },
+        { header: "Article", key: "articleName", width: 30 },
+        { header: "Status", key: "status", width: 15 },
+        { header: "Total Cartons", key: "totalCartons", width: 15 },
+        { header: "Total Pairs", key: "totalPairs", width: 15 },
+        { header: "Received Date", key: "submittedAt", width: 25 },
+        { header: "Carton #", key: "cartonIdx", width: 10 },
+        { header: "Carton Barcode", key: "barcode", width: 25 },
+        { header: "Item Name", key: "itemName", width: 30 },
+        { header: "Pairs In Carton", key: "pairsCount", width: 15 },
+        { header: "SKU Breakdown", key: "skuBreakdown", width: 50 },
+      ];
+
+      // Add Title Row
+      const titleRow = worksheet.insertRow(1, ["GOODS RECEIPT NOTE (GRN) HISTORY REPORT"]);
+      titleRow.font = { size: 18, bold: true, color: { argb: "FF000000" } };
+      worksheet.mergeCells(1, 1, 1, 16);
+      titleRow.alignment = { horizontal: "center", vertical: "middle" };
+      titleRow.height = 35;
+
+      // Add Metadata Row
+      const metaRow = worksheet.insertRow(2, [
+        `Generated On: ${new Date().toLocaleString("en-IN")}`,
+        "", "", "", "", "", "", "",
+        `Total Records: ${grns.length} GRNs`
+      ]);
+      metaRow.font = { bold: true, size: 11 };
+      worksheet.mergeCells(2, 1, 2, 8);
+      worksheet.mergeCells(2, 9, 2, 16);
+      metaRow.height = 25;
+
+      worksheet.addRow([]); // Spacer
+
+      // Header Row Styling
+      const headerRow = worksheet.getRow(4);
+      headerRow.values = [
+        "S.No", "GRN Number", "PO Ref", "Vendor Name", "Article Name", "Status",
+        "Total CTNs", "Total Pairs", "Receipt Date", "CTN #", "Carton Barcode", 
+        "Item Detail", "CTN Pairs", "SKU Breakdown"
+      ];
+      headerRow.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 12 };
+      headerRow.height = 30;
+      headerRow.eachCell((cell) => {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF1E293B" }, // slate-800 (Dark Professional)
+        };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FF000000" } },
+          left: { style: "thin", color: { argb: "FF000000" } },
+          bottom: { style: "medium", color: { argb: "FF000000" } },
+          right: { style: "thin", color: { argb: "FF000000" } },
+        };
+      });
+
+      let sno = 0;
+      grns.forEach((grn: any) => {
+        sno++;
+        const cartons = grn.cartons || [];
+        
+        if (cartons.length === 0) {
+          worksheet.addRow({
+            sno,
+            grnNo: grn.grnNo,
+            refId: grn.refId,
+            vendorName: grn.vendorName,
+            articleName: grn.articleName,
+            status: grn.status,
+            totalCartons: 0,
+            totalPairs: grn.totalPairs || 0,
+            submittedAt: grn.submittedAt ? new Date(grn.submittedAt).toLocaleString("en-IN") : "",
+          });
+        } else {
+          cartons.forEach((c: any, cIdx: number) => {
+            const skuStr = Object.entries(c.skuBreakdown || {})
+              .map(([sku, cnt]) => `${sku}(x${cnt})`)
+              .join(", ");
+
+            worksheet.addRow({
+              sno: cIdx === 0 ? sno : "",
+              grnNo: cIdx === 0 ? grn.grnNo : "",
+              refId: cIdx === 0 ? grn.refId : "",
+              vendorName: cIdx === 0 ? grn.vendorName : "",
+              articleName: cIdx === 0 ? grn.articleName : "",
+              status: cIdx === 0 ? grn.status : "",
+              totalCartons: cIdx === 0 ? cartons.length : "",
+              totalPairs: cIdx === 0 ? grn.totalPairs : "",
+              submittedAt: cIdx === 0 ? (grn.submittedAt ? new Date(grn.submittedAt).toLocaleString("en-IN") : "") : "",
+              cartonIdx: c.index,
+              barcode: c.cartonBarcode,
+              itemName: c.itemName,
+              pairsCount: c.pairsCount,
+              skuBreakdown: skuStr,
+            });
+          });
+        }
+      });
+
+      // ─── Post-Processing Styles ───
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber <= 4) return;
+
+        // Zebra Striping (based on S.No to group GRNs visually)
+        // We track the actual GRN index to alternate colors
+        const snoVal = row.getCell(1).value;
+        const isNewGroup = snoVal !== "" && snoVal !== null;
+        
+        row.eachCell((cell) => {
+          cell.alignment = { vertical: "middle", horizontal: "left", wrapText: false }; // Single row
+          cell.border = {
+            top: { style: "thin", color: { argb: "FF000000" } }, // Solid Black Borders
+            left: { style: "thin", color: { argb: "FF000000" } },
+            bottom: { style: "thin", color: { argb: "FF000000" } },
+            right: { style: "thin", color: { argb: "FF000000" } },
+          };
+          
+          // Center align numeric columns
+          if ([1, 6, 7, 8, 10, 13].includes(Number(cell.col))) {
+            cell.alignment = { horizontal: "center", vertical: "middle" };
+          }
+        });
+
+        row.height = 22;
+      });
+
+      // ─── Auto-Adjust Column Widths based on content ───
+      worksheet.columns.forEach((column) => {
+        let maxColumnLength = 0;
+        column.eachCell?.({ includeEmpty: true }, (cell) => {
+          const columnLength = cell.value ? String(cell.value).length : 0;
+          if (columnLength > maxColumnLength) {
+            maxColumnLength = columnLength;
+          }
+        });
+        column.width = Math.min(Math.max(maxColumnLength + 5, 10), 100); // Max width 100 to avoid crazy long rows
+      });
+
+      // Add Auto-Filter to the header row
+      worksheet.autoFilter = {
+        from: { row: 4, column: 1 },
+        to: { row: 4, column: 14 }
+      };
+
+      // Generate and save
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      saveAs(blob, `GRN_History_${new Date().toISOString().split("T")[0]}.xlsx`);
+      toast.success(`Exported ${grns.length} GRNs with professional formatting`);
+    } catch (err: any) {
+      console.error("Excel Export Error:", err);
+      toast.error(err.message || "Failed to export");
+    } finally {
+      setExportingExcel(false);
+    }
+  };
 
   const viewGRNDetail = async (grnId: string) => {
     setLoadingHistoryDetail(true);
@@ -206,7 +419,7 @@ const GRN: React.FC = () => {
               const firstItem = data.items[0];
               setSelectedItemName(firstItem.itemName);
               
-              const itemDoneIndices = doneMap[firstItem.itemName] || [];
+              const itemDoneIndices = doneMap[firstItem.variantId || firstItem.itemName] || [];
               let firstPending = 0;
               while (itemDoneIndices.includes(firstPending) && firstPending < (firstItem.cartonCount || 1)) {
                 firstPending++;
@@ -288,18 +501,21 @@ const GRN: React.FC = () => {
     poDetail?.items.forEach((item) => {
       const perCartonTotal = Object.values(item.sizeMap).reduce((s, d) => s + (d.qty || 0), 0);
       const cartonCount = item.cartonCount || 1;
-      totalPairsAll += perCartonTotal * cartonCount;
-      totalCartonsAll += cartonCount;
-
-      const prevDoneIndices = doneCartons[item.itemName] || [];
+      const prevDoneIndices = doneCartons[item.variantId || item.itemName] || [];
       doneCartonsAll += prevDoneIndices.length;
+      
+      const remainingCartons = Math.max(0, cartonCount - prevDoneIndices.length);
+      totalPairsAll += perCartonTotal * remainingCartons;
+      totalCartonsAll += cartonCount;
       
       const itemScans = scanState[item.itemName] || [];
       itemScans.forEach((carton, idx) => {
-        const cartonScanned = Object.values(carton).reduce((s, q) => s + q, 0);
-        scannedAll += cartonScanned;
-        if (!prevDoneIndices.includes(idx) && cartonScanned >= 24) {
-          completedCartonsThisSession++;
+        if (!prevDoneIndices.includes(idx)) {
+          const cartonScanned = Object.values(carton).reduce((s, q) => s + q, 0);
+          scannedAll += cartonScanned;
+          if (cartonScanned >= 24) {
+            completedCartonsThisSession++;
+          }
         }
       });
     });
@@ -321,10 +537,15 @@ const GRN: React.FC = () => {
     if (!item || !cartons) return { total: 0, scanned: 0 };
     
     const perCartonTotal = Object.values(item.sizeMap).reduce((s, d) => s + (d.qty || 0), 0);
-    const total = perCartonTotal * (item.cartonCount || 1);
+    const doneIndices = doneCartons[item.variantId || item.itemName] || [];
+    const remainingCartons = Math.max(0, (item.cartonCount || 1) - doneIndices.length);
+    
+    const total = perCartonTotal * remainingCartons;
     let scanned = 0;
-    cartons.forEach((c) => {
-      scanned += Object.values(c).reduce((s, q) => s + q, 0);
+    cartons.forEach((c, idx) => {
+      if (!doneIndices.includes(idx)) {
+        scanned += Object.values(c).reduce((s, q) => s + q, 0);
+      }
     });
     return { total, scanned };
   };
@@ -352,7 +573,8 @@ const GRN: React.FC = () => {
     }
 
     // Check if current carton was already received in a past session
-    if (doneCartons[selectedItemName]?.includes(currentCartonIdx)) {
+    const itemKey = selectedItem.variantId || selectedItemName;
+    if (doneCartons[itemKey]?.includes(currentCartonIdx)) {
       toast.error(`Carton ${currentCartonIdx + 1} has already been received. Please select a pending carton.`);
       setScanInput("");
       return;
@@ -501,12 +723,14 @@ const GRN: React.FC = () => {
       // 1. Update `doneCartons` with the newly submitted indices
       const newDone = { ...doneCartons };
       Object.keys(scanState).forEach((itemName) => {
+        const item = poDetail.items.find(i => i.itemName === itemName);
+        const key = item?.variantId || itemName;
         const cartons = scanState[itemName];
-        if (!newDone[itemName]) newDone[itemName] = [];
+        if (!newDone[key]) newDone[key] = [];
         cartons.forEach((carton, idx) => {
           const pairsCount = Object.values(carton).reduce((s, q) => s + q, 0);
-          if (pairsCount >= 24 && !newDone[itemName].includes(idx)) {
-            newDone[itemName].push(idx);
+          if (pairsCount >= 24 && !newDone[key].includes(idx)) {
+            newDone[key].push(idx);
           }
         });
       });
@@ -799,7 +1023,7 @@ const GRN: React.FC = () => {
                               return label === val;
                             });
                             if (item) {
-                              const itemDoneIndices = doneCartons[val] || [];
+                              const itemDoneIndices = doneCartons[item.variantId || item.itemName] || [];
                               let firstPending = 0;
                               while (itemDoneIndices.includes(firstPending) && firstPending < (item.cartonCount || 1)) {
                                 firstPending++;
@@ -983,7 +1207,7 @@ const GRN: React.FC = () => {
                       <div className="space-y-4">
                         {poDetail.items.map((item) => {
                           const totalCartons = item.cartonCount || 1;
-                          const doneIndices = doneCartons[item.itemName] || [];
+                          const doneIndices = doneCartons[item.variantId || item.itemName] || [];
                           const doneCnt = doneIndices.length;
                           const isExpanded = expandedItems[item.itemName] ?? false;
                           const itemProg = getItemProgress(item.itemName);
@@ -1273,8 +1497,95 @@ const GRN: React.FC = () => {
                     <Package className="text-indigo-600" size={18} />
                     <p className="font-black text-slate-900">GRN History</p>
                   </div>
-                  <div className="text-xs font-black uppercase tracking-widest text-slate-400">
-                    Logs Found: <span className="text-slate-800">{grnHistory.length}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="text-xs font-black uppercase tracking-widest text-slate-400">
+                      Logs Found: <span className="text-slate-800">{grnHistory.length}</span>
+                    </div>
+                    <button
+                      onClick={exportGRNExcel}
+                      disabled={exportingExcel || grnHistory.length === 0}
+                      className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {exportingExcel ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Download size={14} />
+                      )}
+                      Export Detailed Excel
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Filter Bar ── */}
+                <div className="border-b border-slate-200 bg-white p-5">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+                    <FormInput
+                      label="Search (GRN/Article/Vendor)"
+                      value={historySearch}
+                      onChange={setHistorySearch}
+                    />
+                    <SearchableSelect
+                      label="PO Reference"
+                      options={poOptions}
+                      value={historyPORef}
+                      onChange={setHistoryPORef}
+                      placeholder="All POs"
+                    />
+                    <FormInput
+                      label="From Date"
+                      type="date"
+                      value={historyDateFrom}
+                      onChange={setHistoryDateFrom}
+                    />
+                    <FormInput
+                      label="To Date"
+                      type="date"
+                      value={historyDateTo}
+                      onChange={setHistoryDateTo}
+                    />
+                    <div>
+                      <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
+                        Sort By
+                      </label>
+                      <select
+                        value={historySortBy}
+                        onChange={(e) => setHistorySortBy(e.target.value)}
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold outline-none transition focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+                      >
+                        <option value="submittedAt">Date Received</option>
+                        <option value="grnNo">GRN Number</option>
+                        <option value="vendorName">Vendor</option>
+                        <option value="totalPairs">Total Pairs</option>
+                        <option value="articleName">Article</option>
+                        <option value="refId">PO Ref</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <button
+                        onClick={() =>
+                          setHistorySortOrder(
+                            historySortOrder === "asc" ? "desc" : "asc"
+                          )
+                        }
+                        className="flex h-[46px] w-[46px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100"
+                        title={
+                          historySortOrder === "asc" ? "Ascending" : "Descending"
+                        }
+                      >
+                        {historySortOrder === "asc" ? (
+                          <SortAsc size={20} />
+                        ) : (
+                          <SortDesc size={20} />
+                        )}
+                      </button>
+                      <button
+                        onClick={clearHistoryFilters}
+                        className="flex h-[46px] flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-sm font-black text-slate-500 transition hover:bg-slate-50 hover:text-rose-600"
+                      >
+                        <RotateCcw size={16} />
+                        Reset
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1282,10 +1593,98 @@ const GRN: React.FC = () => {
                   <table className="w-full min-w-[800px] text-left">
                     <thead className="border-b border-slate-200 bg-white">
                       <tr>
-                        <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">GRN Info</th>
-                        <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">Vendor & Article</th>
-                        <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500 text-center">Receipt Stats</th>
-                        <th className="px-5 py-4 text-xs font-black uppercase tracking-wider text-slate-500">Date Received</th>
+                        <th className="px-5 py-4">
+                          <button
+                            onClick={() => {
+                              if (historySortBy === "grnNo") {
+                                setHistorySortOrder(
+                                  historySortOrder === "asc" ? "desc" : "asc"
+                                );
+                              } else {
+                                setHistorySortBy("grnNo");
+                                setHistorySortOrder("asc");
+                              }
+                            }}
+                            className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-slate-500 hover:text-indigo-600"
+                          >
+                            GRN Info
+                            {historySortBy === "grnNo" &&
+                              (historySortOrder === "asc" ? (
+                                <SortAsc size={12} />
+                              ) : (
+                                <SortDesc size={12} />
+                              ))}
+                          </button>
+                        </th>
+                        <th className="px-5 py-4">
+                          <button
+                            onClick={() => {
+                              if (historySortBy === "vendorName") {
+                                setHistorySortOrder(
+                                  historySortOrder === "asc" ? "desc" : "asc"
+                                );
+                              } else {
+                                setHistorySortBy("vendorName");
+                                setHistorySortOrder("asc");
+                              }
+                            }}
+                            className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-slate-500 hover:text-indigo-600"
+                          >
+                            Vendor & Article
+                            {historySortBy === "vendorName" &&
+                              (historySortOrder === "asc" ? (
+                                <SortAsc size={12} />
+                              ) : (
+                                <SortDesc size={12} />
+                              ))}
+                          </button>
+                        </th>
+                        <th className="px-5 py-4">
+                          <button
+                            onClick={() => {
+                              if (historySortBy === "totalPairs") {
+                                setHistorySortOrder(
+                                  historySortOrder === "asc" ? "desc" : "asc"
+                                );
+                              } else {
+                                setHistorySortBy("totalPairs");
+                                setHistorySortOrder("desc");
+                              }
+                            }}
+                            className="mx-auto flex items-center gap-1 text-xs font-black uppercase tracking-wider text-slate-500 hover:text-indigo-600"
+                          >
+                            Receipt Stats
+                            {historySortBy === "totalPairs" &&
+                              (historySortOrder === "asc" ? (
+                                <SortAsc size={12} />
+                              ) : (
+                                <SortDesc size={12} />
+                              ))}
+                          </button>
+                        </th>
+                        <th className="px-5 py-4">
+                          <button
+                            onClick={() => {
+                              if (historySortBy === "submittedAt") {
+                                setHistorySortOrder(
+                                  historySortOrder === "asc" ? "desc" : "asc"
+                                );
+                              } else {
+                                setHistorySortBy("submittedAt");
+                                setHistorySortOrder("desc");
+                              }
+                            }}
+                            className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-slate-500 hover:text-indigo-600"
+                          >
+                            Date Received
+                            {historySortBy === "submittedAt" &&
+                              (historySortOrder === "asc" ? (
+                                <SortAsc size={12} />
+                              ) : (
+                                <SortDesc size={12} />
+                              ))}
+                          </button>
+                        </th>
                         <th className="px-5 py-4 text-right"></th>
                       </tr>
                     </thead>

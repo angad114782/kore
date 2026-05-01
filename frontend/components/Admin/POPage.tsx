@@ -114,8 +114,13 @@ const computeItem = (item: PurchaseOrderItem): PurchaseOrderItem => {
   // Always use derivedQty if sizeMap exists, otherwise use item.quantity
   const qty =
     Object.keys(sizeMapPlain).length > 0 ? derivedQty : item.quantity || 0;
-  const taxPerItem = (item.basePrice * item.taxRate) / 100;
-  const unitTotal = (item.basePrice + taxPerItem) * qty;
+  // cartonCount from the item, or derive from qty (qty is total pairs from sizeMap)
+  const cartons = item.cartonCount || Math.floor(qty / 24) || 0;
+  const totalPairs = cartons * 24;
+  // Tax = totalPairs × taxRate
+  const taxPerItem = totalPairs * item.taxRate;
+  // Unit Total = totalPairs × unitPrice
+  const unitTotal = totalPairs * item.basePrice;
 
   return {
     ...item,
@@ -974,15 +979,16 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
     return groups;
   }, [itemOptions, itemPickerSearch]);
 
-  // ── Computations ──
+  // subTotal = sum of all row unitTotals (each is cartons × 24 × unitPrice)
   const subTotal = items.reduce(
-    (sum, it) => sum + it.basePrice * it.quantity,
+    (sum, it) => sum + it.unitTotal,
     0
   );
   const discountAmount =
     Math.round(((subTotal * discountPercent) / 100) * 100) / 100;
+  // taxPerItem is already the total tax for the row (cartons × 24 × taxRate%)
   const totalTax = items.reduce(
-    (sum, it) => sum + it.taxPerItem * it.quantity,
+    (sum, it) => sum + it.taxPerItem,
     0
   );
   const total = Math.round((subTotal - discountAmount + totalTax) * 100) / 100;
@@ -1790,12 +1796,12 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
               Download PDF
             </button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 const currentPO = purchaseOrders.find(
                   (p) => p.id === editingPOId
                 );
                 if (currentPO)
-                  exportOrderToExcel({ ...currentPO, items }, selectedVendor);
+                  await exportOrderToExcel({ ...currentPO, items }, selectedVendor);
               }}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 text-sm font-bold rounded-xl hover:bg-indigo-100 transition-all border border-indigo-200"
             >
@@ -2157,7 +2163,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                     Unit Price (₹)
                   </th>
                   <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider text-right">
-                    Tax/Item
+                    Tax
                   </th>
                   <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider text-right">
                     Unit Total

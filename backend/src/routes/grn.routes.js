@@ -19,6 +19,7 @@ router.post("/drafts/:draftId/submit", grn.submitDraft);
 
 // History + details
 router.get("/history", grn.history);
+router.get("/history/export", grn.exportHistory);
 router.get("/:grnId", grn.getGRNById);
 
 module.exports = router;

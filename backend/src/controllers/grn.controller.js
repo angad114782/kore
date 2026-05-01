@@ -75,7 +75,16 @@ exports.submitDraft = async (req, res) => {
 
 exports.history = async (req, res) => {
   try {
-    const data = await grnService.getHistory(req.query.search || "");
+    const data = await grnService.getHistory(req.query);
+    return ok(res, { data });
+  } catch (e) {
+    return fail(res, { message: e.message });
+  }
+};
+
+exports.exportHistory = async (req, res) => {
+  try {
+    const data = await grnService.getHistoryForExport(req.query);
     return ok(res, { data });
   } catch (e) {
     return fail(res, { message: e.message });

@@ -48,10 +48,10 @@ const compressImages = async (req, res, next) => {
         const webpFilename = `${Date.now()}-${base}.webp`;
         const outputPath = path.join(uploadDir, webpFilename);
 
-        // Compress & convert to WebP
+        // Compress & convert to WebP (Increased quality and resolution for better fidelity)
         await sharp(file.buffer)
-          .resize({ width: 1200, withoutEnlargement: true })
-          .webp({ quality: 80 })
+          .resize({ width: 1600, withoutEnlargement: true })
+          .webp({ quality: 90, smartSubsample: true })
           .toFile(outputPath);
 
         // Update file metadata so downstream service code works unchanged

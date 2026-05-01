@@ -113,11 +113,22 @@ export const grnService = {
     return { data: detail };
   },
 
-  async history(search: string = "") {
-    const params = new URLSearchParams();
-    if (search) params.append("search", search);
-    const query = params.toString() ? `?${params.toString()}` : "";
+  async history(params: Record<string, string> = {}) {
+    const qp = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v) qp.append(k, v);
+    });
+    const query = qp.toString() ? `?${qp.toString()}` : "";
     return apiFetch(`/grn/history${query}`);
+  },
+
+  async exportHistory(params: Record<string, string> = {}) {
+    const qp = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v) qp.append(k, v);
+    });
+    const query = qp.toString() ? `?${qp.toString()}` : "";
+    return apiFetch(`/grn/history/export${query}`);
   },
 
   async getGRNDetail(grnId: string) {

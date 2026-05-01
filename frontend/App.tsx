@@ -432,6 +432,13 @@ const App: React.FC = () => {
     });
   };
 
+  const handleReturnSuccess = async () => {
+    // Refresh articles (for stock updates)
+    await fetchArticles();
+    // Refresh orders (to reflect the new return records and order status changes)
+    await fetchOrdersRef.current?.(true);
+  };
+
   // add given sizeQuantities for a particular variant
   const addToCart = (
     articleId: string,
@@ -745,6 +752,7 @@ const App: React.FC = () => {
               addArticle={addArticle}
               updateArticle={updateArticle}
               editingId={editingArticleId}
+              initialArticle={articles.find(a => a.id === editingArticleId)}
               onSuccess={fetchArticles}
               onCancelEdit={() => {
                 setEditingArticleId(null);
@@ -854,7 +862,7 @@ const App: React.FC = () => {
           ))}
 
         {activeTab === "returns" && user.role !== UserRole.DISTRIBUTOR && (
-          <Returns orders={orders} articles={articles} onSuccess={fetchArticles} onInward={handleInwardStock} />
+          <Returns orders={orders} articles={articles} onSuccess={handleReturnSuccess} onInward={handleInwardStock} />
         )}
 
         {activeTab === "shop" && user.role === UserRole.DISTRIBUTOR && (

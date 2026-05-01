@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Search, Plus, Trash2, ChevronDown, X } from "lucide-react";
 
 interface SearchableSelectProps {
-  label: string;
+  label?: string;
   options: string[];
   value: string;
   onChange: (value: string) => void;
@@ -67,9 +67,11 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1">
-        {label} {required && <span className="text-rose-500">*</span>}
-      </label>
+      {label && (
+        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1">
+          {label} {required && <span className="text-rose-500">*</span>}
+        </label>
+      )}
       
       <div
         onClick={() => setIsOpen(!isOpen)}
