@@ -347,24 +347,56 @@ const updateOrderStatus = async (orderId, status, {
         );
 
         if (orderItem) {
-          // Constraint: Cannot allocate more than what is currently BLOCKED
-          const blockedSizes = orderItem.blockedSizeQuantities ? Object.fromEntries(orderItem.blockedSizeQuantities) : {};
+          const oldBlockedSizes = orderItem.blockedSizeQuantities ? Object.fromEntries(orderItem.blockedSizeQuantities) : {};
           const newAllocSizes = allocatedItem.allocatedSizeQuantities || {};
+          const updatedBlockedSizes = { ...oldBlockedSizes };
 
-          // Validate size-wise
+          // Auto-block any stock not yet reserved that is needed for this allocation.
+          // This makes the "Block" step optional — allocation from live stock works directly.
+          let autoBlockApplied = false;
+          const catalogItem = await MasterCatalog.findById(orderItem.articleId);
+
           for (const size in newAllocSizes) {
             const req = Number(newAllocSizes[size] || 0);
-            const avail = Number(blockedSizes[size] || 0);
-            if (req > avail) {
-              throw new Error(`Cannot allocate ${req} pairs for size ${size}. Only ${avail} pairs are blocked.`);
+            const alreadyBlocked = Number(oldBlockedSizes[size] || 0);
+            const additionalNeeded = Math.max(0, req - alreadyBlocked);
+
+            if (additionalNeeded > 0) {
+              if (!catalogItem) {
+                throw new Error(`Cannot allocate ${req} pairs for size ${size}: catalog item not found.`);
+              }
+              const variant = catalogItem.variants.id(orderItem.variantId);
+              if (!variant || !variant.sizeMap || !variant.sizeMap.has(size)) {
+                throw new Error(`Cannot allocate ${req} pairs for size ${size}: size not found in catalog.`);
+              }
+              const cell = variant.sizeMap.get(size);
+              const liveQty = Number(cell.qty || 0);
+              if (additionalNeeded > liveQty) {
+                throw new Error(
+                  `Cannot allocate ${req} pairs for size ${size}. ` +
+                  `Only ${alreadyBlocked + liveQty} pairs available (${alreadyBlocked} reserved + ${liveQty} in stock).`
+                );
+              }
+              // Move the needed qty from live → blocked in the catalog
+              cell.qty = Math.max(0, liveQty - additionalNeeded);
+              cell.blockedQty = Math.max(0, (cell.blockedQty || 0) + additionalNeeded);
+              variant.sizeMap.set(size, cell);
+              updatedBlockedSizes[size] = alreadyBlocked + additionalNeeded;
+              autoBlockApplied = true;
             }
           }
 
-          // Note: We don't deduct from MasterCatalog here because it was already 
-          // deducted from 'qty' and added to 'blockedQty' during the Blocking stage.
-          // The stock remains in 'blockedQty' until the order is RECEIVED/dispatched.
+          if (autoBlockApplied && catalogItem) {
+            await catalogItem.save();
+            orderItem.blockedSizeQuantities = updatedBlockedSizes;
+            orderItem.blockedPairCount = Object.values(updatedBlockedSizes).reduce((s, v) => s + Number(v || 0), 0);
+            orderItem.blockedCartonCount = Math.max(
+              orderItem.blockedCartonCount || 0,
+              Number(allocatedItem.allocatedCartonCount) || 0
+            );
+          }
 
-          // Update allocated counts for the CURRENT batch in the order item
+          // Update allocated counts for the current batch
           orderItem.allocatedCartonCount = Math.max(0, Number(allocatedItem.allocatedCartonCount) || 0);
           orderItem.allocatedPairCount = Math.max(0, Number(allocatedItem.allocatedPairCount) || 0);
           orderItem.allocatedSizeQuantities = newAllocSizes;
