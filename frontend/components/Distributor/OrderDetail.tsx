@@ -1132,7 +1132,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                             <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Image</th>
                             <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Article / Variant</th>
                             <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ordered (Ctn)</th>
-                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Fulfilled (Ctn)</th>
+                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Dispatched (Ctn)</th>
                             <th className="px-6 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-center">Returned (Ctn)</th>
                             <th className="px-6 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-center">Remaining (Ctn)</th>
                             <th className="px-6 py-3 text-[10px] font-black text-indigo-600 uppercase tracking-widest text-center">Allocation (Batch)</th>
@@ -1142,11 +1142,11 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                             <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Image</th>
                             <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Article / Variant</th>
                             <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ordered (Ctn)</th>
-                            <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Fulfilled (Ctn)</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Dispatched (Ctn)</th>
                             <th className="px-4 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-center">Returned (Ctn)</th>
                             <th className="px-4 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-center">Remaining (Ctn)</th>
                             <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center bg-indigo-50/30">Live Stock (Ctn)</th>
-                            <th className="px-4 py-3 text-[10px] font-black text-amber-600 uppercase tracking-widest text-center bg-amber-50/30">Blocked (Ctn)</th>
+                            <th className="px-4 py-3 text-[10px] font-black text-amber-600 uppercase tracking-widest text-center bg-amber-50/30">Block Stock <span className="normal-case font-medium text-amber-400">(opt)</span></th>
                             <th className="px-4 py-3 text-[10px] font-black text-indigo-600 uppercase tracking-widest text-center bg-indigo-50/30">Allocation (Ctn)</th>
                             {[OrderStatus.RFD, OrderStatus.OFD, OrderStatus.RECEIVED].includes(currentOrder.status) && (
                               <th className="px-4 py-3 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-center">Scanned (Ctn)</th>
@@ -1342,191 +1342,180 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                     const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + (a.allocatedCartonCount || 0), 0) ||
                                          currentOrder.items.reduce((sum, i) => sum + (i.allocatedCartonCount || 0), 0);
 
-                    // Allocation is mandatory: every item with remaining qty must have > 0 allocation
                     const allItemsAllocated = currentOrder.items.every(item => {
                       const remaining = item.cartonCount - (item.fulfilledCartonCount || 0);
-                      if (remaining <= 0) return true; // fully fulfilled, skip
+                      if (remaining <= 0) return true;
                       const alloc = allocations[item.variantId!]?.allocatedCartonCount ?? item.allocatedCartonCount ?? 0;
                       return alloc > 0;
                     });
 
-                    return !isDistributor && (currentOrder.status === OrderStatus.BOOKED || currentOrder.status === OrderStatus.PARTIAL || currentOrder.status === OrderStatus.PFD || currentOrder.status === OrderStatus.RFD) && (
-                      <div className="p-6 bg-slate-50/50 border-t border-slate-100 space-y-6">
-                        {/* Status Transition Header */}
-                        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                    const hasUnsavedBlocking = currentOrder.items.some(item => {
+                      const saved = item.blockedCartonCount ?? 0;
+                      const current = blockingState[item.variantId!]?.blockedCartonCount ?? saved;
+                      return current !== saved;
+                    });
+
+                    const allDocsUploaded = !!(shippingFiles.invoice && shippingFiles.ewayBill && shippingFiles.transportBill);
+
+                    if (isDistributor || ![OrderStatus.BOOKED, OrderStatus.PARTIAL, OrderStatus.PFD, OrderStatus.RFD].includes(currentOrder.status)) return null;
+
+                    const stepConfig = {
+                      [OrderStatus.BOOKED]:  { num: 1, color: 'bg-indigo-600',  title: 'Allocate Stock',         hint: 'Set carton quantities in the table above. Blocking is optional — you can allocate directly.' },
+                      [OrderStatus.PARTIAL]: { num: 1, color: 'bg-indigo-600',  title: 'Allocate Next Batch',    hint: 'Set quantities for the next delivery batch. Blocking is optional.' },
+                      [OrderStatus.PFD]:     { num: 2, color: 'bg-amber-500',   title: 'Prepare for Delivery',   hint: 'Update allocation if needed, download PI, then mark as Ready for Delivery.' },
+                      [OrderStatus.RFD]:     { num: 3, color: 'bg-blue-500',    title: 'Dispatch Order',         hint: 'Upload 3 shipping documents, scan cartons to verify, then confirm dispatch.' },
+                    } as const;
+                    const step = stepConfig[currentOrder.status as keyof typeof stepConfig];
+
+                    return (
+                      <div className="p-6 bg-slate-50/50 border-t border-slate-100 space-y-5">
+                        {/* Step Header */}
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
-                              <ShieldCheck size={18} className="text-indigo-600" />
+                            <div className={`w-8 h-8 rounded-full ${step.color} text-white flex items-center justify-center text-sm font-black shrink-0`}>
+                              {step.num}
                             </div>
                             <div>
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Administrative Actions</p>
-                              <p className="text-sm font-bold text-slate-900">Current Stage: {STATUS_LABELS[currentOrder.status]}</p>
+                              <p className="text-sm font-bold text-slate-900">{step.title}</p>
+                              <p className="text-[10px] font-medium text-slate-400">{step.hint}</p>
                             </div>
                           </div>
-
-                          <div className="flex items-center gap-2">
-                              {(currentOrder.status === OrderStatus.PFD || currentOrder.status === OrderStatus.RFD) && (
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={handleDownloadPI}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold text-[10px] uppercase hover:bg-slate-50 transition-all shadow-sm"
-                                  >
-                                    <FileText size={12} className="text-indigo-600" />
-                                    PI PDF
-                                  </button>
-                                  <button
-                                    onClick={handleDownloadExcelPI}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold text-[10px] uppercase hover:bg-slate-50 transition-all shadow-sm"
-                                  >
-                                    <Download size={12} className="text-green-600" />
-                                    PI Excel
-                                  </button>
-                                </div>
-                              )}
-                          </div>
+                          {[OrderStatus.PFD, OrderStatus.RFD].includes(currentOrder.status) && (
+                            <div className="flex gap-2 shrink-0">
+                              <button onClick={handleDownloadPI} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold text-[10px] uppercase hover:bg-slate-50 transition-all shadow-sm">
+                                <FileText size={12} className="text-indigo-600" /> PI PDF
+                              </button>
+                              <button onClick={handleDownloadExcelPI} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold text-[10px] uppercase hover:bg-slate-50 transition-all shadow-sm">
+                                <Download size={12} className="text-green-600" /> PI Excel
+                              </button>
+                            </div>
+                          )}
                         </div>
 
-                        {/* Document Upload Stage — Only for RFD -> OFD transition */}
+                        {/* Shipping Documents — RFD only */}
                         {currentOrder.status === OrderStatus.RFD && (
-                          <div className="animate-in fade-in slide-in-from-top-2 duration-500 space-y-4">
-                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center mb-1">Necessary Shipping Documents</p>
-                            
+                          <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+                              Shipping Documents <span className="text-rose-400 normal-case font-bold">* All 3 required</span>
+                            </p>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                              {/* Invoice Upload */}
-                              <div className="relative">
+                              <div>
                                 <input type="file" ref={invoiceInputRef} className="hidden" onChange={(e) => onShippingFileSelected('invoice', e)} />
-                                <button 
-                                  onClick={() => invoiceInputRef.current?.click()}
-                                  className={`w-full flex flex-col items-center justify-center p-3 rounded-xl border-dashed border-2 transition-all gap-1 ${
-                                    shippingFiles.invoice ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                                  }`}
-                                >
-                                  {shippingFiles.invoice ? <CheckCircle size={16} className="text-emerald-500" /> : <Upload size={16} className="text-slate-400" />}
-                                  <span className="text-[9px] font-bold text-slate-600 uppercase">Invoice</span>
+                                <button onClick={() => invoiceInputRef.current?.click()} className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${shippingFiles.invoice ? 'border-emerald-400 bg-emerald-50' : 'border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100'}`}>
+                                  {shippingFiles.invoice ? <CheckCircle size={16} className="text-emerald-500 shrink-0" /> : <Upload size={16} className="text-slate-400 shrink-0" />}
+                                  <div className="text-left min-w-0">
+                                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Tax Invoice</p>
+                                    {shippingFiles.invoice && <p className="text-[8px] font-bold text-emerald-600 truncate">{shippingFiles.invoice.name}</p>}
+                                  </div>
                                 </button>
-                                {shippingFiles.invoice && <p className="text-[8px] text-emerald-600 font-bold truncate mt-1 text-center px-2">{shippingFiles.invoice.name}</p>}
                               </div>
-
-                              {/* E-Way Bill Upload */}
-                              <div className="relative">
+                              <div>
                                 <input type="file" ref={ewayInputRef} className="hidden" onChange={(e) => onShippingFileSelected('ewayBill', e)} />
-                                <button 
-                                  onClick={() => ewayInputRef.current?.click()}
-                                  className={`w-full flex flex-col items-center justify-center p-3 rounded-xl border-dashed border-2 transition-all gap-1 ${
-                                    shippingFiles.ewayBill ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                                  }`}
-                                >
-                                  {shippingFiles.ewayBill ? <CheckCircle size={16} className="text-emerald-500" /> : <Upload size={16} className="text-slate-400" />}
-                                  <span className="text-[9px] font-bold text-slate-600 uppercase">E-Way Bill</span>
+                                <button onClick={() => ewayInputRef.current?.click()} className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${shippingFiles.ewayBill ? 'border-emerald-400 bg-emerald-50' : 'border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100'}`}>
+                                  {shippingFiles.ewayBill ? <CheckCircle size={16} className="text-emerald-500 shrink-0" /> : <Upload size={16} className="text-slate-400 shrink-0" />}
+                                  <div className="text-left min-w-0">
+                                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider">E-Way Bill</p>
+                                    {shippingFiles.ewayBill && <p className="text-[8px] font-bold text-emerald-600 truncate">{shippingFiles.ewayBill.name}</p>}
+                                  </div>
                                 </button>
-                                {shippingFiles.ewayBill && <p className="text-[8px] text-emerald-600 font-bold truncate mt-1 text-center px-2">{shippingFiles.ewayBill.name}</p>}
                               </div>
-
-                              {/* Transport Bill Upload */}
-                              <div className="relative">
+                              <div>
                                 <input type="file" ref={transportInputRef} className="hidden" onChange={(e) => onShippingFileSelected('transportBill', e)} />
-                                <button 
-                                  onClick={() => transportInputRef.current?.click()}
-                                  className={`w-full flex flex-col items-center justify-center p-3 rounded-xl border-dashed border-2 transition-all gap-1 ${
-                                    shippingFiles.transportBill ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                                  }`}
-                                >
-                                  {shippingFiles.transportBill ? <CheckCircle size={16} className="text-emerald-500" /> : <Upload size={16} className="text-slate-400" />}
-                                  <span className="text-[9px] font-bold text-slate-600 uppercase">Transport Bill</span>
+                                <button onClick={() => transportInputRef.current?.click()} className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${shippingFiles.transportBill ? 'border-emerald-400 bg-emerald-50' : 'border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100'}`}>
+                                  {shippingFiles.transportBill ? <CheckCircle size={16} className="text-emerald-500 shrink-0" /> : <Upload size={16} className="text-slate-400 shrink-0" />}
+                                  <div className="text-left min-w-0">
+                                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Transport Bill</p>
+                                    {shippingFiles.transportBill && <p className="text-[8px] font-bold text-emerald-600 truncate">{shippingFiles.transportBill.name}</p>}
+                                  </div>
                                 </button>
-                                {shippingFiles.transportBill && <p className="text-[8px] text-emerald-600 font-bold truncate mt-1 text-center px-2">{shippingFiles.transportBill.name}</p>}
                               </div>
                             </div>
                           </div>
                         )}
 
-                        <div className="flex justify-between items-center gap-4">
-                          <div className="flex gap-4">
-                            {Object.keys(blockingState).length > 0 && (currentOrder.status === OrderStatus.BOOKED || currentOrder.status === OrderStatus.PARTIAL) && (
-                              <div className="flex items-center gap-3 bg-amber-50 px-4 py-2 rounded-xl border border-amber-200">
-                                <div className="flex flex-col text-left">
-                                  <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest leading-none">Pending Blocking</span>
-                                  <span className="text-[8px] font-bold text-amber-500">Unsaved reservations</span>
-                                </div>
-                                <button
-                                  disabled={uploading}
-                                  onClick={handleUpdateBlockedStock}
-                                  className="px-3 py-1.5 bg-amber-600 text-white rounded-lg font-bold text-[9px] uppercase hover:bg-amber-700 transition-all shadow-md flex items-center gap-1.5"
-                                >
-                                  {uploading ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} />}
-                                  Apply Blocking
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                        {/* Action Row */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                          {/* Optional: Save Blocking Changes (only when user has made blocking edits) */}
+                          {hasUnsavedBlocking && [OrderStatus.BOOKED, OrderStatus.PARTIAL].includes(currentOrder.status) && (
+                            <button
+                              disabled={uploading}
+                              onClick={handleUpdateBlockedStock}
+                              className="flex items-center gap-1.5 px-4 py-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl font-bold text-[10px] uppercase hover:bg-amber-100 transition-all"
+                            >
+                              {uploading ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} />}
+                              Save Reservations <span className="font-normal normal-case text-amber-500">(optional)</span>
+                            </button>
+                          )}
 
-                          <div className="flex items-center gap-4">
-                            {(currentOrder.status === OrderStatus.BOOKED || currentOrder.status === OrderStatus.PARTIAL || currentOrder.status === OrderStatus.PFD) && (
-                              <div className="flex items-center gap-4 animate-in slide-in-from-right-2">
-                                <div className="flex flex-col text-right">
-                                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Batch Action</span>
-                                  <span className="text-[9px] font-bold text-indigo-600">{totalAllocated > 0 ? `Total Allocation: ${totalAllocated} Cartons` : "Nothing allocated yet"}</span>
-                                </div>
+                          {/* Main actions — right aligned */}
+                          <div className="ml-auto flex items-center gap-3 flex-wrap">
+                            {/* BOOKED / PARTIAL / PFD: Allocate button */}
+                            {[OrderStatus.BOOKED, OrderStatus.PARTIAL, OrderStatus.PFD].includes(currentOrder.status) && (
+                              <>
+                                {totalAllocated > 0 && (
+                                  <div className="hidden sm:flex flex-col items-end">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Batch</span>
+                                    <span className="text-[10px] font-bold text-indigo-600">{totalAllocated} cartons</span>
+                                  </div>
+                                )}
                                 <button
                                   disabled={uploading || !allItemsAllocated}
-                                  title={!allItemsAllocated ? "Allocation required for all items before proceeding" : undefined}
+                                  title={!allItemsAllocated ? "Set allocation for all remaining items first" : undefined}
                                   onClick={handleAllocateAndProceed}
-                                  className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:bg-slate-400"
+                                  className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 text-white rounded-xl font-bold text-xs hover:bg-slate-900 transition-all shadow-md active:scale-95 disabled:opacity-50"
                                 >
-                                  {uploading ? <Loader2 size={16} className="animate-spin" /> : <Package size={16} />}
-                                  {currentOrder.status === OrderStatus.BOOKED || currentOrder.status === OrderStatus.PARTIAL 
-                                    ? "Mark Initial Allocation" 
-                                    : "Update Allocation Count"}
+                                  {uploading ? <Loader2 size={14} className="animate-spin" /> : <Package size={14} />}
+                                  {[OrderStatus.BOOKED, OrderStatus.PARTIAL].includes(currentOrder.status) ? 'Allocate & Proceed' : 'Update Allocation'}
                                 </button>
-                              </div>
+                              </>
                             )}
 
+                            {/* PFD: Mark RFD */}
                             {currentOrder.status === OrderStatus.PFD && (
                               <button
                                 disabled={uploading || !allItemsAllocated}
-                                title={!allItemsAllocated ? "All items must be allocated before marking Ready for Delivery" : undefined}
+                                title={!allItemsAllocated ? "Allocate all items before marking Ready for Delivery" : undefined}
                                 onClick={() => handleUpdateStatus(OrderStatus.RFD)}
-                                className="flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
+                                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
                               >
-                                {uploading ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
+                                {uploading ? <Loader2 size={14} className="animate-spin" /> : <ChevronRight size={14} />}
                                 Mark Ready for Delivery
                               </button>
                             )}
 
-                             {currentOrder.status === OrderStatus.RFD && (
-                               <div className="flex items-center gap-4">
-                                 <div className="flex items-center gap-3 animate-in slide-in-from-right-2">
-                                   <div className="relative">
-                                     <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                                       <Barcode size={14} className="text-slate-400" />
-                                     </div>
-                                     <input
-                                       type="text"
-                                       placeholder="Scan SKU to Verify..."
-                                       value={scanInput}
-                                       onChange={(e) => setScanInput(e.target.value)}
-                                       onKeyDown={(e) => e.key === 'Enter' && handleScanSKU(scanInput)}
-                                       className="w-48 pl-8 pr-3 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-bold shadow-sm"
-                                       autoFocus
-                                     />
-                                   </div>
-                                   {isScanningFinished() && (
-                                     <div className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-wider animate-in fade-in zoom-in shadow-md">
-                                       <ShieldCheck size={12} /> Verified
-                                     </div>
-                                   )}
-                                 </div>
-
-                                 <button
-                                   onClick={() => handleUpdateStatus(OrderStatus.OFD)}
-                                   disabled={uploading || !isScanningFinished() || !shippingFiles.invoice || !shippingFiles.ewayBill || !shippingFiles.transportBill}
-                                   className="flex items-center justify-center gap-2 px-8 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                                 >
-                                   {uploading ? <Loader2 size={16} className="animate-spin" /> : <Truck size={16} />}
-                                   Mark Out for Delivery
-                                 </button>
-                               </div>
-                             )}
+                            {/* RFD: Scan + Dispatch */}
+                            {currentOrder.status === OrderStatus.RFD && (
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <div className="relative">
+                                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                                    <Barcode size={14} className="text-slate-400" />
+                                  </div>
+                                  <input
+                                    type="text"
+                                    placeholder="Scan carton SKU..."
+                                    value={scanInput}
+                                    onChange={(e) => setScanInput(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleScanSKU(scanInput)}
+                                    className="w-48 pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 text-xs font-bold shadow-sm"
+                                    autoFocus
+                                  />
+                                </div>
+                                {isScanningFinished() && (
+                                  <div className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-wider animate-in fade-in zoom-in shadow-md">
+                                    <ShieldCheck size={12} /> All Scanned
+                                  </div>
+                                )}
+                                <button
+                                  onClick={() => handleUpdateStatus(OrderStatus.OFD)}
+                                  disabled={uploading || !isScanningFinished() || !allDocsUploaded}
+                                  title={!allDocsUploaded ? "Upload all 3 shipping documents first" : (!isScanningFinished() ? "Scan all allocated cartons first" : undefined)}
+                                  className="flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {uploading ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+                                  Confirm Dispatch
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
