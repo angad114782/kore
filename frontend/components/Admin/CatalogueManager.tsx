@@ -54,8 +54,33 @@ interface CatalogueManagerProps {
 }
 
 // ─── CSV Types ──────────────────────────────────────────────────────────────────
-interface CsvRow { name: string; color: string; size: string; mrp: string; }
-interface CsvCommon { gender: string; category: string; brand: string; manufacturer: string; unit: string; }
+interface CsvRow {
+  name: string; color: string; size: string; mrp: string;
+  cost_price?: string; hsn?: string;
+  gender?: string; category?: string; brand?: string; manufacturer?: string; unit?: string; image?: string;
+  sole_color?: string; listing_status?: string; expected_date?: string;
+  [key: string]: string | undefined;
+}
+
+// Reads size_5, size_6 ... columns → { "5": 6, "6": 8 }
+function extractSizeQty(row: CsvRow): Record<string, number> {
+  const result: Record<string, number> = {};
+  Object.keys(row).forEach(key => {
+    const match = key.match(/^size_(\d+(?:\.\d+)?)$/);
+    if (match && row[key]) {
+      const qty = Number(row[key]);
+      if (qty > 0) result[match[1]] = qty;
+    }
+  });
+  return result;
+}
+
+function formatSizeQtyDisplay(row: CsvRow): string {
+  const sizes = extractSizeQty(row);
+  const entries = Object.entries(sizes).sort((a, b) => Number(a[0]) - Number(b[0]));
+  if (!entries.length) return "—";
+  return entries.map(([sz, qty]) => `${sz}→${qty}`).join(", ");
+}
 
 function parseCsv(text: string): CsvRow[] {
   const lines = text.trim().split(/\r?\n/).filter(Boolean);
@@ -100,26 +125,27 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   const [csvOpen, setCsvOpen] = useState(false);
   const [csvText, setCsvText] = useState("");
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
-  const [csvCommon, setCsvCommon] = useState<CsvCommon>({ gender: "MEN", category: "", brand: "", manufacturer: "", unit: "" });
   const [csvLoading, setCsvLoading] = useState(false);
-  const [csvStep, setCsvStep] = useState<1 | 2>(1); // 1=upload, 2=configure+preview
+  const [csvStep, setCsvStep] = useState<1 | 2>(1); // 1=upload, 2=preview+import
   const [taxonomy, setTaxonomy] = useState<{ categories: any[]; brands: any[]; manufacturers: any[]; units: any[] }>({ categories: [], brands: [], manufacturers: [], units: [] });
 
   const loadTaxonomy = async () => {
     try {
       const [catRes, brandRes, manRes, unitRes] = await Promise.all([
-        masterCatalogService.listCategories(),
-        masterCatalogService.listBrands(),
-        masterCatalogService.listManufacturers(),
-        masterCatalogService.listUnits(),
+        masterCatalogService.listCategories("?limit=1000"),
+        masterCatalogService.listBrands(undefined, "?limit=1000"),
+        masterCatalogService.listManufacturers("?limit=1000"),
+        masterCatalogService.listUnits("?limit=1000"),
       ]);
       setTaxonomy({
         categories: catRes.data || [],
         brands: brandRes.data || [],
         manufacturers: manRes.data || [],
-        units: unitRes.data || (Array.isArray(unitRes) ? unitRes : []),
+        units: unitRes.data || [],
       });
-    } catch {}
+    } catch (e) {
+      toast.error("Failed to load taxonomy. Please close and reopen the modal.");
+    }
   };
 
   const openCsvModal = () => { setCsvOpen(true); setCsvStep(1); setCsvText(""); setCsvRows([]); loadTaxonomy(); };
@@ -142,57 +168,134 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   };
 
   const handleCsvImport = async () => {
-    if (!csvCommon.category || !csvCommon.brand || !csvCommon.manufacturer || !csvCommon.unit) {
-      return toast.error("Please fill all common fields (Category, Brand, Manufacturer, Unit)");
-    }
-    const catDoc = taxonomy.categories.find((c: any) => (c.name || c) === csvCommon.category);
-    const brandDoc = taxonomy.brands.find((b: any) => (b.name || b) === csvCommon.brand);
-    const manDoc = taxonomy.manufacturers.find((m: any) => (m.name || m) === csvCommon.manufacturer);
-    const unitDoc = taxonomy.units.find((u: any) => (u.name || u) === csvCommon.unit);
-
-    if (!catDoc?._id || !brandDoc?._id || !manDoc?._id || !unitDoc?._id) {
-      return toast.error("Taxonomy IDs not resolved. Re-select category/brand/manufacturer/unit.");
-    }
-
     const groups = groupCsvByName(csvRows);
     const names = Object.keys(groups);
     setCsvLoading(true);
 
     const importPromise = async () => {
+      // Local mutable copies so newly-created docs are reused within same import
+      const localCats = [...taxonomy.categories];
+      const localBrands = [...taxonomy.brands];
+      const localMans = [...taxonomy.manufacturers];
+      const localUnits = [...taxonomy.units];
+
+      // Generic: find in list → try create → on 409 re-fetch → push to list
+      const findOrCreate = async (
+        list: any[],
+        predicate: (i: any) => boolean,
+        createFn: () => Promise<any>,
+        fetchFn: () => Promise<any>
+      ) => {
+        let doc = list.find(predicate);
+        if (!doc) {
+          try {
+            const res = await createFn();
+            doc = res.data;
+          } catch {
+            // Already exists (409) or other — try fetching by name
+            const res = await fetchFn();
+            doc = (res.data || []).find(predicate);
+          }
+          if (doc) list.push(doc);
+        }
+        if (!doc) throw new Error("Could not find or create taxonomy item");
+        return doc;
+      };
+
       let created = 0;
       for (const name of names) {
         const rows = groups[name];
-        const colors = Array.from(new Set(rows.map(r => r.color).filter(Boolean)));
-        const sizes = Array.from(new Set(rows.map(r => r.size).filter(Boolean)));
-        const mrp = Math.max(...rows.map(r => Number(r.mrp) || 0));
+        const firstRow = rows[0];
 
-        const variants = colors.flatMap(color =>
-          sizes.map(size => ({
-            itemName: `${name}-${color}-${size}`,
-            color,
-            sizeRange: size,
-            costPrice: 0,
-            sellingPrice: 0,
-            mrp,
-            hsnCode: "",
-            sizeQuantities: {},
-            sizeSkus: {},
-            sizeMap: {},
-          }))
+        const gender = (firstRow.gender || "MEN").toUpperCase();
+        const catName  = (firstRow.category     || "").trim();
+        const brdName  = (firstRow.brand         || "").trim();
+        const manName  = (firstRow.manufacturer  || "").trim();
+        const unitName = (firstRow.unit          || "").trim();
+
+        const catDoc = await findOrCreate(
+          localCats,
+          (i: any) => i.name?.toLowerCase() === catName.toLowerCase(),
+          () => masterCatalogService.createCategory(catName),
+          () => masterCatalogService.listCategories(`?q=${encodeURIComponent(catName)}&limit=10`)
         );
+
+        // Brand requires categoryId — pass catDoc._id on create
+        const brandDoc = await findOrCreate(
+          localBrands,
+          (i: any) => i.name?.toLowerCase() === brdName.toLowerCase() && String(i.categoryId) === String(catDoc._id),
+          () => masterCatalogService.createBrand(brdName, catDoc._id),
+          () => masterCatalogService.listBrands(catDoc._id, `?q=${encodeURIComponent(brdName)}&limit=10`)
+        );
+
+        const manDoc = await findOrCreate(
+          localMans,
+          (i: any) => i.name?.toLowerCase() === manName.toLowerCase(),
+          () => masterCatalogService.createManufacturer(manName),
+          () => masterCatalogService.listManufacturers(`?q=${encodeURIComponent(manName)}&limit=10`)
+        );
+
+        const unitDoc = await findOrCreate(
+          localUnits,
+          (i: any) => i.name?.toLowerCase() === unitName.toLowerCase(),
+          () => masterCatalogService.createUnit(unitName),
+          () => masterCatalogService.listUnits(`?q=${encodeURIComponent(unitName)}&limit=10`)
+        );
+
+        const colors = Array.from(new Set(rows.map(r => r.color).filter(Boolean)));
+        const sizes  = Array.from(new Set(rows.map(r => r.size).filter(Boolean)));
+        const mrp    = Math.max(...rows.map(r => Number(r.mrp) || 0));
+
+        // Build color → image URL map from CSV
+        const colorImageUrls: Record<string, string> = {};
+        rows.forEach(r => { if (r.color && r.image) colorImageUrls[r.color] = r.image; });
+
+        // Each CSV row = one variant directly (no cartesian product)
+        const variants = rows
+          .filter(r => r.color && r.size)
+          .map(r => {
+            const sizeQuantities = extractSizeQty(r);
+            // sizeMap mirrors sizeQuantities for stock tracking
+            const sizeMap: Record<string, { qty: number; sku: string }> = {};
+            Object.entries(sizeQuantities).forEach(([sz, qty]) => {
+              sizeMap[sz] = { qty: 0, sku: "" };
+            });
+            return {
+              itemName:   `${name}-${r.color}-${r.size}`,
+              color:      r.color,
+              sizeRange:  r.size,
+              costPrice:  Number(r.cost_price) || 0,
+              sellingPrice: 0,
+              mrp:        Number(r.mrp) || mrp,
+              hsnCode:    r.hsn?.trim() || "",
+              sizeQuantities,
+              sizeSkus:   {},
+              sizeMap,
+            };
+          });
+
+        const soleColor = firstRow.sole_color?.trim() || "";
+        const rawStatus = (firstRow.listing_status || "available").trim().toUpperCase();
+        const stage = rawStatus === "WISHLIST" ? "WISHLIST" : "AVAILABLE";
+        const expectedDate = firstRow.expected_date?.trim() || "";
 
         const fd = new FormData();
         fd.append("articleName", name);
         fd.append("mrp", String(mrp));
-        fd.append("gender", csvCommon.gender);
+        fd.append("gender", gender);
         fd.append("categoryId", catDoc._id);
         fd.append("brandId", brandDoc._id);
         fd.append("manufacturerCompanyId", manDoc._id);
         fd.append("unitId", unitDoc._id);
-        fd.append("stage", "AVAILABLE");
+        fd.append("stage", stage);
+        if (soleColor) fd.append("soleColor", soleColor);
+        if (stage === "WISHLIST" && expectedDate) fd.append("expectedAvailableDate", expectedDate);
         fd.append("productColors", JSON.stringify(colors));
         fd.append("sizeRanges", JSON.stringify(sizes));
         fd.append("variants", JSON.stringify(variants));
+        if (Object.keys(colorImageUrls).length > 0) {
+          fd.append("colorImageUrls", JSON.stringify(colorImageUrls));
+        }
 
         await masterCatalogService.createMasterItem(fd);
         created++;
@@ -205,6 +308,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
       success: (count) => {
         closeCsvModal();
         onSuccess?.();
+        loadTaxonomy();
         return `${count} article(s) imported successfully!`;
       },
       error: (err: any) => err.message || "Import failed",
@@ -1032,7 +1136,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                   <div className="bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-5 text-center">
                     <FileSpreadsheet size={36} className="mx-auto text-emerald-500 mb-2" />
                     <p className="text-sm font-semibold text-slate-700 mb-1">Upload CSV file or paste CSV text</p>
-                    <p className="text-xs text-slate-400 mb-4">Required columns: <code className="bg-slate-100 px-1 rounded">name, color, size, mrp</code></p>
+                    <p className="text-xs text-slate-400 mb-4">Columns: <code className="bg-slate-100 px-1 rounded">name, color, size, mrp, cost_price, hsn, gender, category, brand, manufacturer, unit, image, sole_color, listing_status, expected_date, size_5, size_6, size_7 ...</code></p>
                     <label className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold text-sm cursor-pointer hover:bg-emerald-700 transition-all">
                       <Upload size={15} /> Choose CSV File
                       <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleCsvFileUpload} />
@@ -1043,15 +1147,17 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Or paste CSV content:</p>
                     <textarea
                       rows={7}
-                      placeholder={"name,color,size,mrp\nUrban Runner,Red,5-8,1999\nUrban Runner,Blue,5-8,1999\nTerra X,Black,6-10,2499"}
+                      placeholder={"name,color,size,mrp,cost_price,hsn,gender,category,brand,manufacturer,unit,image,sole_color,listing_status,expected_date,size_5,size_6,size_7,size_8,size_9,size_10\nUrban Runner,Red,5-10,1999,1200,6403,MEN,Sports,Nike,Nike Factory,PAIR,https://img.com/red.jpg,White,available,,6,8,10,8,4,2\nUrban Runner,Blue,5-10,1999,1200,6403,MEN,Sports,Nike,Nike Factory,PAIR,https://img.com/blue.jpg,White,available,,6,8,10,8,4,2"}
                       className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 resize-none"
                       value={csvText}
                       onChange={e => setCsvText(e.target.value)}
                     />
                   </div>
 
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-                    <b>Format:</b> First row must be header. Columns: <code>name</code> (article name), <code>color</code> (variant color), <code>size</code> (size range like 5-8), <code>mrp</code> (price). Multiple rows with same name = same article with multiple variants.
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 space-y-1">
+                    <p><b>Format:</b> First row = header. Multiple rows with same <code>name</code> = same article with different color variants.</p>
+                    <p><b>Size columns</b> = har size ka alag column, jaise <code>size_5</code>, <code>size_6</code>, <code>size_7</code> — usme sirf quantity likho (e.g. 6, 8, 10). Jo size nahi hai use khali chhod do. <b>cost_price</b> aur <b>hsn</b> optional. <b>listing_status</b> = <code>available</code> ya <code>wishlist</code>. <b>expected_date</b> = YYYY-MM-DD.</p>
+                    <p><b>category/brand/manufacturer/unit</b> exact match hona chahiye system mein jo hai.</p>
                   </div>
 
                   <button
@@ -1064,81 +1170,73 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                 </div>
               )}
 
-              {/* Step 2: Configure + Preview */}
+              {/* Step 2: Preview + Import */}
               {csvStep === 2 && (
                 <div className="space-y-5">
-                  {/* Back */}
                   <button onClick={() => setCsvStep(1)} className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1">
                     ← Back
                   </button>
 
-                  {/* Common Fields */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                    <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Common Fields (applies to all articles)</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Gender *</label>
-                        <select className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none" value={csvCommon.gender} onChange={e => setCsvCommon(p => ({ ...p, gender: e.target.value }))}>
-                          {["MEN","WOMEN","KIDS","UNISEX"].map(g => <option key={g} value={g}>{g}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Category *</label>
-                        <select className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none" value={csvCommon.category} onChange={e => setCsvCommon(p => ({ ...p, category: e.target.value }))}>
-                          <option value="">Select...</option>
-                          {taxonomy.categories.map((c: any) => <option key={c._id} value={c.name || c}>{c.name || c}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Brand *</label>
-                        <select className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none" value={csvCommon.brand} onChange={e => setCsvCommon(p => ({ ...p, brand: e.target.value }))}>
-                          <option value="">Select...</option>
-                          {taxonomy.brands.map((b: any) => <option key={b._id} value={b.name || b}>{b.name || b}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Manufacturer *</label>
-                        <select className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none" value={csvCommon.manufacturer} onChange={e => setCsvCommon(p => ({ ...p, manufacturer: e.target.value }))}>
-                          <option value="">Select...</option>
-                          {taxonomy.manufacturers.map((m: any) => <option key={m._id} value={m.name || m}>{m.name || m}</option>)}
-                        </select>
-                      </div>
-                      <div className="col-span-2">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Unit *</label>
-                        <select className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none" value={csvCommon.unit} onChange={e => setCsvCommon(p => ({ ...p, unit: e.target.value }))}>
-                          <option value="">Select...</option>
-                          {taxonomy.units.map((u: any) => <option key={u._id} value={u.name || u}>{u.name || u}</option>)}
-                        </select>
-                      </div>
-                    </div>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800">
+                    <b>{Object.keys(groupCsvByName(csvRows)).length} article(s)</b> ready to import ({csvRows.length} variant rows). Category, Brand, Manufacturer, Unit aur Image URL CSV se hi liye jayenge.
                   </div>
 
-                  {/* Preview */}
+                  {/* Preview Table */}
                   <div>
-                    <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2">
-                      Preview — {Object.keys(groupCsvByName(csvRows)).length} article(s), {csvRows.length} variant row(s)
-                    </p>
-                    <div className="border border-slate-200 rounded-xl overflow-hidden">
-                      <table className="w-full text-left text-xs">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2">Preview</p>
+                    <div className="border border-slate-200 rounded-xl overflow-hidden overflow-x-auto">
+                      <table className="w-full text-left text-xs whitespace-nowrap">
                         <thead className="bg-slate-50">
                           <tr>
-                            <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Name</th>
-                            <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Color</th>
-                            <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Size Range</th>
-                            <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">MRP</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Name</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Color</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Size</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">MRP</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Cost ₹</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">HSN</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Size Qty (1 Ctn)</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Gender</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Category</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Brand</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Sole Color</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Exp. Date</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Image</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {csvRows.slice(0, 20).map((r, i) => (
+                        <tbody className="divide-y divide-slate-100">
+                          {csvRows.slice(0, 20).map((r, i) => {
+                            const isWishlist = (r.listing_status || "").toUpperCase() === "WISHLIST";
+                            return (
                             <tr key={i} className="hover:bg-slate-50">
-                              <td className="px-4 py-2 font-semibold text-slate-800">{r.name}</td>
-                              <td className="px-4 py-2 text-slate-600">{r.color}</td>
-                              <td className="px-4 py-2 text-slate-600 font-mono">{r.size}</td>
-                              <td className="px-4 py-2 font-bold text-indigo-600">₹{r.mrp}</td>
+                              <td className="px-3 py-2 font-semibold text-slate-800">{r.name}</td>
+                              <td className="px-3 py-2 text-slate-600">{r.color}</td>
+                              <td className="px-3 py-2 text-slate-600 font-mono">{r.size}</td>
+                              <td className="px-3 py-2 font-bold text-indigo-600">₹{r.mrp}</td>
+                              <td className="px-3 py-2 text-slate-600">₹{r.cost_price || "—"}</td>
+                              <td className="px-3 py-2 font-mono text-slate-500">{r.hsn || "—"}</td>
+                              <td className="px-3 py-2 font-mono text-xs text-slate-600">{formatSizeQtyDisplay(r)}</td>
+                              <td className="px-3 py-2 text-slate-500">{r.gender || "—"}</td>
+                              <td className="px-3 py-2 text-slate-500">{r.category || "—"}</td>
+                              <td className="px-3 py-2 text-slate-500">{r.brand || "—"}</td>
+                              <td className="px-3 py-2 text-slate-500">{r.sole_color || "—"}</td>
+                              <td className="px-3 py-2">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isWishlist ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
+                                  {isWishlist ? "WISHLIST" : "AVAILABLE"}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-slate-500 font-mono text-[10px]">{isWishlist && r.expected_date ? r.expected_date : "—"}</td>
+                              <td className="px-3 py-2">
+                                {r.image
+                                  ? <img src={r.image} alt="" className="w-8 h-8 rounded object-cover border border-slate-200" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                                  : <span className="text-slate-300 italic">no img</span>
+                                }
+                              </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                           {csvRows.length > 20 && (
-                            <tr><td colSpan={4} className="px-4 py-2 text-slate-400 italic text-center">...and {csvRows.length - 20} more rows</td></tr>
+                            <tr><td colSpan={14} className="px-3 py-2 text-slate-400 italic text-center">...and {csvRows.length - 20} more rows</td></tr>
                           )}
                         </tbody>
                       </table>

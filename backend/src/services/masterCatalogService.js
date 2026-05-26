@@ -42,6 +42,14 @@ const makeFileUrl = (req, filePath) => {
   return filePath.replace(/\\/g, "/");
 };
 
+const buildColorMediaFromUrls = (colorImageUrlsRaw, productColors = []) => {
+  let urlMap = {};
+  try { urlMap = typeof colorImageUrlsRaw === "string" ? JSON.parse(colorImageUrlsRaw) : (colorImageUrlsRaw || {}); } catch {}
+  return productColors
+    .filter((color) => urlMap[color])
+    .map((color) => ({ color, images: [{ url: urlMap[color], key: "", isCover: true }] }));
+};
+
 const buildColorMediaPayload = (req, productColors = []) => {
   const files = Array.isArray(req.files) ? req.files : [];
   const colorMedia = [];
@@ -159,15 +167,15 @@ exports.create = async (req) => {
   const sizeRanges = parseMaybeJson(body.sizeRanges, []);
   const variants = normalizeVariants(parseMaybeJson(body.variants, []));
 
-  const colorMedia = buildColorMediaPayload(
-    req,
-    Array.isArray(productColors) ? productColors : []
-  );
+  const colorImageUrls = body.colorImageUrls;
+  const colorMedia = colorImageUrls
+    ? buildColorMediaFromUrls(colorImageUrls, Array.isArray(productColors) ? productColors : [])
+    : buildColorMediaPayload(req, Array.isArray(productColors) ? productColors : []);
 
   const { primaryImage, secondaryImages } =
     buildFlatImagesFromColorMedia(colorMedia);
 
-  if (!primaryImage?.url) {
+  if (!primaryImage?.url && !colorImageUrls) {
     const err = new Error("At least one product image is required");
     err.statusCode = 400;
     throw err;

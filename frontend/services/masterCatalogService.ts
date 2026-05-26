@@ -65,8 +65,8 @@ export const masterCatalogService = {
   },
 
   // Taxonomy Services
-  async listCategories() {
-    return apiFetch("/categories");
+  async listCategories(query = "") {
+    return apiFetch(`/categories${query}`);
   },
 
   async createCategory(name: string) {
@@ -82,9 +82,11 @@ export const masterCatalogService = {
     });
   },
 
-  async listBrands(categoryId?: string) {
-    const query = categoryId ? `?categoryId=${categoryId}` : "";
-    return apiFetch(`/brands${query}`);
+  async listBrands(categoryId?: string, extra = "") {
+    const params = new URLSearchParams(extra.replace(/^\?/, ""));
+    if (categoryId) params.set("categoryId", categoryId);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return apiFetch(`/brands${qs}`);
   },
 
   async createBrand(name: string, categoryId?: string) {
@@ -100,8 +102,8 @@ export const masterCatalogService = {
     });
   },
 
-  async listManufacturers() {
-    return apiFetch("/manufacturers");
+  async listManufacturers(query = "") {
+    return apiFetch(`/manufacturers${query}`);
   },
 
   async createManufacturer(name: string) {
@@ -117,8 +119,8 @@ export const masterCatalogService = {
     });
   },
 
-  async listUnits() {
-    return apiFetch("/units");
+  async listUnits(query = "") {
+    return apiFetch(`/units${query}`);
   },
 
   async createUnit(name: string) {
