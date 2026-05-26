@@ -20,6 +20,7 @@ import {
   Loader2,
   Upload,
   FileSpreadsheet,
+  Download,
 } from "lucide-react";
 import { Article, AssortmentType } from "../../types";
 import Switch from "../ui/Switch";
@@ -1136,7 +1137,14 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                   <div className="bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-5 text-center">
                     <FileSpreadsheet size={36} className="mx-auto text-emerald-500 mb-2" />
                     <p className="text-sm font-semibold text-slate-700 mb-1">Upload CSV file or paste CSV text</p>
-                    <p className="text-xs text-slate-400 mb-4">Columns: <code className="bg-slate-100 px-1 rounded">name, color, size, mrp, cost_price, hsn, gender, category, brand, manufacturer, unit, image, sole_color, listing_status, expected_date, size_5, size_6, size_7 ...</code></p>
+                    <p className="text-xs text-slate-400 mb-3">Columns: <code className="bg-slate-100 px-1 rounded">name, color, size, mrp, cost_price, hsn, gender, category, brand, manufacturer, unit, image, sole_color, listing_status, expected_date, size_5, size_6, size_7 ...</code></p>
+                    <a
+                      href="/sample_catalog.csv"
+                      download="sample_catalog.csv"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-all mb-4"
+                    >
+                      <Download size={13} /> Download Sample CSV
+                    </a>
                     <label className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold text-sm cursor-pointer hover:bg-emerald-700 transition-all">
                       <Upload size={15} /> Choose CSV File
                       <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleCsvFileUpload} />
