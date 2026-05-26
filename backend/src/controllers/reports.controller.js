@@ -1,0 +1,137 @@
+const Order = require("../models/Order");
+const Return = require("../models/Return");
+const MasterCatalog = require("../models/MasterCatalog");
+
+const getStockReport = async (req, res) => {
+  try {
+    const { page = 1, limit = 50, q } = req.query;
+    const query = { isDeleted: false };
+    if (q) query.articleName = { $regex: q, $options: "i" };
+
+    const total = await MasterCatalog.countDocuments(query);
+    const catalogs = await MasterCatalog.find(query)
+      .sort({ articleName: 1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      .lean();
+
+    const data = catalogs.map((c) => ({
+      articleId: c._id,
+      articleName: c.articleName,
+      sku: c.sku,
+      category: typeof c.category === "object" ? c.category?.name : c.category,
+      brand: typeof c.brand === "object" ? c.brand?.name : c.brand,
+      totalVariants: (c.variants || []).length,
+      variants: (c.variants || []).map((v) => ({
+        variantId: v._id,
+        itemName: v.itemName,
+        color: v.color,
+        sizeRange: v.sizeRange,
+        mrp: v.mrp,
+        listingStatus: v.listingStatus,
+        sizeQuantities: v.sizeQuantities ? Object.fromEntries(v.sizeQuantities) : {},
+      })),
+    }));
+
+    res.json({
+      success: true,
+      data,
+      meta: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / Number(limit)),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const getDispatchReport = async (req, res) => {
+  try {
+    const { startDate, endDate, page = 1, limit = 20 } = req.query;
+    const query = { status: { $in: ["DISPATCHED", "DELIVERED", "CONFIRMED", "RECEIVED"] } };
+    if (startDate || endDate) {
+      query.date = {};
+      if (startDate) query.date.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.date.$lte = end;
+      }
+    }
+
+    const total = await Order.countDocuments(query);
+    const orders = await Order.find(query)
+      .sort({ date: -1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      .lean();
+
+    const summary = {
+      totalOrders: total,
+      totalAmount: orders.reduce((s, o) => s + (o.totalAmount || 0), 0),
+      totalPairs: orders.reduce((s, o) => s + (o.totalPairs || 0), 0),
+    };
+
+    res.json({
+      success: true,
+      data: orders,
+      summary,
+      meta: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / Number(limit)),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const getReturnReport = async (req, res) => {
+  try {
+    const { startDate, endDate, page = 1, limit = 20 } = req.query;
+    const query = {};
+    if (startDate || endDate) {
+      query.date = {};
+      if (startDate) query.date.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.date.$lte = end;
+      }
+    }
+
+    const total = await Return.countDocuments(query);
+    const returns = await Return.find(query)
+      .sort({ date: -1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      .lean();
+
+    const summary = {
+      totalReturns: total,
+      totalCartons: returns.reduce((s, r) => s + (r.totalCartons || 0), 0),
+      totalPairs: returns.reduce((s, r) => s + (r.totalPairs || 0), 0),
+    };
+
+    res.json({
+      success: true,
+      data: returns,
+      summary,
+      meta: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / Number(limit)),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+module.exports = { getStockReport, getDispatchReport, getReturnReport };

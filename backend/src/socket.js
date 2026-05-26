@@ -54,4 +54,20 @@ const emitDistributorUpdate = (distributorId) => {
   }
 };
 
-module.exports = { init, getIO, emitOrderUpdate, emitDistributorUpdate };
+// ──────────────────────────────────────────────
+// RETURN events  (Admin ↔ Distributor)
+// ──────────────────────────────────────────────
+const emitReturnCreated = (returnDoc) => {
+  if (io) {
+    io.emit("returnCreated", {
+      returnId:        String(returnDoc._id),
+      returnNumber:    returnDoc.returnNumber,
+      distributorId:   String(returnDoc.distributorId),
+      distributorName: returnDoc.distributorName,
+      orderNumber:     returnDoc.orderNumber,
+      totalPairs:      returnDoc.totalPairs,
+    });
+  }
+};
+
+module.exports = { init, getIO, emitOrderUpdate, emitDistributorUpdate, emitReturnCreated };

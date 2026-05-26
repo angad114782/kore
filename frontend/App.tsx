@@ -41,6 +41,9 @@ import DistributorManager from "./components/Admin/DistributorManager";
 import ProfilePage from "./components/Admin/ProfilePage";
 import Returns from "./components/Admin/Returns";
 import ActivityLogPage from "./components/Admin/ActivityLogPage";
+import StockReport from "./components/Admin/StockReport";
+import DispatchReport from "./components/Admin/DispatchReport";
+import ReturnReport from "./components/Admin/ReturnReport";
 import { masterCatalogService } from "./services/masterCatalogService";
 
 // ✅ NEW: Sidebar component (create this file separately)
@@ -320,6 +323,29 @@ const App: React.FC = () => {
         description: data.description,
         duration: 4000,
       });
+    });
+
+    socket.on("returnCreated", (data) => {
+      const u = userRef.current;
+      if (!u) return;
+      if (u.role === UserRole.DISTRIBUTOR) {
+        // Only notify the distributor whose return it is
+        const isMyReturn =
+          String(data.distributorId) === String(u.id) ||
+          String(data.distributorId) === String(u.distributorId);
+        if (!isMyReturn) return;
+        toast.info(`Return #${data.returnNumber} submitted`, {
+          description: `${data.totalPairs} pairs — Order #${data.orderNumber}`,
+          duration: 4000,
+        });
+      } else {
+        // Admin / superadmin — show all returns
+        toast.info(`New Return: #${data.returnNumber}`, {
+          description: `${data.distributorName} · ${data.totalPairs} pairs`,
+          duration: 5000,
+        });
+        if (fetchOrdersRef.current) fetchOrdersRef.current(true);
+      }
     });
 
     return () => {
@@ -934,6 +960,10 @@ const App: React.FC = () => {
         {activeTab === "activity_log" && user.role !== UserRole.DISTRIBUTOR && (
           <ActivityLogPage />
         )}
+
+        {activeTab === "report_stock"    && user.role !== UserRole.DISTRIBUTOR && <StockReport />}
+        {activeTab === "report_dispatch" && user.role !== UserRole.DISTRIBUTOR && <DispatchReport />}
+        {activeTab === "report_return"   && user.role !== UserRole.DISTRIBUTOR && <ReturnReport />}
       </main>
       <Toaster position="top-right" richColors />
     </div>

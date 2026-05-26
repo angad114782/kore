@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import {
   TrendingUp, Users, Package, ArrowUpRight, Sparkles, ChevronLeft,
-  Calendar, FileText, Building2, Star, Search, ArrowUpDown,
+  Calendar, FileText, Building2, Star, Search, ArrowUpDown, ChevronDown, X,
 } from 'lucide-react';
 import InteractiveIndiaMap from './InteractiveIndiaMap';
 import { Order, Inventory, Article, OrderStatus, PurchaseOrder } from '../../types';
@@ -13,7 +13,7 @@ import { poService } from '../../services/poService';
 import { getImageUrl } from '../../utils/imageUtils';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-type DateFilter = 'all' | 'this_month' | 'last_month' | 'this_year';
+type DateFilter = 'all' | 'this_month' | 'last_month' | 'this_year' | 'custom';
 type SortOption = 'top' | 'az' | 'za' | 'newest' | 'oldest';
 type ShowMoreView = null | 'distributors' | 'products' | 'po';
 
@@ -29,9 +29,16 @@ interface AdminDashboardProps {
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
-function filterByDate(orders: Order[], filter: DateFilter): Order[] {
+function filterByDate(orders: Order[], filter: DateFilter, customStart?: string, customEnd?: string): Order[] {
   if (filter === 'all') return orders;
   const now = new Date();
+  if (filter === 'custom') {
+    if (!customStart && !customEnd) return orders;
+    const s = customStart ? new Date(customStart) : new Date(0);
+    const e = customEnd   ? new Date(customEnd)   : new Date();
+    e.setHours(23, 59, 59, 999);
+    return orders.filter(o => { const d = new Date(o.date); return d >= s && d <= e; });
+  }
   return orders.filter(o => {
     const d = new Date(o.date);
     if (filter === 'this_month')
@@ -135,33 +142,107 @@ const SortBar: React.FC<{ value: SortOption; onChange: (v: SortOption) => void }
   </div>
 );
 
-// ─── Date Filter Bar ─────────────────────────────────────────────────────────
+// ─── Date Filter Dropdown ────────────────────────────────────────────────────
 const DATE_OPTIONS: { value: DateFilter; label: string }[] = [
   { value: 'all',        label: 'All Time' },
   { value: 'this_month', label: 'This Month' },
   { value: 'last_month', label: 'Last Month' },
   { value: 'this_year',  label: 'This Year' },
+  { value: 'custom',     label: 'Custom Range' },
 ];
 
-const DateFilterBar: React.FC<{ value: DateFilter; onChange: (v: DateFilter) => void }> = ({ value, onChange }) => (
-  <div className="flex items-center gap-2 flex-wrap bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-sm">
-    <Calendar size={15} className="text-indigo-500 shrink-0" />
-    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mr-1">Filter:</span>
-    {DATE_OPTIONS.map(o => (
-      <button
-        key={o.value}
-        onClick={() => onChange(o.value)}
-        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-          value === o.value
-            ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
-            : 'text-slate-600 hover:bg-slate-100'
-        }`}
-      >
-        {o.label}
-      </button>
-    ))}
-  </div>
-);
+interface DateFilterBarProps {
+  value: DateFilter;
+  onChange: (v: DateFilter) => void;
+  customStart: string;
+  customEnd: string;
+  onCustomStart: (v: string) => void;
+  onCustomEnd: (v: string) => void;
+}
+
+const DateFilterBar: React.FC<DateFilterBarProps> = ({
+  value, onChange, customStart, customEnd, onCustomStart, onCustomEnd,
+}) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const label = value === 'custom'
+    ? (customStart || customEnd ? `${customStart || '…'} → ${customEnd || '…'}` : 'Custom Range')
+    : DATE_OPTIONS.find(d => d.value === value)?.label || 'All Time';
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-sm">
+        <Calendar size={15} className="text-indigo-500 shrink-0" />
+        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Filter:</span>
+        <button
+          onClick={() => setOpen(p => !p)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-all"
+        >
+          {label} <ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {value !== 'all' && (
+          <button onClick={() => { onChange('all'); onCustomStart(''); onCustomEnd(''); }}
+            className="text-slate-400 hover:text-slate-600 transition-colors">
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 min-w-[220px] p-2 space-y-0.5">
+          {DATE_OPTIONS.filter(o => o.value !== 'custom').map(o => (
+            <button
+              key={o.value}
+              onClick={() => { onChange(o.value); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
+                value === o.value ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+          <div className="border-t border-slate-100 pt-1 mt-1">
+            <button
+              onClick={() => onChange('custom')}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
+                value === 'custom' ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              Custom Range
+            </button>
+            {value === 'custom' && (
+              <div className="px-3 pb-2 pt-1 space-y-2">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">From</label>
+                  <input type="date" value={customStart} onChange={e => onCustomStart(e.target.value)}
+                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">To</label>
+                  <input type="date" value={customEnd} onChange={e => onCustomEnd(e.target.value)}
+                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400" />
+                </div>
+                <button onClick={() => setOpen(false)}
+                  className="w-full py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all">
+                  Apply
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ─── Show More: Distributors ──────────────────────────────────────────────────
 const ShowMoreDistributors: React.FC<{
@@ -382,7 +463,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   loadingOrders,
   lastUpdated,
 }) => {
-  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [dateFilter, setDateFilter]   = useState<DateFilter>('all');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd]     = useState('');
   const [showMore, setShowMore] = useState<ShowMoreView>(null);
 
   const [distSort, setDistSort]       = useState<SortOption>('top');
@@ -415,7 +498,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [inventory, articles]);
 
   // Filtered orders
-  const filteredOrders = useMemo(() => filterByDate(orders, dateFilter), [orders, dateFilter]);
+  const filteredOrders = useMemo(() => filterByDate(orders, dateFilter, customStart, customEnd), [orders, dateFilter, customStart, customEnd]);
 
   // Metrics
   const totalRevenue  = filteredOrders.reduce((s, o) => s + o.totalAmount, 0);
@@ -460,14 +543,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     <div className="space-y-8">
 
       {/* Date Filter */}
-      <DateFilterBar value={dateFilter} onChange={setDateFilter} />
+      <DateFilterBar
+        value={dateFilter} onChange={setDateFilter}
+        customStart={customStart} customEnd={customEnd}
+        onCustomStart={setCustomStart} onCustomEnd={setCustomEnd}
+      />
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard
           title="Total Revenue"
           value={`₹${totalRevenue.toLocaleString()}`}
-          sub={dateFilter === 'all' ? 'All time' : DATE_OPTIONS.find(d => d.value === dateFilter)?.label}
+          sub={dateFilter === 'all' ? 'All time' : dateFilter === 'custom' ? (customStart && customEnd ? `${customStart} → ${customEnd}` : 'Custom Range') : DATE_OPTIONS.find(d => d.value === dateFilter)?.label}
           icon={<TrendingUp size={24} className="text-emerald-600" />}
         />
         <MetricCard

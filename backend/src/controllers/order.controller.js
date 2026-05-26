@@ -1,6 +1,6 @@
 const OrderService = require("../services/order.service");
 const Order = require("../models/Order");
-const { emitOrderUpdate } = require("../socket");
+const { emitOrderUpdate, emitReturnCreated } = require("../socket");
 const activityLog = require("../services/activityLog.service");
 
 const createOrder = async (req, res) => {
@@ -146,7 +146,10 @@ const processReturn = async (req, res) => {
 
     const returnDoc = await OrderService.processReturn(orderId, { items, reason, batchNumber });
 
-    // Real-time: notify distributor and admin of return status (emit the UPDATED ORDER)
+    // Real-time: notify all clients about the new return
+    emitReturnCreated(returnDoc);
+
+    // Also emit updated order status
     const updatedOrder = await Order.findById(orderId).populate('distributorId');
     if (updatedOrder) {
       emitOrderUpdate(updatedOrder);

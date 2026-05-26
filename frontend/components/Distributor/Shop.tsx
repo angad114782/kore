@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   ShoppingCart,
   Plus,
@@ -13,6 +14,7 @@ import {
 import { Article, Inventory, Variant, User } from "../../types";
 import { toast } from "sonner";
 import { getImageUrl } from "../../utils/imageUtils";
+import Pagination from "../ui/Pagination";
 
 interface ShopProps {
   articles: Article[];
@@ -56,23 +58,39 @@ const colorToHex = (color: string): string => {
   return map[color.toLowerCase()] || "#cbd5e1";
 };
 
-// ─── Magnifier hook ────────────────────────────────────────────────────────
-const useMagnifier = () => {
-  const [lens, setLens] = useState<{ x: number; y: number; visible: boolean }>({
-    x: 0, y: 0, visible: false,
-  });
+// ─── Amazon-style zoom hook ─────────────────────────────────────────────────
+const ZOOM_SIZE = 300;
 
-  const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+const useAmazonZoom = () => {
+  const [zoom, setZoom] = useState<{
+    pctX: number; pctY: number;
+    panelLeft: number; panelTop: number;
+    visible: boolean;
+  }>({ pctX: 0, pctY: 0, panelLeft: 0, panelTop: 0, visible: false });
+
+  const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    setLens({
-      x: ((e.clientX - rect.left) / rect.width) * 100,
-      y: ((e.clientY - rect.top) / rect.height) * 100,
-      visible: true,
-    });
-  };
-  const onMouseLeave = () => setLens((p) => ({ ...p, visible: false }));
+    const pctX = ((e.clientX - rect.left) / rect.width) * 100;
+    const pctY = ((e.clientY - rect.top) / rect.height) * 100;
 
-  return { lens, onMouseMove, onMouseLeave };
+    // Show panel to the right; fall back to left if not enough space
+    const spaceRight = window.innerWidth - rect.right;
+    const panelLeft = spaceRight >= ZOOM_SIZE + 16
+      ? rect.right + 8
+      : rect.left - ZOOM_SIZE - 8;
+
+    // Center panel vertically on the card, clamped to viewport
+    const panelTop = Math.max(8, Math.min(
+      rect.top + rect.height / 2 - ZOOM_SIZE / 2,
+      window.innerHeight - ZOOM_SIZE - 8
+    ));
+
+    setZoom({ pctX, pctY, panelLeft, panelTop, visible: true });
+  }, []);
+
+  const onMouseLeave = useCallback(() => setZoom(p => ({ ...p, visible: false })), []);
+
+  return { zoom, onMouseMove, onMouseLeave };
 };
 
 // ─── ArticleCard ───────────────────────────────────────────────────────────
@@ -134,8 +152,8 @@ const ArticleCard: React.FC<{
   const carouselRef = useRef<HTMLDivElement>(null);
   const [pointerStart, setPointerStart] = useState<number | null>(null);
 
-  // Magnifier
-  const { lens, onMouseMove, onMouseLeave } = useMagnifier();
+  // Amazon zoom
+  const { zoom, onMouseMove, onMouseLeave } = useAmazonZoom();
   const currentImageUrl = images[currentImageIndex] || images[0] || "";
 
   useEffect(() => { setCurrentImageIndex(images.length > 1 ? 1 : 0); }, [images.length]);
@@ -235,22 +253,22 @@ const ArticleCard: React.FC<{
           ))}
         </div>
 
-        {/* Magnifier lens */}
-        {lens.visible && currentImageUrl && (
+        {/* Amazon zoom panel — rendered via portal so it escapes overflow:hidden */}
+        {zoom.visible && currentImageUrl && createPortal(
           <div
-            className="absolute pointer-events-none rounded-full border-2 border-white shadow-2xl ring-1 ring-black/10 z-20"
+            className="pointer-events-none fixed z-[9999] rounded-2xl overflow-hidden border-2 border-slate-200 shadow-2xl"
             style={{
-              width: 90,
-              height: 90,
-              left: `${lens.x}%`,
-              top: `${lens.y}%`,
-              transform: "translate(-50%, -50%)",
+              left: zoom.panelLeft,
+              top: zoom.panelTop,
+              width: ZOOM_SIZE,
+              height: ZOOM_SIZE,
               backgroundImage: `url(${currentImageUrl})`,
-              backgroundSize: "300% 300%",
-              backgroundPosition: `${lens.x}% ${lens.y}%`,
+              backgroundSize: "400% 400%",
+              backgroundPosition: `${zoom.pctX}% ${zoom.pctY}%`,
               backgroundRepeat: "no-repeat",
             }}
-          />
+          />,
+          document.body
         )}
 
         {/* Color bar */}
@@ -409,6 +427,9 @@ const Shop: React.FC<ShopProps> = ({
   const discountPercentage = user?.discountPercentage || 0;
   const [priceView, setPriceView] = useState<PriceView>("pair");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 24;
+  useEffect(() => { setPage(1); }, [search]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -420,7 +441,7 @@ const Shop: React.FC<ShopProps> = ({
   }, [articles, search]);
 
   // Build color groups
-  const colorGroups = useMemo(() => {
+  const allColorGroups = useMemo(() => {
     return filtered.flatMap((article) => {
       const variants = article.variants || [];
       const groups: Record<string, Variant[]> = {};
@@ -435,6 +456,12 @@ const Shop: React.FC<ShopProps> = ({
       }));
     });
   }, [filtered]);
+
+  const totalPages = Math.ceil(allColorGroups.length / PAGE_SIZE);
+  const colorGroups = useMemo(
+    () => allColorGroups.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [allColorGroups, page, PAGE_SIZE]
+  );
 
   return (
     <div className="space-y-8 pb-20">
@@ -524,7 +551,20 @@ const Shop: React.FC<ShopProps> = ({
         })}
       </div>
 
-      {colorGroups.length === 0 && (
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={(p) => { setPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+            totalItems={allColorGroups.length}
+            itemsPerPage={PAGE_SIZE}
+          />
+        </div>
+      )}
+
+      {allColorGroups.length === 0 && (
         <div className="py-20 flex flex-col items-center gap-3 text-slate-400">
           <Package size={40} />
           <p className="text-sm">No articles found</p>
