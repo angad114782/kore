@@ -18,11 +18,17 @@ import { toast } from "sonner";
 import { userService } from "../../services/userService";
 import { User, UserRole } from "../../types";
 import Switch from "../ui/Switch";
+import Pagination from "../ui/Pagination";
 
 const UserManager: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const USER_LIMIT = 20;
+  useEffect(() => { setPage(1); }, [search]);
   // --- Draft Persistence ---
   const savedUserDraftStr = localStorage.getItem("kore_user_draft");
   const savedUserDraft = savedUserDraftStr
@@ -66,8 +72,10 @@ const UserManager: React.FC = () => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const response = await userService.listUsers({ search });
+      const response = await userService.listUsers({ search, page, limit: USER_LIMIT });
       setUsers(response.data);
+      setTotalPages(response.meta?.totalPages || response.meta?.pages || 1);
+      setTotal(response.meta?.total || 0);
     } catch (err: any) {
       setError(err.message || "Failed to fetch users");
     } finally {
@@ -77,7 +85,7 @@ const UserManager: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
-  }, [search]);
+  }, [search, page]);
 
   const handleOpenAdd = () => {
     setEditingUser(null);
@@ -409,6 +417,7 @@ const UserManager: React.FC = () => {
               )}
             </tbody>
           </table>
+          <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={USER_LIMIT} />
         </div>
       </div>
 

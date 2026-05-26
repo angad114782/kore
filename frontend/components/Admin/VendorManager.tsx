@@ -29,6 +29,7 @@ import {
 } from "../../types";
 import { vendorService } from "../../services/vendorService";
 import Switch from "../ui/Switch";
+import Pagination from "../ui/Pagination";
 
 // ─── Empty Defaults ────────────────────────────────────
 const emptyAddress = (): VendorAddress => ({
@@ -104,17 +105,22 @@ const VendorManager: React.FC = () => {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const VENDOR_LIMIT = 15;
 
-  const fetchVendors = async () => {
+  const fetchVendors = async (p = page) => {
     try {
       setLoading(true);
-      const res = await vendorService.listVendors();
-      // Map _id to id if necessary, or update types to use _id
-      const mapped = res.data.map((v: any) => ({
+      const res = await vendorService.listVendors({ page: p, limit: VENDOR_LIMIT });
+      const mapped = (res.data || []).map((v: any) => ({
         ...v,
         id: v._id || v.id,
       }));
       setVendors(mapped);
+      setTotalPages(res.meta?.totalPages || 1);
+      setTotal(res.meta?.total || 0);
       setError(null);
     } catch (err: any) {
       setError(err.message || "Failed to fetch vendors");
@@ -124,8 +130,8 @@ const VendorManager: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchVendors();
-  }, []);
+    fetchVendors(page);
+  }, [page]);
 
   // ── Draft Persistence ──
   const savedDraftStr = localStorage.getItem("kore_vendor_draft");
@@ -528,6 +534,7 @@ const VendorManager: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={VENDOR_LIMIT} />
             </div>
           )}
         </div>

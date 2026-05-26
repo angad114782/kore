@@ -1,6 +1,7 @@
 const { ok, fail } = require("../utils/apiResponse");
 const grnService = require("../services/grn.service");
 const activityLog = require("../services/activityLog.service");
+const { emitGRNSubmitted } = require("../socket");
 
 exports.listReferences = async (req, res) => {
   try {
@@ -77,6 +78,8 @@ exports.submitDraft = async (req, res) => {
       metadata: { grnNumber: data.grnNumber },
       user: req.user,
     });
+
+    emitGRNSubmitted(data);
 
     return ok(res, { message: "GRN submitted", data });
   } catch (e) {

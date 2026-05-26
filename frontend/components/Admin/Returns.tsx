@@ -20,6 +20,7 @@ import { distributorOrderService } from '../../services/distributorOrderService'
 import { Order, Article, Return } from '../../types';
 import { toast } from 'sonner';
 import { getImageUrl } from '../../utils/imageUtils';
+import Pagination from '../ui/Pagination';
 
 interface ReturnsProps {
   orders: Order[];
@@ -57,6 +58,10 @@ const Returns: React.FC<ReturnsProps> = ({ orders, articles, onSuccess, onInward
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [historyItems, setHistoryItems] = useState<Return[]>([]);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<Return | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const HISTORY_LIMIT = 10;
 
   // Eligible orders: RECEIVED, OFD, PARTIAL
   const eligibleOrders = useMemo(
@@ -156,13 +161,15 @@ const Returns: React.FC<ReturnsProps> = ({ orders, articles, onSuccess, onInward
 
   useEffect(() => {
     if (activeTab === 'history') fetchHistory();
-  }, [activeTab]);
+  }, [activeTab, historyPage]);
 
   const fetchHistory = async () => {
     setIsLoadingHistory(true);
     try {
-      const res = await distributorOrderService.getReturnHistory();
+      const res = await distributorOrderService.getReturnHistory({ page: historyPage, limit: HISTORY_LIMIT });
       setHistoryItems(res.items);
+      setHistoryTotalPages(res.meta?.totalPages || 1);
+      setHistoryTotal(res.meta?.total || 0);
     } catch {
       toast.error('Failed to load return history');
     } finally {
@@ -628,6 +635,7 @@ const Returns: React.FC<ReturnsProps> = ({ orders, articles, onSuccess, onInward
               </table>
             </div>
           )}
+          <Pagination currentPage={historyPage} totalPages={historyTotalPages} onPageChange={setHistoryPage} totalItems={historyTotal} itemsPerPage={HISTORY_LIMIT} />
         </div>
       )}
 

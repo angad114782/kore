@@ -1,5 +1,6 @@
 const service = require("../services/purchaseOrderService");
 const activityLog = require("../services/activityLog.service");
+const { emitPOEvent } = require("../socket");
 
 const sendError = (res, err) => {
   const code = err.statusCode || 500;
@@ -28,6 +29,7 @@ exports.createPO = async (req, res) => {
       user: req.user,
     });
 
+    emitPOEvent("poCreated", { poId: String(doc._id), poNumber: doc.poNumber, vendorName: doc.vendorName });
     return res.status(201).json({ message: "PO created", data: doc });
   } catch (err) {
     return sendError(res, err);
@@ -108,6 +110,7 @@ exports.updatePO = async (req, res) => {
       user: req.user,
     });
 
+    emitPOEvent("poUpdated", { poId: String(req.params.id), poNumber: doc.poNumber });
     return res.json({ message: "PO updated", data: doc });
   } catch (err) {
     return sendError(res, err);
@@ -126,6 +129,7 @@ exports.approveBill = async (req, res) => {
       user: req.user,
     });
 
+    emitPOEvent("billApproved", { poId: String(req.params.id), poNumber: doc.poNumber, vendorName: doc.vendorName });
     return res.json({ message: "Bill approved successfully", data: doc });
   } catch (err) {
     return sendError(res, err);
@@ -145,6 +149,7 @@ exports.rejectBill = async (req, res) => {
       user: req.user,
     });
 
+    emitPOEvent("billRejected", { poId: String(req.params.id), poNumber: doc.poNumber, reason: req.body.reason });
     return res.json({ message: "Bill rejected successfully", data: doc });
   } catch (err) {
     return sendError(res, err);
@@ -163,6 +168,7 @@ exports.deletePO = async (req, res) => {
       user: req.user,
     });
 
+    emitPOEvent("poDeleted", { poId: String(req.params.id) });
     return res.json({ message: "PO deleted" });
   } catch (err) {
     return sendError(res, err);

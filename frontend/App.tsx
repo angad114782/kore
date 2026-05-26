@@ -214,6 +214,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     fetchArticles();
+    fetchArticlesRef.current = fetchArticles;
   }, []);
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -229,6 +230,7 @@ const App: React.FC = () => {
 
   // Fetch orders (defined outside useEffect so it can be referenced)
   const fetchOrdersRef = React.useRef<((silent?: boolean) => Promise<void>) | undefined>(undefined);
+  const fetchArticlesRef = React.useRef<(() => Promise<void>) | undefined>(undefined);
 
   // Fetch orders with socket.io for real-time updates
   useEffect(() => {
@@ -323,6 +325,43 @@ const App: React.FC = () => {
         description: data.description,
         duration: 4000,
       });
+    });
+
+    socket.on("grnSubmitted", (data) => {
+      const u = userRef.current;
+      if (!u || u.role === UserRole.DISTRIBUTOR) return;
+      toast.info(`GRN #${data.grnNumber} submitted`, {
+        description: `Vendor: ${data.vendorName || ""} · ${data.totalPairs || ""} pairs`,
+        duration: 4000,
+      });
+    });
+
+    socket.on("poCreated", (data) => {
+      const u = userRef.current;
+      if (!u || u.role === UserRole.DISTRIBUTOR) return;
+      toast.info(`PO #${data.poNumber} created`, { description: `Vendor: ${data.vendorName}`, duration: 4000 });
+    });
+
+    socket.on("poUpdated", (data) => {
+      const u = userRef.current;
+      if (!u || u.role === UserRole.DISTRIBUTOR) return;
+      toast.info(`PO #${data.poNumber} updated`, { duration: 3000 });
+    });
+
+    socket.on("billApproved", (data) => {
+      const u = userRef.current;
+      if (!u || u.role === UserRole.DISTRIBUTOR) return;
+      toast.success(`Bill Approved: PO #${data.poNumber}`, { description: data.vendorName, duration: 4000 });
+    });
+
+    socket.on("billRejected", (data) => {
+      const u = userRef.current;
+      if (!u || u.role === UserRole.DISTRIBUTOR) return;
+      toast.error(`Bill Rejected: PO #${data.poNumber}`, { description: data.reason || "", duration: 4000 });
+    });
+
+    socket.on("catalogUpdated", () => {
+      if (fetchArticlesRef.current) fetchArticlesRef.current();
     });
 
     socket.on("returnCreated", (data) => {

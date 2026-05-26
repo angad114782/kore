@@ -1,5 +1,6 @@
 const masterCatalogService = require("../services/masterCatalogService");
 const activityLog = require("../services/activityLog.service");
+const { emitCatalogUpdated } = require("../socket");
 
 const sendError = (res, err) => {
   const code = err.statusCode || 500;
@@ -18,6 +19,7 @@ exports.createMasterCatalog = async (req, res) => {
       user: req.user,
     });
 
+    emitCatalogUpdated("created", doc._id);
     return res.status(201).json({
       message: "Master catalog created",
       data: doc,
@@ -70,6 +72,7 @@ exports.updateMasterCatalog = async (req, res) => {
       user: req.user,
     });
 
+    emitCatalogUpdated("updated", req.params.id);
     return res.json({
       message: "Updated",
       data: doc,
@@ -103,6 +106,7 @@ exports.deleteMasterCatalog = async (req, res) => {
       user: req.user,
     });
 
+    emitCatalogUpdated("deleted", req.params.id);
     return res.json({ message: "Deleted" });
   } catch (err) {
     return sendError(res, err);

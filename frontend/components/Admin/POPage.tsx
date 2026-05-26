@@ -39,6 +39,7 @@ import { masterCatalogService } from "../../services/masterCatalogService";
 import { billService } from "../../services/billService";
 import { exportPOToPDF, exportOrderToExcel } from "../../utils/exportPO";
 import { formatAssortment } from "../../utils/assortmentUtils";
+import Pagination from "../ui/Pagination";
 
 // ─── Reusable styles ───────────────────────────────────
 const inputClass =
@@ -1609,7 +1610,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
   };
 
   // ── Filtered PO list ──
-  const filteredPOs = purchaseOrders.filter((po) => {
+  const allFilteredPOs = purchaseOrders.filter((po) => {
     const q = searchTerm.toLowerCase().trim();
     if (!q) return true;
     return (
@@ -1617,6 +1618,12 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
       po.vendorName.toLowerCase().includes(q)
     );
   });
+
+  const [poPage, setPoPage] = useState(1);
+  const PO_PAGE_SIZE = 10;
+  useEffect(() => { setPoPage(1); }, [searchTerm]);
+  const filteredPOs = allFilteredPOs.slice((poPage - 1) * PO_PAGE_SIZE, poPage * PO_PAGE_SIZE);
+  const poTotalPages = Math.ceil(allFilteredPOs.length / PO_PAGE_SIZE);
 
   // ═══════════════════ RENDER ═══════════════════
 
@@ -1679,6 +1686,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
               </p>
             </div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full text-left min-w-[800px]">
                 <thead className="bg-slate-50 border-b border-slate-200">
@@ -1803,6 +1811,8 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                 </tbody>
               </table>
             </div>
+            <Pagination currentPage={poPage} totalPages={poTotalPages} onPageChange={setPoPage} totalItems={allFilteredPOs.length} itemsPerPage={PO_PAGE_SIZE} />
+            </>
           )}
         </div>
       </div>

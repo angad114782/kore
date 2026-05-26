@@ -70,4 +70,40 @@ const emitReturnCreated = (returnDoc) => {
   }
 };
 
-module.exports = { init, getIO, emitOrderUpdate, emitDistributorUpdate, emitReturnCreated };
+// ──────────────────────────────────────────────
+// GRN events  (Admin → Admin)
+// ──────────────────────────────────────────────
+const emitGRNSubmitted = (grnDoc) => {
+  if (io) {
+    io.emit("grnSubmitted", {
+      grnId:      String(grnDoc._id),
+      grnNumber:  grnDoc.grnNumber,
+      refId:      grnDoc.refId,
+      vendorName: grnDoc.vendorName,
+      totalPairs: grnDoc.totalPairs,
+    });
+  }
+};
+
+// ──────────────────────────────────────────────
+// PO / Bill events  (Admin → Admin)
+// ──────────────────────────────────────────────
+const emitPOEvent = (event, data) => {
+  if (io) io.emit(event, data);
+};
+
+// ──────────────────────────────────────────────
+// Catalog events  (Admin → All)
+// Distributors should refetch articles when catalog changes
+// ──────────────────────────────────────────────
+const emitCatalogUpdated = (action, articleId) => {
+  if (io) {
+    io.emit("catalogUpdated", { action, articleId: String(articleId) });
+  }
+};
+
+module.exports = {
+  init, getIO,
+  emitOrderUpdate, emitDistributorUpdate, emitReturnCreated,
+  emitGRNSubmitted, emitPOEvent, emitCatalogUpdated,
+};
