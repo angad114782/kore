@@ -1,6 +1,7 @@
 const authService = require("../services/auth.service");
 const usersService = require("../services/users.service");
 const { ok, fail } = require("../utils/apiResponse");
+const activityLog = require("../services/activityLog.service");
 
 const getRedirectModule = (role) => {
   switch (role) {
@@ -59,6 +60,14 @@ exports.login = async (req, res, next) => {
     if (creditInfo) {
       Object.assign(userData, creditInfo);
     }
+
+    activityLog.createLog({
+      action: "LOGIN",
+      entityType: "AUTH",
+      entityId: String(user._id),
+      description: `${user.name} (${user.role}) logged in`,
+      user,
+    });
 
     return ok(res, {
       message: "Login successful",

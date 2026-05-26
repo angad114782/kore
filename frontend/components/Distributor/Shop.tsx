@@ -3,17 +3,17 @@ import {
   ShoppingCart,
   Plus,
   Minus,
-  Info,
   Search,
   Filter,
   ArrowRight,
   Package,
+  Tag,
+  Layers,
 } from "lucide-react";
-import { Article, Inventory, Variant } from "../../types";
+import { Article, Inventory, Variant, User } from "../../types";
 import { toast } from "sonner";
 import { getImageUrl } from "../../utils/imageUtils";
 
-// Props for Shop component
 interface ShopProps {
   articles: Article[];
   inventory: Inventory[];
@@ -32,183 +32,159 @@ interface ShopProps {
   ) => void;
   removeFromCart: (articleId: string, variantId?: string) => void;
   goToCart: () => void;
+  user?: User;
 }
 
-// Grouping unit for the shop
 interface ColorGroup {
   article: Article;
   color: string;
   variants: Variant[];
 }
 
+type PriceView = "pair" | "carton";
+
+const PAIRS_PER_CARTON = 24;
+
 const colorToHex = (color: string): string => {
   const map: Record<string, string> = {
-    red: "#ef4444",
-    blue: "#3b82f6",
-    green: "#22c55e",
-    black: "#0f172a",
-    white: "#f8fafc",
-    grey: "#64748b",
-    gray: "#64748b",
-    yellow: "#eab308",
-    orange: "#f97316",
-    pink: "#ec4899",
-    purple: "#a855f7",
-    indigo: "#6366f1",
-    brown: "#78350f",
-    navy: "#1e3a8a",
-    teal: "#14b8a6",
-    cyan: "#06b6d4",
-    gold: "#fbbf24",
-    silver: "#cbd5e1",
+    red: "#ef4444", blue: "#3b82f6", green: "#22c55e", black: "#0f172a",
+    white: "#f8fafc", grey: "#64748b", gray: "#64748b", yellow: "#eab308",
+    orange: "#f97316", pink: "#ec4899", purple: "#a855f7", indigo: "#6366f1",
+    brown: "#78350f", navy: "#1e3a8a", teal: "#14b8a6", cyan: "#06b6d4",
+    gold: "#fbbf24", silver: "#cbd5e1",
   };
   return map[color.toLowerCase()] || "#cbd5e1";
 };
 
-// Article card component
+// ─── Magnifier hook ────────────────────────────────────────────────────────
+const useMagnifier = () => {
+  const [lens, setLens] = useState<{ x: number; y: number; visible: boolean }>({
+    x: 0, y: 0, visible: false,
+  });
+
+  const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setLens({
+      x: ((e.clientX - rect.left) / rect.width) * 100,
+      y: ((e.clientY - rect.top) / rect.height) * 100,
+      visible: true,
+    });
+  };
+  const onMouseLeave = () => setLens((p) => ({ ...p, visible: false }));
+
+  return { lens, onMouseMove, onMouseLeave };
+};
+
+// ─── ArticleCard ───────────────────────────────────────────────────────────
 const ArticleCard: React.FC<{
   group: ColorGroup;
   inv?: Inventory;
   inCartPairs: number;
   addToCart: ShopProps["addToCart"];
-}> = ({ group, inv, inCartPairs, addToCart }) => {
+  discountPercentage: number;
+  priceView: PriceView;
+}> = ({ group, inv, inCartPairs, addToCart, discountPercentage, priceView }) => {
   const { article, color, variants } = group;
 
-  // Selected variant ID (single selection)
   const [selectedVariantId, setSelectedVariantId] = useState<string>(
     variants.length > 0 ? variants[0].id : ""
   );
-
-  // Carton multiplier
   const [cartonCount, setCartonCount] = useState(1);
 
   const selectedVariant = variants.find((v) => v.id === selectedVariantId);
-
-  // Calculate total pairs and breakdown for the selection
   const baseBreakdown = selectedVariant?.sizeQuantities || {};
-
   const totalPairsPerCarton = Object.values(baseBreakdown).reduce(
     (a, b) => a + (Number(b) || 0),
     0
   );
   const totalPairs = totalPairsPerCarton * cartonCount;
 
-  // priority for images: colorMedia (match by color) > variant specific images > article primary/secondary images
+  // Pricing
+  const fullPricePerPair = article.pricePerPair;
+  const discountedPricePerPair = fullPricePerPair * (1 - discountPercentage / 100);
+  const discountedPricePerCarton = discountedPricePerPair * PAIRS_PER_CARTON;
+
+  // Images carousel
   const images = useMemo(() => {
     const colorMedia = (article as any).colorMedia || [];
     const targetColor = (color || "").toLowerCase().trim();
     const mediaMatch = colorMedia.find(
       (m: any) => (m.color || "").toLowerCase().trim() === targetColor
     );
-
     let gallery: string[] = [];
-
-    if (mediaMatch && mediaMatch.images && mediaMatch.images.length > 0) {
+    if (mediaMatch?.images?.length > 0) {
       gallery = mediaMatch.images.map((img: any) =>
         getImageUrl(typeof img === "object" ? img.url : img)
       );
     } else {
       const variantImages = variants.flatMap((v) => v.images || []);
-      const absoluteVariantImages = variantImages.map(img => getImageUrl(img));
-      
-      gallery =
-        absoluteVariantImages.length > 0
-          ? absoluteVariantImages
-          : ([
-              getImageUrl(article.imageUrl),
-              ...(article.secondaryImages || []).map((s: any) => getImageUrl(s.url)),
-            ].filter(Boolean) as string[]);
+      gallery = variantImages.length > 0
+        ? variantImages.map((img) => getImageUrl(img))
+        : ([
+            getImageUrl(article.imageUrl),
+            ...(article.secondaryImages || []).map((s: any) => getImageUrl(s.url)),
+          ].filter(Boolean) as string[]);
     }
-
-    if (gallery.length > 1) {
-      return [gallery[gallery.length - 1], ...gallery, gallery[0]];
-    }
+    if (gallery.length > 1) return [gallery[gallery.length - 1], ...gallery, gallery[0]];
     return gallery;
   }, [article, color, variants]);
 
   const [currentImageIndex, setCurrentImageIndex] = useState(images.length > 1 ? 1 : 0);
   const [transitionEnabled, setTransitionEnabled] = useState(true);
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const [pointerStart, setPointerStart] = useState<number | null>(null);
 
-  useEffect(() => {
-    setCurrentImageIndex(images.length > 1 ? 1 : 0);
-  }, [images.length]);
+  // Magnifier
+  const { lens, onMouseMove, onMouseLeave } = useMagnifier();
+  const currentImageUrl = images[currentImageIndex] || images[0] || "";
+
+  useEffect(() => { setCurrentImageIndex(images.length > 1 ? 1 : 0); }, [images.length]);
 
   useEffect(() => {
     if (images.length <= 1) return;
-
-    const interval = setInterval(() => {
-      setCurrentImageIndex((prev) => prev + 1);
-    }, 3000);
-
+    const interval = setInterval(() => setCurrentImageIndex((p) => p + 1), 3000);
     return () => clearInterval(interval);
   }, [images.length]);
 
   useEffect(() => {
     if (images.length <= 1) return;
-
     if (currentImageIndex === images.length - 1) {
-      setTimeout(() => {
-        setTransitionEnabled(false);
-        setCurrentImageIndex(1);
-      }, 500);
+      setTimeout(() => { setTransitionEnabled(false); setCurrentImageIndex(1); }, 500);
     }
-
     if (currentImageIndex === 0) {
-      setTimeout(() => {
-        setTransitionEnabled(false);
-        setCurrentImageIndex(images.length - 2);
-      }, 500);
+      setTimeout(() => { setTransitionEnabled(false); setCurrentImageIndex(images.length - 2); }, 500);
     }
   }, [currentImageIndex, images.length]);
 
   useEffect(() => {
     if (!transitionEnabled) {
-      const id = requestAnimationFrame(() => {
-        setTransitionEnabled(true);
-      });
+      const id = requestAnimationFrame(() => setTransitionEnabled(true));
       return () => cancelAnimationFrame(id);
     }
   }, [transitionEnabled]);
 
-  const carouselRef = useRef<HTMLDivElement>(null);
-
-  // pointer-based swipe detection covers both touch and mouse input
-  const [pointerStart, setPointerStart] = useState<number | null>(null);
-
-  const goNext = () => setCurrentImageIndex((prev) => prev + 1);
-  const goPrev = () => setCurrentImageIndex((prev) => prev - 1);
+  const goNext = () => setCurrentImageIndex((p) => p + 1);
+  const goPrev = () => setCurrentImageIndex((p) => p - 1);
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    // start tracking the horizontal position
     setPointerStart(e.clientX);
     carouselRef.current?.setPointerCapture(e.pointerId);
   };
-
   const handlePointerMove = (e: React.PointerEvent) => {
     if (pointerStart === null) return;
-    const distance = pointerStart - e.clientX;
-    if (distance > 50) {
-      goNext();
-      setPointerStart(e.clientX);
-    }
-    if (distance < -50) {
-      goPrev();
-      setPointerStart(e.clientX);
-    }
+    const d = pointerStart - e.clientX;
+    if (d > 50) { goNext(); setPointerStart(e.clientX); }
+    if (d < -50) { goPrev(); setPointerStart(e.clientX); }
   };
-
   const handlePointerUp = (e: React.PointerEvent) => {
-    if (pointerStart === null) return;
-
-    const distance = pointerStart - e.clientX;
-    if (distance > 50) goNext();
-    if (distance < -50) goPrev();
-
-    setPointerStart(null);
+    if (pointerStart !== null) {
+      const d = pointerStart - e.clientX;
+      if (d > 50) goNext();
+      if (d < -50) goPrev();
+      setPointerStart(null);
+    }
     carouselRef.current?.releasePointerCapture(e.pointerId);
   };
-
-  // optional: detect cancel events to clear state
   const handlePointerCancel = (e: React.PointerEvent) => {
     setPointerStart(null);
     carouselRef.current?.releasePointerCapture(e.pointerId);
@@ -216,31 +192,30 @@ const ArticleCard: React.FC<{
 
   const handleAdd = () => {
     if (!selectedVariant || totalPairs === 0) return;
-
-    // Combine all size quantities scaled by cartons
     const finalSizeQty: Record<string, number> = {};
     Object.entries(baseBreakdown).forEach(([sz, qty]) => {
       finalSizeQty[sz] = (Number(qty) || 0) * cartonCount;
     });
-
-    // The current addToCart signature takes a single variantId. 
     addToCart(article.id, selectedVariant.id, finalSizeQty);
-
     setCartonCount(1);
     toast.success(`${article.name} (${color}) added to cart`);
   };
 
   return (
     <div className="bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-sm group hover:shadow-xl hover:border-indigo-200 transition-all duration-300">
+      {/* Image + Magnifier */}
       <div
         ref={carouselRef}
-        className="relative aspect-square overflow-hidden"
+        className="relative aspect-square overflow-hidden cursor-crosshair"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
         style={{ userSelect: "none", touchAction: "pan-y" }}
       >
+        {/* Carousel strip */}
         <div
           className="flex h-full"
           style={{
@@ -260,19 +235,44 @@ const ArticleCard: React.FC<{
           ))}
         </div>
 
-        {/* Color Bar (Showing all available colors for this article) */}
+        {/* Magnifier lens */}
+        {lens.visible && currentImageUrl && (
+          <div
+            className="absolute pointer-events-none rounded-full border-2 border-white shadow-2xl ring-1 ring-black/10 z-20"
+            style={{
+              width: 90,
+              height: 90,
+              left: `${lens.x}%`,
+              top: `${lens.y}%`,
+              transform: "translate(-50%, -50%)",
+              backgroundImage: `url(${currentImageUrl})`,
+              backgroundSize: "300% 300%",
+              backgroundPosition: `${lens.x}% ${lens.y}%`,
+              backgroundRepeat: "no-repeat",
+            }}
+          />
+        )}
+
+        {/* Color bar */}
         <div className="absolute bottom-0 left-0 right-0 h-1.5 z-10 flex">
-          {Array.from(new Set((article.variants || []).map(v => v.color))).map((c, i) => (
-            <div 
+          {Array.from(new Set((article.variants || []).map((v) => v.color))).map((c, i) => (
+            <div
               key={i}
               className="h-full flex-1"
               style={{ backgroundColor: colorToHex(c) }}
-              title={`Available Color: ${c}`}
+              title={`Color: ${c}`}
             />
           ))}
         </div>
 
-        <div className="absolute top-4 left-4 flex flex-col gap-2">
+        {/* Discount badge */}
+        {discountPercentage > 0 && (
+          <div className="absolute top-3 right-3 z-10 bg-emerald-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow-md">
+            {discountPercentage}% OFF
+          </div>
+        )}
+
+        <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
           <div className="bg-white/95 backdrop-blur shadow-sm px-3 py-1.5 rounded-full text-[10px] font-black text-indigo-600 uppercase tracking-widest border border-indigo-50">
             {article.category}
           </div>
@@ -282,27 +282,40 @@ const ArticleCard: React.FC<{
       <div className="p-5">
         <div className="mb-4">
           <h4 className="font-extrabold text-slate-900 group-hover:text-indigo-600 transition-all">
-            {article.name} <span className="text-slate-400 font-medium">({color})</span>
+            {article.name}{" "}
+            <span className="text-slate-400 font-medium">({color})</span>
           </h4>
           <p className="text-[10px] text-slate-400 font-mono mt-0.5 tracking-wider uppercase">
             {article.sku}
           </p>
         </div>
 
+        {/* Price section */}
         <div className="flex items-center justify-between mb-5">
           <div className="space-y-0.5">
-            <p className="text-xl font-black text-slate-900">
-              ₹{article.pricePerPair.toLocaleString()}
+            <p className="text-xl font-black text-indigo-700">
+              ₹{Math.round(priceView === "pair" ? discountedPricePerPair : discountedPricePerCarton).toLocaleString()}
+              <span className="text-xs font-semibold text-slate-400 ml-1">
+                /{priceView === "pair" ? "pair" : "carton"}
+              </span>
             </p>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              MRP: ₹{article.mrp || article.pricePerPair * 2}
-            </p>
+            {discountPercentage > 0 && (
+              <p className="text-[10px] font-bold text-slate-400 line-through">
+                MRP ₹{Math.round(priceView === "pair" ? fullPricePerPair : fullPricePerPair * PAIRS_PER_CARTON).toLocaleString()}
+              </p>
+            )}
+            {discountPercentage === 0 && (
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                MRP: ₹{article.mrp || fullPricePerPair * 2}
+              </p>
+            )}
           </div>
           <div className="bg-indigo-50 p-2 rounded-xl">
-             <Package size={16} className="text-indigo-600" />
+            <Package size={16} className="text-indigo-600" />
           </div>
         </div>
 
+        {/* Size Range */}
         <div className="mb-4 space-y-2">
           <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider ml-1">
             Size Range
@@ -328,40 +341,44 @@ const ArticleCard: React.FC<{
             </p>
             <div className="flex flex-wrap gap-2">
               {Object.entries(baseBreakdown).map(([sz, qty]) => (
-                <div key={sz} className="flex flex-col items-center bg-white border border-slate-200 rounded-lg px-2 py-1 min-w-[32px]">
-                   <span className="text-[10px] font-black text-indigo-600">{sz}</span>
-                   <span className="text-[10px] font-bold text-slate-400">{qty}</span>
+                <div
+                  key={sz}
+                  className="flex flex-col items-center bg-white border border-slate-200 rounded-lg px-2 py-1 min-w-[32px]"
+                >
+                  <span className="text-[10px] font-black text-indigo-600">{sz}</span>
+                  <span className="text-[10px] font-bold text-slate-400">{qty}</span>
                 </div>
               ))}
             </div>
             <div className="mt-2 pt-2 border-t border-slate-200/50 px-1 flex justify-between items-center">
-               <span className="text-[10px] font-bold text-slate-500 uppercase">Carton Total</span>
-               <span className="text-xs font-black text-slate-900">{totalPairsPerCarton} Pairs</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Carton Total</span>
+              <span className="text-xs font-black text-slate-900">{totalPairsPerCarton} Pairs</span>
             </div>
           </div>
         )}
 
+        {/* Controls */}
         <div className="flex items-stretch gap-3">
-          <div className="flex items-center bg-slate-50 border border-slate-200 rounded-2xl p-1 shadow-inner group/carton">
-             <button 
-               onClick={() => setCartonCount(prev => Math.max(1, prev - 1))}
-               className="p-2 hover:bg-white rounded-xl text-slate-500 hover:text-indigo-600 transition-all disabled:opacity-20"
-               disabled={cartonCount <= 1}
-             >
-               <Minus size={14} />
-             </button>
-             
-             <div className="flex flex-col items-center justify-center min-w-[56px] px-1">
-                <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter mb-0.5 leading-none">Cartons</span>
-                <span className="text-sm font-black text-slate-900 leading-none">{cartonCount}</span>
-             </div>
-
-             <button 
-               onClick={() => setCartonCount(prev => prev + 1)}
-               className="p-2 hover:bg-white rounded-xl text-slate-500 hover:text-indigo-600 transition-all"
-             >
-               <Plus size={14} />
-             </button>
+          <div className="flex items-center bg-slate-50 border border-slate-200 rounded-2xl p-1 shadow-inner">
+            <button
+              onClick={() => setCartonCount((p) => Math.max(1, p - 1))}
+              className="p-2 hover:bg-white rounded-xl text-slate-500 hover:text-indigo-600 transition-all disabled:opacity-20"
+              disabled={cartonCount <= 1}
+            >
+              <Minus size={14} />
+            </button>
+            <div className="flex flex-col items-center justify-center min-w-[56px] px-1">
+              <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter mb-0.5 leading-none">
+                Cartons
+              </span>
+              <span className="text-sm font-black text-slate-900 leading-none">{cartonCount}</span>
+            </div>
+            <button
+              onClick={() => setCartonCount((p) => p + 1)}
+              className="p-2 hover:bg-white rounded-xl text-slate-500 hover:text-indigo-600 transition-all"
+            >
+              <Plus size={14} />
+            </button>
           </div>
 
           <button
@@ -370,7 +387,7 @@ const ArticleCard: React.FC<{
             className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-2xl px-6 font-black text-sm transition-all shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 group/btn active:scale-95"
           >
             <ShoppingCart size={16} className="group-hover/btn:scale-110 transition-transform" />
-            <span>Book</span>
+            <span>Add to Cart</span>
           </button>
         </div>
       </div>
@@ -378,37 +395,88 @@ const ArticleCard: React.FC<{
   );
 };
 
+// ─── Shop (page) ────────────────────────────────────────────────────────────
 const Shop: React.FC<ShopProps> = ({
-  articles, 
+  articles,
   inventory,
   cart,
   addToCart,
   removeFromCart,
   goToCart,
+  user,
 }) => {
   const cartItemsCount = cart.reduce((sum, item) => sum + item.pairCount, 0);
+  const discountPercentage = user?.discountPercentage || 0;
+  const [priceView, setPriceView] = useState<PriceView>("pair");
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return articles.filter(
+      (a) =>
+        a.status !== "WISHLIST" &&
+        (!q || a.name.toLowerCase().includes(q) || (a.sku || "").toLowerCase().includes(q))
+    );
+  }, [articles, search]);
+
+  // Build color groups
+  const colorGroups = useMemo(() => {
+    return filtered.flatMap((article) => {
+      const variants = article.variants || [];
+      const groups: Record<string, Variant[]> = {};
+      variants.forEach((v) => {
+        if (!groups[v.color]) groups[v.color] = [];
+        groups[v.color].push(v);
+      });
+      return Object.entries(groups).map(([color, colorVariants]) => ({
+        article,
+        color,
+        variants: colorVariants,
+      }));
+    });
+  }, [filtered]);
 
   return (
     <div className="space-y-8 pb-20">
-      {/* Search and Filters Bar */}
+      {/* Search + filters bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="relative w-full md:max-w-md">
-          <Search
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-            size={18}
-          />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             type="text"
             placeholder="Search by article name or SKU..."
             className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
           />
         </div>
 
-        <div className="flex gap-2 w-full md:w-auto">
-          <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-3 border border-slate-200 rounded-xl font-bold text-slate-700 hover:bg-slate-50 transition-all">
-            <Filter size={18} />
-            Filter
-          </button>
+        <div className="flex gap-2 w-full md:w-auto items-center">
+          {/* Price view toggle */}
+          <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-1">
+            <button
+              onClick={() => setPriceView("pair")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                priceView === "pair"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <Tag size={12} />
+              Per Pair
+            </button>
+            <button
+              onClick={() => setPriceView("carton")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                priceView === "carton"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <Layers size={12} />
+              Per Carton
+            </button>
+          </div>
 
           {cartItemsCount > 0 && (
             <button
@@ -416,52 +484,54 @@ const Shop: React.FC<ShopProps> = ({
               className="flex-1 md:flex-none bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"
             >
               <ShoppingCart size={18} />
-              Checkout ({cartItemsCount})
+              View Cart ({cartItemsCount})
             </button>
           )}
         </div>
       </div>
 
-      {/* Article Grid */}
+      {/* Discount info banner */}
+      {discountPercentage > 0 && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-3 flex items-center gap-3">
+          <Tag size={16} className="text-emerald-600 shrink-0" />
+          <p className="text-sm font-semibold text-emerald-800">
+            Your exclusive discount of{" "}
+            <span className="font-black">{discountPercentage}%</span> is applied
+            to all prices shown below.
+          </p>
+        </div>
+      )}
+
+      {/* Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-        {articles
-          .filter((a) => a.status !== "WISHLIST")
-          .flatMap((article) => {
-            const variants = article.variants || [];
-            // Group variants by color
-            const colorGroups: Record<string, Variant[]> = {};
-            variants.forEach((v) => {
-              if (!colorGroups[v.color]) colorGroups[v.color] = [];
-              colorGroups[v.color].push(v);
-            });
+        {colorGroups.map(({ article, color, variants }) => {
+          const inv = inventory.find((i) => i.articleId === article.id);
+          const pairsInCart = cart
+            .filter((c) => c.articleId === article.id)
+            .reduce((sum, i) => sum + i.pairCount, 0);
 
-            return Object.entries(colorGroups).map(([color, colorVariants]) => {
-              const group: ColorGroup = {
-                article,
-                color,
-                variants: colorVariants,
-              };
-
-              const inv = inventory.find((i) => i.articleId === article.id);
-
-              const pairsInCart = cart
-                .filter((c) => c.articleId === article.id)
-                .reduce((sum, i) => sum + i.pairCount, 0);
-
-              return (
-                <ArticleCard
-                  key={`${article.id}-${color}`}
-                  group={group}
-                  inv={inv}
-                  inCartPairs={pairsInCart}
-                  addToCart={addToCart}
-                />
-              );
-            });
-          })}
+          return (
+            <ArticleCard
+              key={`${article.id}-${color}`}
+              group={{ article, color, variants }}
+              inv={inv}
+              inCartPairs={pairsInCart}
+              addToCart={addToCart}
+              discountPercentage={discountPercentage}
+              priceView={priceView}
+            />
+          );
+        })}
       </div>
 
-      {/* Persistent Cart Bar (Mobile) */}
+      {colorGroups.length === 0 && (
+        <div className="py-20 flex flex-col items-center gap-3 text-slate-400">
+          <Package size={40} />
+          <p className="text-sm">No articles found</p>
+        </div>
+      )}
+
+      {/* Mobile sticky cart bar */}
       {cartItemsCount > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md z-30 sm:hidden">
           <button
@@ -470,9 +540,8 @@ const Shop: React.FC<ShopProps> = ({
           >
             <div className="flex items-center gap-3">
               <ShoppingCart size={24} />
-              <span>View Booking Cart</span>
+              <span>View Cart</span>
             </div>
-
             <div className="flex items-center gap-2">
               <span className="bg-white text-indigo-600 px-3 py-1 rounded-lg text-sm">
                 {cartItemsCount}

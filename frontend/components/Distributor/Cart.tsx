@@ -106,6 +106,9 @@ const Cart: React.FC<CartProps> = ({
       ? parseSizeRange(variant.sizeRange || "")
       : Object.keys(item.sizeQuantities || {});
 
+    // Show discounted price per item (discount applied once in summary, so show it here too for clarity)
+    const itemDiscountedPrice = item.price * (1 - discountPercentage / 100);
+
     return (
       <div
         key={`${item.articleId}-${item.variantId || ""}`}
@@ -120,7 +123,11 @@ const Cart: React.FC<CartProps> = ({
                 (m: any) => (m.color || "").toLowerCase().trim() === variantColor
               );
               const imgData = mediaMatch?.images?.[0];
-              const url = (typeof imgData === "object" ? (imgData as any)?.url : (imgData as string)) || variant?.images?.[0] || article.imageUrl || "";
+              const url =
+                (typeof imgData === "object" ? (imgData as any)?.url : (imgData as string)) ||
+                variant?.images?.[0] ||
+                article.imageUrl ||
+                "";
               return getImageUrl(url);
             })()}
             alt={article.name}
@@ -129,7 +136,8 @@ const Cart: React.FC<CartProps> = ({
         </div>
         <div className="flex-1 min-w-0">
           <h4 className="font-bold text-sm text-slate-900 tracking-tight break-all">
-            {article.name} <span className="text-slate-400 font-medium">({variant?.color || "N/A"})</span>
+            {article.name}{" "}
+            <span className="text-slate-400 font-medium">({variant?.color || "N/A"})</span>
           </h4>
           <div className="flex flex-wrap gap-1 mt-1.5">
             {sizes.map((sz) => (
@@ -144,9 +152,14 @@ const Cart: React.FC<CartProps> = ({
         </div>
         <div className="flex items-center gap-8">
           <div className="text-right whitespace-nowrap">
-            <p className="font-bold text-sm text-slate-900 tracking-tight">
-              ₹{item.price.toLocaleString()}
+            <p className="font-bold text-sm text-indigo-700 tracking-tight">
+              ₹{Math.round(itemDiscountedPrice).toLocaleString()}
             </p>
+            {discountPercentage > 0 && (
+              <p className="text-[9px] font-bold text-slate-400 line-through">
+                ₹{item.price.toLocaleString()}
+              </p>
+            )}
             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
               {item.pairCount} Pairs · {item.cartonCount} Ctn
             </p>

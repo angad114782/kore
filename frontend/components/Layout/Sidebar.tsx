@@ -28,6 +28,7 @@ import {
   Shield,
   User,
   Star,
+  Activity,
 } from "lucide-react";
 
 import { type User as Usertype, UserRole } from "../../types";
@@ -188,19 +189,6 @@ const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => go("dashboard")}
               isCollapsed={isCollapsed}
             />
-
-            {/* ✅ Master Tab (below Dashboard) */}
-            {(user.role === UserRole.ADMIN ||
-              user.role === UserRole.SUPERADMIN ||
-              user.role === UserRole.MANAGER) && (
-              <NavItem
-                icon={<Database size={20} />}
-                label="Master"
-                active={activeTab === "master"}
-                onClick={() => go("master")}
-                isCollapsed={isCollapsed}
-              />
-            )}
 
             {/* Admin menus only */}
             {user.role !== UserRole.DISTRIBUTOR ? (
@@ -383,6 +371,20 @@ const Sidebar: React.FC<SidebarProps> = ({
                       label="Users"
                       active={activeTab === "users"}
                       onClick={() => go("users")}
+                      isCollapsed={isCollapsed}
+                    />
+                  </div>
+                )}
+
+                {/* Activity Log — visible to superadmin & admin */}
+                {(user.role === UserRole.SUPERADMIN ||
+                  user.role === UserRole.ADMIN) && (
+                  <div className="pt-2">
+                    <NavItem
+                      icon={<Activity size={20} />}
+                      label="Activity Log"
+                      active={activeTab === "activity_log"}
+                      onClick={() => go("activity_log")}
                       isCollapsed={isCollapsed}
                     />
                   </div>

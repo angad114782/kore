@@ -1,5 +1,6 @@
 const { ok, fail } = require("../utils/apiResponse");
 const grnService = require("../services/grn.service");
+const activityLog = require("../services/activityLog.service");
 
 exports.listReferences = async (req, res) => {
   try {
@@ -67,6 +68,16 @@ exports.removeCarton = async (req, res) => {
 exports.submitDraft = async (req, res) => {
   try {
     const data = await grnService.submitDraft(req.params.draftId, req.body);
+
+    activityLog.createLog({
+      action: "GRN_SUBMITTED",
+      entityType: "GRN",
+      entityId: String(data._id || req.params.draftId),
+      description: `GRN submitted by ${req.user?.name || "admin"}`,
+      metadata: { grnNumber: data.grnNumber },
+      user: req.user,
+    });
+
     return ok(res, { message: "GRN submitted", data });
   } catch (e) {
     return fail(res, { message: e.message });

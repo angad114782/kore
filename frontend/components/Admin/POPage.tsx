@@ -334,6 +334,34 @@ const QuantityGridModal: React.FC<{
   const [grid, setGrid] = useState(initialGrid);
   const [cartonQty, setCartonQty] = useState(1);
   const prevIsOpenRef = useRef(false);
+  const [skuMode, setSkuMode] = useState<'manual' | 'auto-online' | 'auto-offline'>('manual');
+
+  const autoGenSku = (mode: 'auto-online' | 'auto-offline', variantColor: string, variantRange: string, size: string) => {
+    const brand = (article.brand || "").toUpperCase().replace(/\s+/g, '');
+    const name = (article.name || "").toUpperCase().replace(/\s+/g, '');
+    const color = variantColor.toUpperCase().replace(/\s+/g, '');
+    if (mode === 'auto-online') return `${brand}-${name}-${color}-${size}`;
+    // offline: shorter - first 3 chars of name + color abbrev + size
+    const nameShort = name.slice(0, 4);
+    const colorShort = color.slice(0, 3);
+    return `${nameShort}-${colorShort}-${size}`;
+  };
+
+  const applySkuMode = (mode: 'auto-online' | 'auto-offline') => {
+    setGrid(prev => {
+      const next = { ...prev };
+      variants.forEach(v => {
+        const vId = v.id || (v as any)._id || "";
+        if (!next[vId]) return;
+        const newSizes = { ...next[vId] };
+        Object.keys(newSizes).forEach(sz => {
+          newSizes[sz] = { ...newSizes[sz], sku: autoGenSku(mode, v.color || '', v.sizeRange || '', sz) };
+        });
+        next[vId] = newSizes;
+      });
+      return next;
+    });
+  };
 
   // Helper function to build grid from current state
   const buildGridFromItems = useCallback(() => {
@@ -559,12 +587,33 @@ const QuantityGridModal: React.FC<{
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-white rounded-full text-slate-400 hover:text-slate-600 transition-all border border-transparent hover:border-slate-200"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* SKU Mode Radio */}
+            <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">SKU:</span>
+              {(['manual', 'auto-online', 'auto-offline'] as const).map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    setSkuMode(mode);
+                    if (mode !== 'manual') applySkuMode(mode);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    skuMode === mode ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  {mode === 'manual' ? 'Manual' : mode === 'auto-online' ? 'Auto Online' : 'Auto Offline'}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-white rounded-full text-slate-400 hover:text-slate-600 transition-all border border-transparent hover:border-slate-200"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* Grid Content */}
@@ -629,11 +678,16 @@ const QuantityGridModal: React.FC<{
                             <input
                               type="text"
                               placeholder="SKU"
-                              className="w-full min-w-[100px] p-1.5 bg-white border border-slate-100 rounded-lg text-[10px] font-mono outline-none focus:border-indigo-300 transition-all"
+                              readOnly={skuMode !== 'manual'}
+                              className={`w-full min-w-[100px] p-1.5 border rounded-lg text-[10px] font-mono outline-none transition-all ${
+                                skuMode !== 'manual'
+                                  ? 'bg-indigo-50 border-indigo-100 text-indigo-700 cursor-default'
+                                  : 'bg-white border-slate-100 focus:border-indigo-300'
+                              }`}
                               value={grid[vId]?.[sz]?.sku || ""}
-                              onChange={(e) =>
-                                handleUpdate(vId, sz, "sku", e.target.value)
-                              }
+                              onChange={(e) => {
+                                if (skuMode === 'manual') handleUpdate(vId, sz, "sku", e.target.value);
+                              }}
                             />
                           </div>
                         </td>

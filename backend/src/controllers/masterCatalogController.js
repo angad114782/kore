@@ -1,4 +1,5 @@
 const masterCatalogService = require("../services/masterCatalogService");
+const activityLog = require("../services/activityLog.service");
 
 const sendError = (res, err) => {
   const code = err.statusCode || 500;
@@ -8,6 +9,15 @@ const sendError = (res, err) => {
 exports.createMasterCatalog = async (req, res) => {
   try {
     const doc = await masterCatalogService.create(req);
+
+    activityLog.createLog({
+      action: "CATALOG_CREATED",
+      entityType: "CATALOG",
+      entityId: String(doc._id),
+      description: `Article "${doc.name}" added to catalog by ${req.user?.name || "admin"}`,
+      user: req.user,
+    });
+
     return res.status(201).json({
       message: "Master catalog created",
       data: doc,
@@ -51,6 +61,15 @@ exports.getMasterCatalogById = async (req, res) => {
 exports.updateMasterCatalog = async (req, res) => {
   try {
     const doc = await masterCatalogService.update(req, req.params.id);
+
+    activityLog.createLog({
+      action: "CATALOG_UPDATED",
+      entityType: "CATALOG",
+      entityId: String(req.params.id),
+      description: `Article "${doc.name}" updated by ${req.user?.name || "admin"}`,
+      user: req.user,
+    });
+
     return res.json({
       message: "Updated",
       data: doc,
@@ -75,6 +94,15 @@ exports.toggleMasterCatalogStatus = async (req, res) => {
 exports.deleteMasterCatalog = async (req, res) => {
   try {
     await masterCatalogService.softDelete(req.params.id);
+
+    activityLog.createLog({
+      action: "CATALOG_DELETED",
+      entityType: "CATALOG",
+      entityId: String(req.params.id),
+      description: `Catalog item (id: ${req.params.id}) deleted by ${req.user?.name || "admin"}`,
+      user: req.user,
+    });
+
     return res.json({ message: "Deleted" });
   } catch (err) {
     return sendError(res, err);

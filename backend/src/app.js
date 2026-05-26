@@ -18,6 +18,7 @@ const vendorRoutes = require("./routes/vendor.routes");
 const grnRoutes = require("./routes/grn.routes");
 const distributorRoutes = require("./routes/distributor.routes");
 const orderRoutes = require("./routes/order.routes");
+const activityLogRoutes = require("./routes/activityLog.routes");
 const errorMiddleware = require("./middlewares/error.middleware");
 
 const app = express();
@@ -61,6 +62,7 @@ app.use("/api/vendors", vendorRoutes);
 app.use("/api/grn", grnRoutes);
 app.use("/api/distributors", distributorRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/activity-logs", activityLogRoutes);
 /* ------------------ 404 HANDLER ------------------ */
 app.use((req, res, next) => {
   res.status(404).json({ message: "Route not found" });

@@ -40,6 +40,7 @@ import UserManager from "./components/Admin/UserManager";
 import DistributorManager from "./components/Admin/DistributorManager";
 import ProfilePage from "./components/Admin/ProfilePage";
 import Returns from "./components/Admin/Returns";
+import ActivityLogPage from "./components/Admin/ActivityLogPage";
 import { masterCatalogService } from "./services/masterCatalogService";
 
 // ✅ NEW: Sidebar component (create this file separately)
@@ -80,6 +81,7 @@ const App: React.FC = () => {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [showMasterForm, setShowMasterForm] = useState(false);
 
   // Articles state from API
   const [articles, setArticles] = useState<Article[]>([]);
@@ -115,15 +117,12 @@ const App: React.FC = () => {
   }, [editingArticleId, viewingVariant, catalogueExpandedIds, previousTab]);
 
   const handleTabChange = (tab: string) => {
-    // Reset sub-view states when user explicitly navigates via sidebar
+    setShowMasterForm(false);
     setEditingArticleId(null);
     setViewingVariant(null);
     setCatalogueExpandedIds(new Set());
-    
-    // Clear major drafts from localStorage
     localStorage.removeItem("kore_app_draft");
     localStorage.removeItem("kore_po_draft");
-    
     setActiveTab(tab);
   };
 
@@ -136,7 +135,15 @@ const App: React.FC = () => {
   const handleEditArticle = (id: string) => {
     setPreviousTab(activeTab);
     setEditingArticleId(id);
-    setActiveTab("master");
+    setShowMasterForm(true);
+    setActiveTab("catalogue");
+  };
+
+  const handleAddNewMaster = () => {
+    setPreviousTab("catalogue");
+    setEditingArticleId(null);
+    setShowMasterForm(true);
+    setActiveTab("catalogue");
   };
 
   const fetchArticles = async () => {
@@ -301,6 +308,18 @@ const App: React.FC = () => {
       ) {
         checkAuthRef.current?.(true);
       }
+    });
+
+    socket.on("activityLog", (data) => {
+      const u = userRef.current;
+      // Only show real-time alerts to admin/superadmin/manager
+      if (!u || u.role === UserRole.DISTRIBUTOR) return;
+
+      const label = (data.action as string).replace(/_/g, " ");
+      toast.info(`${label}`, {
+        description: data.description,
+        duration: 4000,
+      });
     });
 
     return () => {
@@ -752,39 +771,37 @@ const App: React.FC = () => {
             />
           ))}
 
-        {activeTab === "master" &&
-          (user.role === UserRole.ADMIN ||
-            user.role === UserRole.SUPERADMIN ||
-            user.role === UserRole.MANAGER) && (
+        {activeTab === "catalogue" && user.role !== UserRole.DISTRIBUTOR && (
+          showMasterForm ? (
             <ProductMaster
               addArticle={addArticle}
               updateArticle={updateArticle}
               editingId={editingArticleId}
               initialArticle={articles.find(a => a.id === editingArticleId)}
-              onSuccess={fetchArticles}
+              onSuccess={() => {
+                fetchArticles();
+                if (!editingArticleId) setShowMasterForm(false);
+              }}
               onCancelEdit={() => {
                 setEditingArticleId(null);
-                setActiveTab(
-                  previousTab === "variant_details"
-                    ? "variant_details"
-                    : "catalogue"
-                );
+                setShowMasterForm(false);
+                if (previousTab === "variant_details") setActiveTab("variant_details");
               }}
             />
-          )}
-
-        {activeTab === "catalogue" && user.role !== UserRole.DISTRIBUTOR && (
-          <CatalogueManager
-            articles={articles}
-            addArticle={addArticle}
-            updateArticle={updateArticle}
-            deleteArticle={deleteArticle}
-            onEditArticle={handleEditArticle}
-            onViewVariant={handleViewVariant}
-            expandedIds={catalogueExpandedIds}
-            setExpandedIds={setCatalogueExpandedIds}
-            onSuccess={fetchArticles}
-          />
+          ) : (
+            <CatalogueManager
+              articles={articles}
+              addArticle={addArticle}
+              updateArticle={updateArticle}
+              deleteArticle={deleteArticle}
+              onEditArticle={handleEditArticle}
+              onViewVariant={handleViewVariant}
+              expandedIds={catalogueExpandedIds}
+              setExpandedIds={setCatalogueExpandedIds}
+              onSuccess={fetchArticles}
+              onAddNewMaster={handleAddNewMaster}
+            />
+          )
         )}
 
         {activeTab === "variant_details" &&
@@ -881,6 +898,7 @@ const App: React.FC = () => {
             addToCart={addToCart}
             removeFromCart={removeFromCart}
             goToCart={() => setActiveTab("cart")}
+            user={user}
           />
         )}
 
@@ -911,6 +929,10 @@ const App: React.FC = () => {
               store.setCurrentUser(updatedUser);
             }}
           />
+        )}
+
+        {activeTab === "activity_log" && user.role !== UserRole.DISTRIBUTOR && (
+          <ActivityLogPage />
         )}
       </main>
       <Toaster position="top-right" richColors />

@@ -196,10 +196,11 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
   const handleCartonAllocationChange = (variantId: string, newCartonCount: number, item: OrderItem) => {
     const article = articles.find(a => a.id === item.articleId);
     const variant = article?.variants?.find(v => v.id === item.variantId);
-    
+
     setAllocations(prev => {
-      const blocked = item.blockedCartonCount || 0;
-      const cartonCount = Math.max(0, Math.min(newCartonCount, blocked));
+      // Block is now optional — allocate up to remaining unfulfilled quantity
+      const remaining = item.cartonCount - (item.fulfilledCartonCount || 0);
+      const cartonCount = Math.max(0, Math.min(newCartonCount, remaining));
       
       const originalCartonCount = item.cartonCount;
       const originalPairCount = item.pairCount;
@@ -1310,11 +1311,11 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                               </td>
                               <td className="px-4 py-4 text-center bg-indigo-50/20">
                                 {[OrderStatus.BOOKED, OrderStatus.PARTIAL, OrderStatus.PFD, OrderStatus.RFD].includes(currentOrder.status) ? (
-                                  <input 
+                                  <input
                                     type="number"
                                     value={allocations[item.variantId!]?.allocatedCartonCount ?? 0}
                                     min={0}
-                                    max={blockingState[item.variantId!]?.blockedCartonCount ?? item.blockedCartonCount ?? 0}
+                                    max={item.cartonCount - (item.fulfilledCartonCount || 0)}
                                     onChange={(e) => handleCartonAllocationChange(item.variantId!, parseInt(e.target.value) || 0, item)}
                                     className="w-14 h-7 text-center bg-white border border-indigo-200 rounded text-xs font-black text-indigo-600 outline-none focus:ring-1 focus:ring-indigo-500"
                                   />
@@ -1338,8 +1339,16 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                   </div>
 
                   {(() => {
-                    const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + (a.allocatedCartonCount || 0), 0) || 
+                    const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + (a.allocatedCartonCount || 0), 0) ||
                                          currentOrder.items.reduce((sum, i) => sum + (i.allocatedCartonCount || 0), 0);
+
+                    // Allocation is mandatory: every item with remaining qty must have > 0 allocation
+                    const allItemsAllocated = currentOrder.items.every(item => {
+                      const remaining = item.cartonCount - (item.fulfilledCartonCount || 0);
+                      if (remaining <= 0) return true; // fully fulfilled, skip
+                      const alloc = allocations[item.variantId!]?.allocatedCartonCount ?? item.allocatedCartonCount ?? 0;
+                      return alloc > 0;
+                    });
 
                     return !isDistributor && (currentOrder.status === OrderStatus.BOOKED || currentOrder.status === OrderStatus.PARTIAL || currentOrder.status === OrderStatus.PFD || currentOrder.status === OrderStatus.RFD) && (
                       <div className="p-6 bg-slate-50/50 border-t border-slate-100 space-y-6">
@@ -1459,7 +1468,8 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                                   <span className="text-[9px] font-bold text-indigo-600">{totalAllocated > 0 ? `Total Allocation: ${totalAllocated} Cartons` : "Nothing allocated yet"}</span>
                                 </div>
                                 <button
-                                  disabled={uploading || totalAllocated === 0}
+                                  disabled={uploading || !allItemsAllocated}
+                                  title={!allItemsAllocated ? "Allocation required for all items before proceeding" : undefined}
                                   onClick={handleAllocateAndProceed}
                                   className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:bg-slate-400"
                                 >
@@ -1473,7 +1483,8 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
 
                             {currentOrder.status === OrderStatus.PFD && (
                               <button
-                                disabled={uploading || totalAllocated === 0}
+                                disabled={uploading || !allItemsAllocated}
+                                title={!allItemsAllocated ? "All items must be allocated before marking Ready for Delivery" : undefined}
                                 onClick={() => handleUpdateStatus(OrderStatus.RFD)}
                                 className="flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
                               >

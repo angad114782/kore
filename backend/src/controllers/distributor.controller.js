@@ -1,10 +1,20 @@
 const distributorService = require("../services/distributor.service");
 const { created, ok, fail } = require("../utils/apiResponse");
 const { emitDistributorUpdate } = require("../socket");
+const activityLog = require("../services/activityLog.service");
 
 exports.createDistributor = async (req, res, next) => {
   try {
     const distributor = await distributorService.createDistributor(req.body);
+
+    activityLog.createLog({
+      action: "DISTRIBUTOR_CREATED",
+      entityType: "DISTRIBUTOR",
+      entityId: String(distributor._id),
+      description: `Distributor "${distributor.name}" created by ${req.user?.name || "admin"}`,
+      user: req.user,
+    });
+
     return created(res, {
       message: "Distributor created successfully",
       data: distributor,
@@ -49,8 +59,15 @@ exports.updateDistributor = async (req, res, next) => {
   try {
     const distributor = await distributorService.updateDistributor(req.params.id, req.body);
 
-    // Real-time: notify distributor dashboard of profile/credit changes
     emitDistributorUpdate(req.params.id);
+
+    activityLog.createLog({
+      action: "DISTRIBUTOR_UPDATED",
+      entityType: "DISTRIBUTOR",
+      entityId: String(req.params.id),
+      description: `Distributor "${distributor.name}" updated by ${req.user?.name || "admin"}`,
+      user: req.user,
+    });
 
     return ok(res, {
       message: "Distributor updated successfully",
@@ -80,6 +97,15 @@ exports.toggleDistributorStatus = async (req, res, next) => {
 exports.deleteDistributor = async (req, res, next) => {
   try {
     await distributorService.deleteDistributor(req.params.id);
+
+    activityLog.createLog({
+      action: "DISTRIBUTOR_DELETED",
+      entityType: "DISTRIBUTOR",
+      entityId: String(req.params.id),
+      description: `Distributor (id: ${req.params.id}) deleted by ${req.user?.name || "admin"}`,
+      user: req.user,
+    });
+
     return ok(res, {
       message: "Distributor deleted successfully",
       data: null,

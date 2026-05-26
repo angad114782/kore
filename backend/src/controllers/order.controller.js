@@ -1,6 +1,7 @@
 const OrderService = require("../services/order.service");
 const Order = require("../models/Order");
 const { emitOrderUpdate } = require("../socket");
+const activityLog = require("../services/activityLog.service");
 
 const createOrder = async (req, res) => {
   try {
@@ -9,8 +10,16 @@ const createOrder = async (req, res) => {
 
     const order = await OrderService.createOrder(distributorId, orderData);
     
-    // Emit real-time event
     emitOrderUpdate(order);
+
+    activityLog.createLog({
+      action: "ORDER_CREATED",
+      entityType: "ORDER",
+      entityId: String(order._id),
+      description: `Order #${order.orderNumber || order._id} placed by ${req.user?.name || "distributor"}`,
+      metadata: { status: order.status, totalAmount: order.totalAmount },
+      user: req.user,
+    });
 
     res.status(201).json({
       success: true,
@@ -99,8 +108,16 @@ const updateOrderStatus = async (req, res) => {
       receiverMobile
     });
 
-    // Emit real-time event
     emitOrderUpdate(updatedOrder);
+
+    activityLog.createLog({
+      action: "ORDER_STATUS_UPDATED",
+      entityType: "ORDER",
+      entityId: String(id),
+      description: `Order #${updatedOrder.orderNumber || id} status updated to ${status} by ${req.user?.name || "admin"}`,
+      metadata: { newStatus: status },
+      user: req.user,
+    });
 
     res.status(200).json({
       success: true,

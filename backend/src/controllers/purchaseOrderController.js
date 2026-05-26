@@ -1,4 +1,5 @@
 const service = require("../services/purchaseOrderService");
+const activityLog = require("../services/activityLog.service");
 
 const sendError = (res, err) => {
   const code = err.statusCode || 500;
@@ -17,6 +18,16 @@ exports.getNextPONumber = async (req, res) => {
 exports.createPO = async (req, res) => {
   try {
     const doc = await service.create(req.body);
+
+    activityLog.createLog({
+      action: "PO_CREATED",
+      entityType: "PO",
+      entityId: String(doc._id),
+      description: `PO #${doc.poNumber} created by ${req.user?.name || "admin"}`,
+      metadata: { poNumber: doc.poNumber, vendor: doc.vendorName },
+      user: req.user,
+    });
+
     return res.status(201).json({ message: "PO created", data: doc });
   } catch (err) {
     return sendError(res, err);
@@ -88,26 +99,52 @@ exports.getBillById = async (req, res) => {
 exports.updatePO = async (req, res) => {
   try {
     const doc = await service.update(req.params.id, req.body);
+
+    activityLog.createLog({
+      action: "PO_UPDATED",
+      entityType: "PO",
+      entityId: String(req.params.id),
+      description: `PO #${doc.poNumber} updated by ${req.user?.name || "admin"}`,
+      user: req.user,
+    });
+
     return res.json({ message: "PO updated", data: doc });
   } catch (err) {
     return sendError(res, err);
   }
 };
 
-// ✅ approve bill
 exports.approveBill = async (req, res) => {
   try {
     const doc = await service.approveBill(req.params.id, req.body);
+
+    activityLog.createLog({
+      action: "PO_APPROVED",
+      entityType: "PO",
+      entityId: String(req.params.id),
+      description: `PO/Bill #${doc.poNumber} approved by ${req.user?.name || "admin"}`,
+      user: req.user,
+    });
+
     return res.json({ message: "Bill approved successfully", data: doc });
   } catch (err) {
     return sendError(res, err);
   }
 };
 
-// ✅ reject bill
 exports.rejectBill = async (req, res) => {
   try {
     const doc = await service.rejectBill(req.params.id, req.body);
+
+    activityLog.createLog({
+      action: "PO_REJECTED",
+      entityType: "PO",
+      entityId: String(req.params.id),
+      description: `PO/Bill #${doc.poNumber} rejected by ${req.user?.name || "admin"}`,
+      metadata: { reason: req.body.reason },
+      user: req.user,
+    });
+
     return res.json({ message: "Bill rejected successfully", data: doc });
   } catch (err) {
     return sendError(res, err);
@@ -117,6 +154,15 @@ exports.rejectBill = async (req, res) => {
 exports.deletePO = async (req, res) => {
   try {
     await service.softDelete(req.params.id);
+
+    activityLog.createLog({
+      action: "PO_DELETED",
+      entityType: "PO",
+      entityId: String(req.params.id),
+      description: `PO (id: ${req.params.id}) deleted by ${req.user?.name || "admin"}`,
+      user: req.user,
+    });
+
     return res.json({ message: "PO deleted" });
   } catch (err) {
     return sendError(res, err);

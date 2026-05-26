@@ -18,6 +18,8 @@ import {
   ChevronDown,
   Palette,
   Loader2,
+  Upload,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Article, AssortmentType } from "../../types";
 import Switch from "../ui/Switch";
@@ -48,6 +50,29 @@ interface CatalogueManagerProps {
   expandedIds: Set<string>;
   setExpandedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   onSuccess?: () => void;
+  onAddNewMaster?: () => void;
+}
+
+// ─── CSV Types ──────────────────────────────────────────────────────────────────
+interface CsvRow { name: string; color: string; size: string; mrp: string; }
+interface CsvCommon { gender: string; category: string; brand: string; manufacturer: string; unit: string; }
+
+function parseCsv(text: string): CsvRow[] {
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+  return lines.slice(1).map(line => {
+    const vals = line.split(",").map(v => v.trim());
+    const row: any = {};
+    headers.forEach((h, i) => { row[h] = vals[i] || ""; });
+    return row as CsvRow;
+  }).filter(r => r.name);
+}
+
+function groupCsvByName(rows: CsvRow[]): Record<string, CsvRow[]> {
+  const g: Record<string, CsvRow[]> = {};
+  rows.forEach(r => { (g[r.name] = g[r.name] || []).push(r); });
+  return g;
 }
 
 // BASE_URL removed in favor of getImageUrl utility
@@ -62,6 +87,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   expandedIds,
   setExpandedIds,
   onSuccess,
+  onAddNewMaster,
 }) => {
   const [activeTab, setActiveTab] = useState<CatalogStatus>("AVAILABLE");
   const [searchTerm, setSearchTerm] = useState("");
@@ -69,6 +95,121 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // ── CSV Import State ─────────────────────────────────────────────────────────
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [csvText, setCsvText] = useState("");
+  const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
+  const [csvCommon, setCsvCommon] = useState<CsvCommon>({ gender: "MEN", category: "", brand: "", manufacturer: "", unit: "" });
+  const [csvLoading, setCsvLoading] = useState(false);
+  const [csvStep, setCsvStep] = useState<1 | 2>(1); // 1=upload, 2=configure+preview
+  const [taxonomy, setTaxonomy] = useState<{ categories: any[]; brands: any[]; manufacturers: any[]; units: any[] }>({ categories: [], brands: [], manufacturers: [], units: [] });
+
+  const loadTaxonomy = async () => {
+    try {
+      const [catRes, brandRes, manRes, unitRes] = await Promise.all([
+        masterCatalogService.listCategories(),
+        masterCatalogService.listBrands(),
+        masterCatalogService.listManufacturers(),
+        masterCatalogService.listUnits(),
+      ]);
+      setTaxonomy({
+        categories: catRes.data || [],
+        brands: brandRes.data || [],
+        manufacturers: manRes.data || [],
+        units: unitRes.data || (Array.isArray(unitRes) ? unitRes : []),
+      });
+    } catch {}
+  };
+
+  const openCsvModal = () => { setCsvOpen(true); setCsvStep(1); setCsvText(""); setCsvRows([]); loadTaxonomy(); };
+  const closeCsvModal = () => { setCsvOpen(false); setCsvRows([]); setCsvText(""); setCsvStep(1); };
+
+  const handleCsvParse = () => {
+    const rows = parseCsv(csvText);
+    if (!rows.length) return toast.error("No valid rows found. Check CSV format: name,color,size,mrp");
+    setCsvRows(rows);
+    setCsvStep(2);
+  };
+
+  const handleCsvFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { const text = ev.target?.result as string; setCsvText(text); };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleCsvImport = async () => {
+    if (!csvCommon.category || !csvCommon.brand || !csvCommon.manufacturer || !csvCommon.unit) {
+      return toast.error("Please fill all common fields (Category, Brand, Manufacturer, Unit)");
+    }
+    const catDoc = taxonomy.categories.find((c: any) => (c.name || c) === csvCommon.category);
+    const brandDoc = taxonomy.brands.find((b: any) => (b.name || b) === csvCommon.brand);
+    const manDoc = taxonomy.manufacturers.find((m: any) => (m.name || m) === csvCommon.manufacturer);
+    const unitDoc = taxonomy.units.find((u: any) => (u.name || u) === csvCommon.unit);
+
+    if (!catDoc?._id || !brandDoc?._id || !manDoc?._id || !unitDoc?._id) {
+      return toast.error("Taxonomy IDs not resolved. Re-select category/brand/manufacturer/unit.");
+    }
+
+    const groups = groupCsvByName(csvRows);
+    const names = Object.keys(groups);
+    setCsvLoading(true);
+
+    const importPromise = async () => {
+      let created = 0;
+      for (const name of names) {
+        const rows = groups[name];
+        const colors = Array.from(new Set(rows.map(r => r.color).filter(Boolean)));
+        const sizes = Array.from(new Set(rows.map(r => r.size).filter(Boolean)));
+        const mrp = Math.max(...rows.map(r => Number(r.mrp) || 0));
+
+        const variants = colors.flatMap(color =>
+          sizes.map(size => ({
+            itemName: `${name}-${color}-${size}`,
+            color,
+            sizeRange: size,
+            costPrice: 0,
+            sellingPrice: 0,
+            mrp,
+            hsnCode: "",
+            sizeQuantities: {},
+            sizeSkus: {},
+            sizeMap: {},
+          }))
+        );
+
+        const fd = new FormData();
+        fd.append("articleName", name);
+        fd.append("mrp", String(mrp));
+        fd.append("gender", csvCommon.gender);
+        fd.append("categoryId", catDoc._id);
+        fd.append("brandId", brandDoc._id);
+        fd.append("manufacturerCompanyId", manDoc._id);
+        fd.append("unitId", unitDoc._id);
+        fd.append("stage", "AVAILABLE");
+        fd.append("productColors", JSON.stringify(colors));
+        fd.append("sizeRanges", JSON.stringify(sizes));
+        fd.append("variants", JSON.stringify(variants));
+
+        await masterCatalogService.createMasterItem(fd);
+        created++;
+      }
+      return created;
+    };
+
+    toast.promise(importPromise().finally(() => setCsvLoading(false)), {
+      loading: `Importing ${names.length} article(s)...`,
+      success: (count) => {
+        closeCsvModal();
+        onSuccess?.();
+        return `${count} article(s) imported successfully!`;
+      },
+      error: (err: any) => err.message || "Import failed",
+    });
+  };
 
   const [formData, setFormData] = useState<CatalogueForm>({
     name: "",
@@ -422,11 +563,8 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
         </div>
 
         <div className="flex flex-wrap gap-2 w-full lg:w-auto">
-          <div className="relative flex-1 lg:w-72">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              size={18}
-            />
+          <div className="relative flex-1 min-w-[180px] lg:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               type="text"
               placeholder="Search master, variant or SKU..."
@@ -435,6 +573,20 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          <button
+            onClick={openCsvModal}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl font-semibold text-sm hover:bg-emerald-100 transition-all"
+          >
+            <FileSpreadsheet size={16} /> Import CSV
+          </button>
+          {onAddNewMaster && (
+            <button
+              onClick={onAddNewMaster}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-semibold text-sm hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-200"
+            >
+              <Plus size={16} /> Add New Master
+            </button>
+          )}
         </div>
       </div>
 
@@ -860,6 +1012,152 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
           );
         })}
       </div>
+
+      {/* ── CSV Import Modal ─────────────────────────────────────────────────── */}
+      {csvOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={closeCsvModal}>
+          <div className="bg-white rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-emerald-600 p-5 flex justify-between items-center text-white">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <FileSpreadsheet size={20} /> Import Articles from CSV
+              </h3>
+              <button onClick={closeCsvModal} className="text-white/70 hover:text-white"><X size={22} /></button>
+            </div>
+
+            <div className="p-6 max-h-[75vh] overflow-y-auto space-y-5">
+              {/* Step 1: Upload */}
+              {csvStep === 1 && (
+                <div className="space-y-4">
+                  <div className="bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-5 text-center">
+                    <FileSpreadsheet size={36} className="mx-auto text-emerald-500 mb-2" />
+                    <p className="text-sm font-semibold text-slate-700 mb-1">Upload CSV file or paste CSV text</p>
+                    <p className="text-xs text-slate-400 mb-4">Required columns: <code className="bg-slate-100 px-1 rounded">name, color, size, mrp</code></p>
+                    <label className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold text-sm cursor-pointer hover:bg-emerald-700 transition-all">
+                      <Upload size={15} /> Choose CSV File
+                      <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleCsvFileUpload} />
+                    </label>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Or paste CSV content:</p>
+                    <textarea
+                      rows={7}
+                      placeholder={"name,color,size,mrp\nUrban Runner,Red,5-8,1999\nUrban Runner,Blue,5-8,1999\nTerra X,Black,6-10,2499"}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 resize-none"
+                      value={csvText}
+                      onChange={e => setCsvText(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                    <b>Format:</b> First row must be header. Columns: <code>name</code> (article name), <code>color</code> (variant color), <code>size</code> (size range like 5-8), <code>mrp</code> (price). Multiple rows with same name = same article with multiple variants.
+                  </div>
+
+                  <button
+                    onClick={handleCsvParse}
+                    disabled={!csvText.trim()}
+                    className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all disabled:opacity-50"
+                  >
+                    Parse & Continue →
+                  </button>
+                </div>
+              )}
+
+              {/* Step 2: Configure + Preview */}
+              {csvStep === 2 && (
+                <div className="space-y-5">
+                  {/* Back */}
+                  <button onClick={() => setCsvStep(1)} className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1">
+                    ← Back
+                  </button>
+
+                  {/* Common Fields */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Common Fields (applies to all articles)</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Gender *</label>
+                        <select className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none" value={csvCommon.gender} onChange={e => setCsvCommon(p => ({ ...p, gender: e.target.value }))}>
+                          {["MEN","WOMEN","KIDS","UNISEX"].map(g => <option key={g} value={g}>{g}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Category *</label>
+                        <select className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none" value={csvCommon.category} onChange={e => setCsvCommon(p => ({ ...p, category: e.target.value }))}>
+                          <option value="">Select...</option>
+                          {taxonomy.categories.map((c: any) => <option key={c._id} value={c.name || c}>{c.name || c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Brand *</label>
+                        <select className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none" value={csvCommon.brand} onChange={e => setCsvCommon(p => ({ ...p, brand: e.target.value }))}>
+                          <option value="">Select...</option>
+                          {taxonomy.brands.map((b: any) => <option key={b._id} value={b.name || b}>{b.name || b}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Manufacturer *</label>
+                        <select className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none" value={csvCommon.manufacturer} onChange={e => setCsvCommon(p => ({ ...p, manufacturer: e.target.value }))}>
+                          <option value="">Select...</option>
+                          {taxonomy.manufacturers.map((m: any) => <option key={m._id} value={m.name || m}>{m.name || m}</option>)}
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Unit *</label>
+                        <select className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none" value={csvCommon.unit} onChange={e => setCsvCommon(p => ({ ...p, unit: e.target.value }))}>
+                          <option value="">Select...</option>
+                          {taxonomy.units.map((u: any) => <option key={u._id} value={u.name || u}>{u.name || u}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Preview */}
+                  <div>
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2">
+                      Preview — {Object.keys(groupCsvByName(csvRows)).length} article(s), {csvRows.length} variant row(s)
+                    </p>
+                    <div className="border border-slate-200 rounded-xl overflow-hidden">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Name</th>
+                            <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Color</th>
+                            <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Size Range</th>
+                            <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">MRP</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {csvRows.slice(0, 20).map((r, i) => (
+                            <tr key={i} className="hover:bg-slate-50">
+                              <td className="px-4 py-2 font-semibold text-slate-800">{r.name}</td>
+                              <td className="px-4 py-2 text-slate-600">{r.color}</td>
+                              <td className="px-4 py-2 text-slate-600 font-mono">{r.size}</td>
+                              <td className="px-4 py-2 font-bold text-indigo-600">₹{r.mrp}</td>
+                            </tr>
+                          ))}
+                          {csvRows.length > 20 && (
+                            <tr><td colSpan={4} className="px-4 py-2 text-slate-400 italic text-center">...and {csvRows.length - 20} more rows</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleCsvImport}
+                    disabled={csvLoading}
+                    className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {csvLoading ? <><Loader2 size={16} className="animate-spin" /> Importing...</> : <>Import {Object.keys(groupCsvByName(csvRows)).length} Article(s)</>}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Form Modal — unchanged */}
       {isModalOpen && (
