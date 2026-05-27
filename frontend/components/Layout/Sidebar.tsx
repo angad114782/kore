@@ -263,14 +263,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                         compact
                         isCollapsed={isCollapsed}
                       />
-                      <NavItem
+                      {/* <NavItem
                         icon={<ClipboardList size={18} />}
                         label="Booking Status"
                         active={activeTab === "booking_inventory"}
                         onClick={() => go("booking_inventory")}
                         compact
                         isCollapsed={isCollapsed}
-                      />
+                      /> */}
                     </div>
                   )}
                 </div>
