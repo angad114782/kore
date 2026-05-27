@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { User, UserRole, DistributorAddress } from "../../types";
 import {
   Users,
@@ -22,7 +22,14 @@ import {
   Eye,
   EyeOff,
   Copy,
+  TrendingUp,
+  Package,
+  RefreshCw,
+  RotateCcw,
+  IndianRupee,
+  Clock,
 } from "lucide-react";
+import { apiFetch } from "../../services/api";
 import Switch from "../ui/Switch";
 import ConfirmDialog, { useConfirm } from "../ui/ConfirmDialog";
 import distributorService from "../../services/distributorService";
@@ -109,6 +116,217 @@ const Field: React.FC<{
     {children}
   </div>
 );
+
+const STATUS_META: Record<string, { label: string; color: string }> = {
+  BOOKED:   { label: "Booked",   color: "bg-slate-100 text-slate-600" },
+  PFD:      { label: "PFD",      color: "bg-violet-100 text-violet-700" },
+  RFD:      { label: "RFD",      color: "bg-blue-100 text-blue-700" },
+  OFD:      { label: "OFD",      color: "bg-amber-100 text-amber-700" },
+  RECEIVED: { label: "Received", color: "bg-emerald-100 text-emerald-700" },
+  PARTIAL:  { label: "Partial",  color: "bg-orange-100 text-orange-700" },
+};
+
+interface DistributorSummary {
+  totalOrders: number;
+  totalAmount: number;
+  totalPairs: number;
+  paidAmount: number;
+  pendingAmount: number;
+  statusCounts: Record<string, number>;
+  recentOrders: any[];
+  totalReturns: number;
+  returnPairs: number;
+  recentReturns: any[];
+}
+
+const DistributorActivityOverview: React.FC<{ distributorId: string }> = ({ distributorId }) => {
+  const [summary, setSummary] = useState<DistributorSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/distributors/${distributorId}/summary`);
+      setSummary(res.data);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load activity");
+    } finally {
+      setLoading(false);
+    }
+  }, [distributorId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex items-center justify-center py-16">
+      <RefreshCw size={20} className="animate-spin text-slate-400 mr-2" />
+      <span className="text-sm text-slate-400">Loading activity...</span>
+    </div>
+  );
+
+  if (error) return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+      <div className="flex items-center gap-2 text-rose-500 text-sm">
+        <AlertCircle size={16} /> {error}
+      </div>
+    </div>
+  );
+
+  if (!summary) return null;
+
+  const noActivity = summary.totalOrders === 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Section header */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+            <TrendingUp size={15} className="text-indigo-500" /> Activity Overview
+          </h3>
+          <button onClick={load} className="text-slate-400 hover:text-indigo-600 p-1 rounded-lg hover:bg-slate-50 transition-colors">
+            <RefreshCw size={14} />
+          </button>
+        </div>
+
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          {[
+            { label: "Total Orders",  value: summary.totalOrders.toLocaleString(),            icon: <Package size={14} />,      color: "text-indigo-600",  bg: "bg-indigo-50" },
+            { label: "Total Value",   value: `₹${summary.totalAmount.toLocaleString()}`,       icon: <IndianRupee size={14} />,   color: "text-emerald-600", bg: "bg-emerald-50" },
+            { label: "Total Pairs",   value: summary.totalPairs.toLocaleString(),              icon: <Package size={14} />,      color: "text-blue-600",    bg: "bg-blue-50" },
+            { label: "Returns",       value: `${summary.totalReturns} (${summary.returnPairs} pr)`, icon: <RotateCcw size={14} />, color: "text-amber-600",   bg: "bg-amber-50" },
+          ].map(s => (
+            <div key={s.label} className={`${s.bg} rounded-xl p-3`}>
+              <div className={`${s.color} mb-1`}>{s.icon}</div>
+              <p className={`text-base font-black ${s.color}`}>{s.value}</p>
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Payment split */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-emerald-50 rounded-xl p-3 flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+            <div>
+              <p className="text-xs text-slate-500 font-medium">Paid</p>
+              <p className="text-sm font-black text-emerald-700">₹{summary.paidAmount.toLocaleString()}</p>
+            </div>
+          </div>
+          <div className="bg-rose-50 rounded-xl p-3 flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+            <div>
+              <p className="text-xs text-slate-500 font-medium">Pending Payment</p>
+              <p className="text-sm font-black text-rose-700">₹{summary.pendingAmount.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Status breakdown chips */}
+        {!noActivity && (
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
+            {Object.entries(summary.statusCounts).map(([status, count]) => {
+              const meta = STATUS_META[status] || { label: status, color: "bg-slate-100 text-slate-600" };
+              return (
+                <span key={status} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${meta.color}`}>
+                  {meta.label} <span className="opacity-70">× {count}</span>
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Recent Orders */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
+          <Clock size={13} className="text-slate-400" />
+          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Recent Orders</h4>
+          <span className="ml-auto text-[10px] text-slate-400">Last 10</span>
+        </div>
+        {noActivity ? (
+          <div className="py-12 flex flex-col items-center justify-center">
+            <FileText className="text-slate-200 mb-2" size={28} />
+            <p className="text-sm text-slate-400">No orders yet for this distributor</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Order #</th>
+                  <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Date</th>
+                  <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider text-right">Pairs</th>
+                  <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider text-right">Amount</th>
+                  <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Payment</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {summary.recentOrders.map((o: any) => {
+                  const meta = STATUS_META[o.status] || { label: o.status, color: "bg-slate-100 text-slate-600" };
+                  return (
+                    <tr key={o._id} className="hover:bg-slate-50/60">
+                      <td className="px-4 py-2.5 font-mono font-semibold text-indigo-600">#{o.orderNumber}</td>
+                      <td className="px-4 py-2.5 text-slate-500">{o.date ? new Date(o.date).toLocaleDateString("en-IN") : "—"}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${meta.color}`}>{meta.label}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-slate-700 font-semibold">{(o.totalPairs || 0).toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right font-bold text-emerald-700">₹{(o.finalAmount || o.totalAmount || 0).toLocaleString()}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${o.paymentStatus === "PAID" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                          {o.paymentStatus || "PENDING"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Recent Returns */}
+      {summary.recentReturns.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
+            <RotateCcw size={13} className="text-amber-500" />
+            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Recent Returns</h4>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Return #</th>
+                  <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Date</th>
+                  <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Reason</th>
+                  <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider text-right">Cartons</th>
+                  <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider text-right">Pairs</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {summary.recentReturns.map((r: any) => (
+                  <tr key={r._id} className="hover:bg-slate-50/60">
+                    <td className="px-4 py-2.5 font-mono font-semibold text-amber-600">#{r.returnNumber || r._id?.toString().slice(-6)}</td>
+                    <td className="px-4 py-2.5 text-slate-500">{r.createdAt ? new Date(r.createdAt).toLocaleDateString("en-IN") : "—"}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{r.reason || "—"}</td>
+                    <td className="px-4 py-2.5 text-right text-slate-700 font-semibold">{r.totalCartons || 0}</td>
+                    <td className="px-4 py-2.5 text-right font-bold text-amber-700">{r.totalPairs || 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const InfoRow: React.FC<{
   icon: React.ReactNode;
@@ -780,12 +998,13 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                     </div>
                   </Field>
                   <Field
-                    label="Discount % (Optional)"
+                    label="Discount"
                     icon={<Percent size={14} />}
                   >
                     <input
                       type="number"
                       min="0"
+                      // required
                       max="100"
                       step="any"
                       placeholder="0"
@@ -800,7 +1019,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                     />
                   </Field>
                   <Field
-                    label="Credit Limit (Optional)"
+                    label="Credit Limit"
                     icon={<Wallet size={14} />}
                   >
                     <input
@@ -1153,17 +1372,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">
-                  Activity Overview
-                </h3>
-                <div className="py-12 flex flex-col items-center justify-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                  <FileText className="text-slate-300 mb-2" size={32} />
-                  <p className="text-sm text-slate-500 font-medium">
-                    No order history available for this distributor yet.
-                  </p>
-                </div>
-              </div>
+              <DistributorActivityOverview distributorId={d.id} />
             </div>
           </div>
         </div>

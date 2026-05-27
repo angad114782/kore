@@ -2,6 +2,8 @@ const distributorService = require("../services/distributor.service");
 const { created, ok, fail } = require("../utils/apiResponse");
 const { emitDistributorUpdate } = require("../socket");
 const activityLog = require("../services/activityLog.service");
+const Order = require("../models/Order");
+const Return = require("../models/Return");
 
 exports.createDistributor = async (req, res, next) => {
   try {
@@ -88,6 +90,49 @@ exports.toggleDistributorStatus = async (req, res, next) => {
     return ok(res, {
       message: `Distributor ${distributor.isActive ? "activated" : "deactivated"} successfully`,
       data: distributor,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getDistributorSummary = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const [orders, returns] = await Promise.all([
+      Order.find({ distributorId: id }).sort({ createdAt: -1 }).lean(),
+      Return.find({ distributorId: id }).sort({ createdAt: -1 }).lean(),
+    ]);
+
+    const statusCounts = {};
+    let totalAmount = 0;
+    let totalPairs = 0;
+    let paidAmount = 0;
+    let pendingAmount = 0;
+
+    orders.forEach((o) => {
+      statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
+      const amt = o.finalAmount || o.totalAmount || 0;
+      totalAmount += amt;
+      totalPairs += o.totalPairs || 0;
+      if (o.paymentStatus === "PAID") paidAmount += amt;
+      else pendingAmount += amt;
+    });
+
+    return ok(res, {
+      data: {
+        totalOrders: orders.length,
+        totalAmount,
+        totalPairs,
+        paidAmount,
+        pendingAmount,
+        statusCounts,
+        recentOrders: orders.slice(0, 10),
+        totalReturns: returns.length,
+        returnPairs: returns.reduce((s, r) => s + (r.totalPairs || 0), 0),
+        recentReturns: returns.slice(0, 5),
+      },
     });
   } catch (err) {
     next(err);
