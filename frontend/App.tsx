@@ -824,21 +824,27 @@ const App: React.FC = () => {
         {/* Content Router */}
         {activeTab === "dashboard" &&
           (user.role !== UserRole.DISTRIBUTOR ? (
-            <AdminDashboard
-              orders={orders}
-              inventory={inventory}
-              articles={articles}
-              updateStatus={updateOrderStatus}
-              loadingOrders={loadingOrders}
-              lastUpdated={lastUpdated}
-            />
+            <div className="space-y-6">
+              <AdminDashboard
+                orders={orders}
+                inventory={inventory}
+                articles={articles}
+                updateStatus={updateOrderStatus}
+                loadingOrders={loadingOrders}
+                lastUpdated={lastUpdated}
+              />
+              <OverduePayments isAdmin={true} />
+            </div>
           ) : (
-            <DistributorDashboard
-              user={user}
-              orders={orders}
-              cartCount={cartItemsCount}
-              goToCart={() => setActiveTab("cart")}
-            />
+            <div className="space-y-6">
+              <DistributorDashboard
+                user={user}
+                orders={orders}
+                cartCount={cartItemsCount}
+                goToCart={() => setActiveTab("cart")}
+              />
+              <OverduePayments isAdmin={false} />
+            </div>
           ))}
 
         {activeTab === "catalogue" && user.role !== UserRole.DISTRIBUTOR && (
@@ -1160,8 +1166,6 @@ const DistributorDashboard: React.FC<{
         </div>
       </div>
 
-      {/* Overdue Payments — distributor view (read-only) */}
-      <OverduePayments isAdmin={false} />
     </div>
   );
 };

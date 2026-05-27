@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Search, Download, Package, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
-import { reportService } from "../../services/reportService";
+import { Search, Download, Package, RefreshCw, ChevronDown, ChevronRight, AlertCircle } from "lucide-react";
+import { apiFetch } from "../../services/api";
 import Pagination from "../ui/Pagination";
 import { usePageSize } from "../../utils/usePageSize";
 
@@ -39,16 +39,20 @@ const StockReport: React.FC = () => {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
 
   const fetch = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await reportService.getStock({ page, limit: pageSize, q: search || undefined });
-      const d = res.data;
+      const params = new URLSearchParams({ page: String(page), limit: String(pageSize) });
+      if (search) params.set("q", search);
+      const d = await apiFetch(`/reports/stock?${params.toString()}`);
       setRows(d.data || []);
       setTotal(d.meta?.total || 0);
       setTotalPages(d.meta?.totalPages || 1);
-    } catch {
+    } catch (err: any) {
+      setError(err?.message || "Failed to load stock report");
       setRows([]);
     } finally {
       setLoading(false);
@@ -125,6 +129,11 @@ const StockReport: React.FC = () => {
         {loading ? (
           <div className="flex items-center justify-center py-20 text-slate-400">
             <RefreshCw size={20} className="animate-spin mr-2" /> Loading...
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-center gap-3 py-20 text-rose-500">
+            <AlertCircle size={20} />
+            <span className="text-sm font-medium">{error}</span>
           </div>
         ) : rows.length === 0 ? (
           <div className="text-center py-20 text-slate-400">No stock data found</div>

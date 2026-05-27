@@ -11,7 +11,6 @@ import { Order, Inventory, Article, OrderStatus, PurchaseOrder } from '../../typ
 import { getInventoryInsights } from '../../services/geminiService';
 import { poService } from '../../services/poService';
 import { getImageUrl } from '../../utils/imageUtils';
-import OverduePayments from '../shared/OverduePayments';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type DateFilter = 'all' | 'this_month' | 'last_month' | 'this_year' | 'custom';
@@ -501,20 +500,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Filtered orders
   const filteredOrders = useMemo(() => filterByDate(orders, dateFilter, customStart, customEnd), [orders, dateFilter, customStart, customEnd]);
 
-  // Metrics
-  const totalRevenue  = filteredOrders.reduce((s, o) => s + o.totalAmount, 0);
-  const totalCartons  = inventory.reduce((s, i) => s + i.actualStock, 0);
-  const totalPairs    = totalCartons * 24;
+  // Metrics — live stock from articles sizeMap (not dummy inventory)
+  const { totalLivePairs, totalLiveCtns } = useMemo(() => {
+    let pairs = 0;
+    articles.forEach(a => (a.variants || []).forEach(v =>
+      Object.values(v.sizeMap || {}).forEach((c: any) => { pairs += Number(c?.qty || 0); })
+    ));
+    return { totalLivePairs: pairs, totalLiveCtns: Math.floor(pairs / 24) };
+  }, [articles]);
 
-  // Chart data
+  const totalRevenue = useMemo(
+    () => filteredOrders.reduce((s, o) => s + ((o as any).finalAmount || o.totalAmount || 0), 0),
+    [filteredOrders]
+  );
+
+  // Chart data — use live pairs from sizeMap per category
   const categoryData = useMemo(() => articles.reduce((acc: any[], article) => {
     const catName = article.category.toString();
     const existing = acc.find(a => a.name === catName);
-    const stock = inventory.find(i => i.articleId === article.id)?.actualStock || 0;
-    if (existing) existing.value += stock;
-    else acc.push({ name: catName, value: stock });
+    const livePairs = (article.variants || []).reduce((s, v) =>
+      s + Object.values(v.sizeMap || {}).reduce((vs, c: any) => vs + Number(c?.qty || 0), 0), 0
+    );
+    const ctns = Math.floor(livePairs / 24);
+    if (existing) existing.value += ctns;
+    else acc.push({ name: catName, value: ctns });
     return acc;
-  }, []), [articles, inventory]);
+  }, []), [articles]);
 
   // Distributors
   const allDistributors = useMemo(() => computeDistributors(filteredOrders), [filteredOrders]);
@@ -565,9 +576,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           icon={<Users size={24} className="text-indigo-600" />}
         />
         <MetricCard
-          title="Total Inventory"
-          value={`${totalCartons.toLocaleString()} Cartons`}
-          sub={`${totalPairs.toLocaleString()} pairs`}
+          title="Live Inventory"
+          value={`${totalLiveCtns.toLocaleString()} Ctns`}
+          sub={`${totalLivePairs.toLocaleString()} pairs`}
           icon={<Package size={24} className="text-amber-600" />}
         />
         <MetricCard
@@ -770,9 +781,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Overdue Payments */}
-      <OverduePayments isAdmin={true} />
 
     </div>
   );

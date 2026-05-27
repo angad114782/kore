@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Truck, Download, RefreshCw, Calendar } from "lucide-react";
-import { reportService } from "../../services/reportService";
+import { Truck, Download, RefreshCw, Calendar, AlertCircle } from "lucide-react";
+import { apiFetch } from "../../services/api";
 import Pagination from "../ui/Pagination";
 import { usePageSize } from "../../utils/usePageSize";
 
@@ -33,21 +33,22 @@ const DispatchReport: React.FC = () => {
   const [total, setTotal]         = useState(0);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate]     = useState("");
+  const [error, setError]         = useState<string | null>(null);
 
   const fetch = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await reportService.getDispatch({
-        page, limit: pageSize,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-      });
-      const d = res.data;
+      const params = new URLSearchParams({ page: String(page), limit: String(pageSize) });
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+      const d = await apiFetch(`/reports/dispatch?${params.toString()}`);
       setRows(d.data || []);
       setSummary(d.summary || { totalOrders: 0, totalAmount: 0, totalPairs: 0 });
       setTotal(d.meta?.total || 0);
       setTotalPages(d.meta?.totalPages || 1);
-    } catch {
+    } catch (err: any) {
+      setError(err?.message || "Failed to load dispatch report");
       setRows([]);
     } finally {
       setLoading(false);
@@ -133,6 +134,11 @@ const DispatchReport: React.FC = () => {
         {loading ? (
           <div className="flex items-center justify-center py-20 text-slate-400">
             <RefreshCw size={20} className="animate-spin mr-2" /> Loading...
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-center gap-3 py-20 text-rose-500">
+            <AlertCircle size={20} />
+            <span className="text-sm font-medium">{error}</span>
           </div>
         ) : rows.length === 0 ? (
           <div className="text-center py-20 text-slate-400">No dispatch data found</div>
