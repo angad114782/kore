@@ -134,9 +134,10 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
           <div>
             <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Live Stock</p>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black text-slate-900">{totalLivePairs.toLocaleString()}</span>
-              <span className="text-xs font-bold text-slate-400">pairs</span>
+              <span className="text-2xl font-black text-slate-900">{Math.floor(totalLivePairs / 24).toLocaleString()}</span>
+              <span className="text-xs font-bold text-slate-400">Ctns</span>
             </div>
+            <p className="text-[10px] text-slate-400 mt-0.5">{totalLivePairs.toLocaleString()} pairs</p>
           </div>
         </div>
         <div className="bg-white rounded-2xl border border-indigo-200 shadow-sm p-4 flex items-center gap-4">
@@ -146,9 +147,10 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
           <div>
             <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Approved PO</p>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black text-slate-900">{totalPOPairs.toLocaleString()}</span>
-              <span className="text-xs font-bold text-slate-400">pairs</span>
+              <span className="text-2xl font-black text-slate-900">{Math.floor(totalPOPairs / 24).toLocaleString()}</span>
+              <span className="text-xs font-bold text-slate-400">Ctns</span>
             </div>
+            <p className="text-[10px] text-slate-400 mt-0.5">{totalPOPairs.toLocaleString()} pairs</p>
           </div>
         </div>
         <div className="bg-white rounded-2xl border border-amber-200 shadow-sm p-4 flex items-center gap-4">
@@ -158,9 +160,10 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
           <div>
             <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Blocked</p>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black text-slate-900">{totalBlockedPairs.toLocaleString()}</span>
-              <span className="text-xs font-bold text-slate-400">pairs</span>
+              <span className="text-2xl font-black text-slate-900">{Math.floor(totalBlockedPairs / 24).toLocaleString()}</span>
+              <span className="text-xs font-bold text-slate-400">Ctns</span>
             </div>
+            <p className="text-[10px] text-slate-400 mt-0.5">{totalBlockedPairs.toLocaleString()} pairs</p>
           </div>
         </div>
       </div>
@@ -224,23 +227,26 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                   <div className="text-center w-28 border-l border-slate-100 pl-4">
                     <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-0.5">Live Stock</p>
                     <div className="flex items-baseline justify-center gap-1">
-                      <span className="text-xl font-black text-slate-900">{articleLivePairs}</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">prs</span>
+                      <span className="text-xl font-black text-slate-900">{Math.floor(articleLivePairs / 24)}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ctns</span>
                     </div>
+                    <p className="text-[9px] text-slate-400 mt-0.5">{articleLivePairs} prs</p>
                   </div>
                   <div className="text-center w-28 border-l border-slate-100 pl-4">
                     <p className="text-[9px] font-black text-rose-500 uppercase tracking-widest mb-0.5">Booked</p>
                     <div className="flex items-baseline justify-center gap-1">
-                      <span className="text-xl font-black text-slate-900">{articleBookedPairs}</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">prs</span>
+                      <span className="text-xl font-black text-slate-900">{Math.floor(articleBookedPairs / 24)}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ctns</span>
                     </div>
+                    <p className="text-[9px] text-slate-400 mt-0.5">{articleBookedPairs} prs</p>
                   </div>
                   <div className="text-center w-28 border-l border-slate-100 pl-4">
                     <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5">Blocked</p>
                     <div className="flex items-baseline justify-center gap-1">
-                      <span className="text-xl font-black text-slate-900">{articleBlockedPairs}</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">prs</span>
+                      <span className="text-xl font-black text-slate-900">{Math.floor(articleBlockedPairs / 24)}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ctns</span>
                     </div>
+                    <p className="text-[9px] text-slate-400 mt-0.5">{articleBlockedPairs} prs</p>
                   </div>
                 </div>
 
@@ -258,15 +264,18 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
               <div className="lg:hidden grid grid-cols-3 gap-2 px-4 pb-4">
                 <div className="bg-emerald-50/50 p-2.5 rounded-xl text-center border border-emerald-100">
                   <p className="text-[8px] font-black text-emerald-600 uppercase tracking-tighter mb-0.5">Live</p>
-                  <p className="text-sm font-black text-slate-900">{articleLivePairs} <span className="text-[8px] text-slate-400">prs</span></p>
+                  <p className="text-sm font-black text-slate-900">{Math.floor(articleLivePairs / 24)} <span className="text-[8px] text-slate-400">Ctns</span></p>
+                  <p className="text-[8px] text-slate-400">{articleLivePairs} prs</p>
                 </div>
                 <div className="bg-rose-50/50 p-2.5 rounded-xl text-center border border-rose-100">
                   <p className="text-[8px] font-black text-rose-600 uppercase tracking-tighter mb-0.5">Booked</p>
-                  <p className="text-sm font-black text-slate-900">{articleBookedPairs} <span className="text-[8px] text-slate-400">prs</span></p>
+                  <p className="text-sm font-black text-slate-900">{Math.floor(articleBookedPairs / 24)} <span className="text-[8px] text-slate-400">Ctns</span></p>
+                  <p className="text-[8px] text-slate-400">{articleBookedPairs} prs</p>
                 </div>
                 <div className="bg-amber-50/50 p-2.5 rounded-xl text-center border border-amber-100">
                   <p className="text-[8px] font-black text-amber-600 uppercase tracking-tighter mb-0.5">Blocked</p>
-                  <p className="text-sm font-black text-slate-900">{articleBlockedPairs} <span className="text-[8px] text-slate-400">prs</span></p>
+                  <p className="text-sm font-black text-slate-900">{Math.floor(articleBlockedPairs / 24)} <span className="text-[8px] text-slate-400">Ctns</span></p>
+                  <p className="text-[8px] text-slate-400">{articleBlockedPairs} prs</p>
                 </div>
               </div>
 
