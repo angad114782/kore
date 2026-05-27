@@ -176,8 +176,17 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
         {filteredInventory.map(inv => {
           const article = articles.find(a => a.id === inv.articleId)!;
           const isExpanded = expandedIds.has(article.id);
-          const isLowStock = inv.availableStock < lowStockThreshold;
           const variantCount = article.variants?.length || 0;
+
+          // Compute pair totals from variants (same logic as expanded table)
+          const articleLivePairs = (article.variants || []).reduce((sum, v) =>
+            sum + Object.values(v.sizeMap || {}).reduce((s, c: any) => s + (Number(c?.qty) || 0), 0), 0);
+          const articleBlockedPairs = (article.variants || []).reduce((sum, v) =>
+            sum + Object.values(v.sizeMap || {}).reduce((s, c: any) => s + (Number(c?.blockedQty) || 0), 0), 0);
+          const articleBookedPairs = (article.variants || []).reduce((sum, v) =>
+            sum + Object.values(v.bookingMap || {}).reduce((s, q) => s + (Number(q) || 0), 0), 0);
+
+          const isLowStock = articleLivePairs < lowStockThreshold * 24;
 
           return (
             <div key={inv.articleId} className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden transition-all hover:border-indigo-200">
@@ -212,25 +221,25 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
 
                 {/* Stock Summary Columns */}
                 <div className="hidden lg:flex items-center gap-8 mr-4">
-                  <div className="text-center w-24 border-l border-slate-100 pl-4">
+                  <div className="text-center w-28 border-l border-slate-100 pl-4">
                     <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-0.5">Live Stock</p>
                     <div className="flex items-baseline justify-center gap-1">
-                      <span className="text-xl font-black text-slate-900">{Math.abs(inv.availableStock)}</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ctns</span>
+                      <span className="text-xl font-black text-slate-900">{articleLivePairs}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">prs</span>
                     </div>
                   </div>
-                  <div className="text-center w-24 border-l border-slate-100 pl-4">
+                  <div className="text-center w-28 border-l border-slate-100 pl-4">
                     <p className="text-[9px] font-black text-rose-500 uppercase tracking-widest mb-0.5">Booked</p>
                     <div className="flex items-baseline justify-center gap-1">
-                      <span className="text-xl font-black text-slate-900">{Math.abs(inv.reservedStock)}</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ctns</span>
+                      <span className="text-xl font-black text-slate-900">{articleBookedPairs}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">prs</span>
                     </div>
                   </div>
-                  <div className="text-center w-24 border-l border-slate-100 pl-4">
+                  <div className="text-center w-28 border-l border-slate-100 pl-4">
                     <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5">Blocked</p>
                     <div className="flex items-baseline justify-center gap-1">
-                      <span className="text-xl font-black text-slate-900">{Math.abs(inv.blockedStock || 0)}</span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ctns</span>
+                      <span className="text-xl font-black text-slate-900">{articleBlockedPairs}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">prs</span>
                     </div>
                   </div>
                 </div>
@@ -246,18 +255,18 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
               </div>
 
               {/* Mobile Stats Row */}
-              <div className="lg:hidden grid grid-cols-2 gap-2 px-4 pb-4">
+              <div className="lg:hidden grid grid-cols-3 gap-2 px-4 pb-4">
                 <div className="bg-emerald-50/50 p-2.5 rounded-xl text-center border border-emerald-100">
-                  <p className="text-[8px] font-black text-emerald-600 uppercase tracking-tighter mb-0.5">Live Stock</p>
-                  <p className="text-sm font-black text-slate-900">{Math.abs(inv.availableStock)} <span className="text-[8px] text-slate-400">CTN</span></p>
+                  <p className="text-[8px] font-black text-emerald-600 uppercase tracking-tighter mb-0.5">Live</p>
+                  <p className="text-sm font-black text-slate-900">{articleLivePairs} <span className="text-[8px] text-slate-400">prs</span></p>
                 </div>
                 <div className="bg-rose-50/50 p-2.5 rounded-xl text-center border border-rose-100">
                   <p className="text-[8px] font-black text-rose-600 uppercase tracking-tighter mb-0.5">Booked</p>
-                  <p className="text-sm font-black text-slate-900">{Math.abs(inv.reservedStock)} <span className="text-[8px] text-slate-400">CTN</span></p>
+                  <p className="text-sm font-black text-slate-900">{articleBookedPairs} <span className="text-[8px] text-slate-400">prs</span></p>
                 </div>
                 <div className="bg-amber-50/50 p-2.5 rounded-xl text-center border border-amber-100">
                   <p className="text-[8px] font-black text-amber-600 uppercase tracking-tighter mb-0.5">Blocked</p>
-                  <p className="text-sm font-black text-slate-900">{Math.abs(inv.blockedStock || 0)} <span className="text-[8px] text-slate-400">CTN</span></p>
+                  <p className="text-sm font-black text-slate-900">{articleBlockedPairs} <span className="text-[8px] text-slate-400">prs</span></p>
                 </div>
               </div>
 
