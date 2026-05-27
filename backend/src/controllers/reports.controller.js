@@ -17,16 +17,24 @@ const getStockReport = async (req, res) => {
 
     const data = catalogs.map((c) => {
       const variants = (c.variants || []).map((v) => {
-        // sizeMap contains actual live stock (qty + blockedQty per size)
-        const rawSizeMap = v.sizeMap instanceof Map ? Object.fromEntries(v.sizeMap) : (v.sizeMap || {});
+        // sizeMap — lean() returns plain object, Map returns Map
+        const rawSizeMap = v.sizeMap instanceof Map
+          ? Object.fromEntries(v.sizeMap)
+          : (v.sizeMap && typeof v.sizeMap === "object" ? v.sizeMap : {});
+
         const sizeStock = {};
         let variantTotalStock = 0;
         Object.entries(rawSizeMap).forEach(([sz, cell]) => {
-          const qty = Number(cell?.qty || 0);
-          const blockedQty = Number(cell?.blockedQty || 0);
+          const c = cell && typeof cell === "object" ? cell : {};
+          const qty = Number(c.qty || 0);
+          const blockedQty = Number(c.blockedQty || 0);
           sizeStock[sz] = { qty, blockedQty };
           variantTotalStock += qty;
         });
+
+        const rawSizeQuantities = v.sizeQuantities instanceof Map
+          ? Object.fromEntries(v.sizeQuantities)
+          : (v.sizeQuantities && typeof v.sizeQuantities === "object" ? v.sizeQuantities : {});
 
         return {
           variantId: v._id,
@@ -35,7 +43,7 @@ const getStockReport = async (req, res) => {
           sizeRange: v.sizeRange,
           mrp: v.mrp,
           listingStatus: v.listingStatus,
-          sizeQuantities: v.sizeQuantities ? Object.fromEntries(v.sizeQuantities) : {},
+          sizeQuantities: rawSizeQuantities,
           sizeStock,
           totalStock: variantTotalStock,
         };
