@@ -280,6 +280,11 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
         const stage = rawStatus === "WISHLIST" ? "WISHLIST" : "AVAILABLE";
         const expectedDate = firstRow.expected_date?.trim() || "";
 
+        // Check if a master with this name already exists → addon (update) instead of create
+        const existingMaster = articles.find(
+          a => a.name.trim().toLowerCase() === name.trim().toLowerCase()
+        );
+
         const fd = new FormData();
         fd.append("articleName", name);
         fd.append("mrp", String(mrp));
@@ -291,14 +296,45 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
         fd.append("stage", stage);
         if (soleColor) fd.append("soleColor", soleColor);
         if (stage === "WISHLIST" && expectedDate) fd.append("expectedAvailableDate", expectedDate);
-        fd.append("productColors", JSON.stringify(colors));
-        fd.append("sizeRanges", JSON.stringify(sizes));
-        fd.append("variants", JSON.stringify(variants));
         if (Object.keys(colorImageUrls).length > 0) {
           fd.append("colorImageUrls", JSON.stringify(colorImageUrls));
         }
 
-        await masterCatalogService.createMasterItem(fd);
+        if (existingMaster) {
+          // Merge existing variants (preserve stock) + new ones from CSV
+          const existingVariants = (existingMaster.variants || []).map(v => ({
+            _id: v.id,
+            itemName: v.itemName,
+            color: v.color,
+            sizeRange: v.sizeRange,
+            costPrice: v.costPrice || 0,
+            sellingPrice: v.sellingPrice || 0,
+            mrp: v.mrp || 0,
+            hsnCode: v.hsnCode || "",
+            sizeQuantities: v.sizeQuantities || {},
+            sizeSkus: v.sizeSkus || {},
+            sizeMap: v.sizeMap || {},
+            isActive: v.isActive !== false,
+          }));
+          const allVariants = [...existingVariants, ...variants];
+          const allColors = Array.from(new Set([
+            ...(existingMaster.variants || []).map(v => v.color),
+            ...colors,
+          ].filter(Boolean)));
+          const allSizes = Array.from(new Set([
+            ...(existingMaster.variants || []).map(v => v.sizeRange),
+            ...sizes,
+          ].filter(Boolean)));
+          fd.append("productColors", JSON.stringify(allColors));
+          fd.append("sizeRanges", JSON.stringify(allSizes));
+          fd.append("variants", JSON.stringify(allVariants));
+          await masterCatalogService.updateMasterItem(existingMaster.id, fd);
+        } else {
+          fd.append("productColors", JSON.stringify(colors));
+          fd.append("sizeRanges", JSON.stringify(sizes));
+          fd.append("variants", JSON.stringify(variants));
+          await masterCatalogService.createMasterItem(fd);
+        }
         created++;
       }
       return created;
@@ -736,11 +772,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
           const variantCount = article.variants?.length || 0;
           const cover = imgSrc(article.imageUrl);
 
-          // Calculate price ranges
-          const sellingPrices =
-            article.variants
-              ?.map((v) => v.sellingPrice || 0)
-              .filter((p) => p > 0) || [];
+          // Calculate price ranges (per-carton = per-pair × 24)
           const costPrices =
             article.variants
               ?.map((v) => v.costPrice || 0)
@@ -748,21 +780,24 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
           const mrpPrices =
             article.variants?.map((v) => v.mrp || 0).filter((p) => p > 0) || [];
 
-          const formatRange = (prices: number[], fallback: number) => {
-            if (!prices.length) return `₹${fallback.toLocaleString()}`;
-            const min = Math.min(...prices);
-            const max = Math.max(...prices);
-            return min === max
-              ? `₹${min.toLocaleString()}`
-              : `₹${min.toLocaleString()} - ₹${max.toLocaleString()}`;
+          const formatCtnRange = (prices: number[], fallback: number) => {
+            const pts = prices.length ? prices : fallback > 0 ? [fallback] : [];
+            if (!pts.length) return { ctn: "—", pr: "—" };
+            const min = Math.min(...pts) * 24;
+            const max = Math.max(...pts) * 24;
+            const minPr = Math.min(...pts);
+            const maxPr = Math.max(...pts);
+            return {
+              ctn: min === max ? `₹${min.toLocaleString()}` : `₹${min.toLocaleString()} – ₹${max.toLocaleString()}`,
+              pr: minPr === maxPr ? `₹${minPr.toLocaleString()}` : `₹${minPr.toLocaleString()} – ₹${maxPr.toLocaleString()}`,
+            };
           };
 
-          const sellingDisplay = formatRange(
-            sellingPrices,
-            article.pricePerPair || 0
-          );
-          const costDisplay = formatRange(costPrices, 0);
-          const mrpDisplay = formatRange(mrpPrices, article.mrp || 0);
+          const costRange = formatCtnRange(costPrices, 0);
+          const mrpRange = formatCtnRange(mrpPrices, article.mrp || 0);
+
+          // Unique colors across variants
+          const variantColors = Array.from(new Set(article.variants?.map(v => v.color).filter(Boolean)));
 
           // Find common HSN
           const hsnCodes = Array.from(
@@ -820,16 +855,33 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                   </div>
 
                   {/* Compact Stats Row */}
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                    <StatItem
-                      label="Brand"
-                      value={article.brand || "Internal"}
-                    />
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-0.5">
+                    <StatItem label="Brand" value={article.brand || "Internal"} />
                     <div className="flex items-center gap-2">
-                      <StatBox label="Cost" value={costDisplay} />
-                      <StatBox label="MRP" value={mrpDisplay} />
+                      <div className="text-[10px] leading-tight">
+                        <span className="font-black text-slate-400 uppercase tracking-widest">Cost </span>
+                        <span className="font-black text-slate-700">{costRange.ctn}</span>
+                        <span className="text-slate-400"> /ctn</span>
+                        <span className="block text-[9px] text-slate-400">{costRange.pr}/pr</span>
+                      </div>
+                      <div className="text-[10px] leading-tight border-l border-slate-100 pl-2">
+                        <span className="font-black text-slate-400 uppercase tracking-widest">MRP </span>
+                        <span className="font-black text-indigo-700">{mrpRange.ctn}</span>
+                        <span className="text-slate-400"> /ctn</span>
+                        <span className="block text-[9px] text-slate-400">{mrpRange.pr}/pr</span>
+                      </div>
                     </div>
                   </div>
+                  {/* Color chips */}
+                  {variantColors.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {variantColors.map(c => (
+                        <span key={c} className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[9px] font-bold border border-slate-200/60 uppercase tracking-wide">
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Variant count badge */}
@@ -995,14 +1047,12 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                                       {v.hsnCode || article.sku || "—"}
                                     </td>
                                     <td className="px-6 py-3">
-                                      <span className="text-sm font-bold text-slate-500">
-                                        ₹{(v.costPrice || 0).toLocaleString()}
-                                      </span>
+                                      <p className="text-sm font-bold text-slate-700">₹{((v.costPrice || 0) * 24).toLocaleString()}<span className="text-[10px] font-normal text-slate-400"> /ctn</span></p>
+                                      <p className="text-[10px] text-slate-400">₹{(v.costPrice || 0).toLocaleString()}/pr</p>
                                     </td>
                                     <td className="px-6 py-3">
-                                      <span className="text-sm font-bold text-slate-800">
-                                        ₹{(v.mrp || 0).toLocaleString()}
-                                      </span>
+                                      <p className="text-sm font-bold text-indigo-700">₹{((v.mrp || 0) * 24).toLocaleString()}<span className="text-[10px] font-normal text-slate-400"> /ctn</span></p>
+                                      <p className="text-[10px] text-slate-400">₹{(v.mrp || 0).toLocaleString()}/pr</p>
                                     </td>
                                     <td className="px-6 py-3 text-center">
                                       <div onClick={(e) => e.stopPropagation()}>
@@ -1083,7 +1133,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                                         {v.color || "—"}
                                       </span>
                                       <span className="text-xs font-bold text-indigo-600">
-                                        ₹{(v.mrp || 0).toLocaleString()}
+                                        ₹{((v.mrp || 0) * 24).toLocaleString()}<span className="text-[9px] font-normal text-slate-400">/ctn</span>
                                       </span>
                                     </div>
                                   </div>
@@ -1186,7 +1236,19 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                   </button>
 
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800">
-                    <b>{Object.keys(groupCsvByName(csvRows)).length} article(s)</b> ready to import ({csvRows.length} variant rows). Category, Brand, Manufacturer, Unit aur Image URL CSV se hi liye jayenge.
+                    {(() => {
+                      const groups = groupCsvByName(csvRows);
+                      const names = Object.keys(groups);
+                      const addon = names.filter(n => articles.some(a => a.name.trim().toLowerCase() === n.trim().toLowerCase())).length;
+                      const newCount = names.length - addon;
+                      return (
+                        <>
+                          <b>{names.length} article(s)</b> ready to import ({csvRows.length} variant rows).
+                          {addon > 0 && <span className="ml-1 text-amber-700 font-bold">{addon} existing will get new variants added.</span>}
+                          {newCount > 0 && <span className="ml-1 text-emerald-700 font-bold">{newCount} will be created new.</span>}
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* Preview Table */}

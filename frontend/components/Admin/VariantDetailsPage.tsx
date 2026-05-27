@@ -716,14 +716,14 @@ const PriceBox: React.FC<{
   }[accent];
   return (
     <div className={`rounded-xl border p-3 ${c.bg}`}>
-      <p
-        className={`text-[9px] font-black uppercase tracking-wider ${c.label}`}
-      >
+      <p className={`text-[9px] font-black uppercase tracking-wider ${c.label}`}>
         {label}
       </p>
       <p className={`text-lg font-black leading-tight ${c.val}`}>
-        ₹{value.toLocaleString()}
+        ₹{(value * 24).toLocaleString()}
+        <span className={`text-[10px] font-normal ml-0.5 ${c.label}`}>/ctn</span>
       </p>
+      <p className={`text-[9px] mt-0.5 ${c.label}`}>₹{value.toLocaleString()}/pr</p>
     </div>
   );
 };
