@@ -1342,12 +1342,17 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                     const totalAllocated = Object.values(allocations).reduce((sum, a) => sum + (a.allocatedCartonCount || 0), 0) ||
                                          currentOrder.items.reduce((sum, i) => sum + (i.allocatedCartonCount || 0), 0);
 
-                    const allItemsAllocated = currentOrder.items.every(item => {
-                      const remaining = item.cartonCount - (item.fulfilledCartonCount || 0);
-                      if (remaining <= 0) return true;
+                    const itemsInBatch = currentOrder.items.filter(item => {
                       const alloc = allocations[item.variantId!]?.allocatedCartonCount ?? item.allocatedCartonCount ?? 0;
                       return alloc > 0;
-                    });
+                    }).length;
+                    const itemsPending = currentOrder.items.filter(item => {
+                      const remaining = item.cartonCount - (item.fulfilledCartonCount || 0);
+                      const alloc = allocations[item.variantId!]?.allocatedCartonCount ?? item.allocatedCartonCount ?? 0;
+                      return remaining > 0 && alloc === 0;
+                    }).length;
+                    const hasAnyAllocation = itemsInBatch > 0;
+                    const isPartialBatch = itemsPending > 0;
 
                     const hasUnsavedBlocking = currentOrder.items.some(item => {
                       const saved = item.blockedCartonCount ?? 0;
@@ -1360,9 +1365,9 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                     if (isDistributor || ![OrderStatus.BOOKED, OrderStatus.PARTIAL, OrderStatus.PFD, OrderStatus.RFD].includes(currentOrder.status)) return null;
 
                     const stepConfig = {
-                      [OrderStatus.BOOKED]:  { num: 1, color: 'bg-indigo-600',  title: 'Allocate Stock',         hint: 'Set carton quantities in the table above. Blocking is optional — you can allocate directly.' },
-                      [OrderStatus.PARTIAL]: { num: 1, color: 'bg-indigo-600',  title: 'Allocate Next Batch',    hint: 'Set quantities for the next delivery batch. Blocking is optional.' },
-                      [OrderStatus.PFD]:     { num: 2, color: 'bg-amber-500',   title: 'Prepare for Delivery',   hint: 'Update allocation if needed, download PI, then mark as Ready for Delivery.' },
+                      [OrderStatus.BOOKED]:  { num: 1, color: 'bg-indigo-600',  title: 'Allocate Stock',         hint: isPartialBatch ? `Partial batch — ${itemsInBatch} item(s) in this dispatch, ${itemsPending} item(s) will go in a later batch.` : 'Set carton quantities above. Blocking is optional.' },
+                      [OrderStatus.PARTIAL]: { num: 1, color: 'bg-indigo-600',  title: 'Allocate Next Batch',    hint: isPartialBatch ? `Partial batch — ${itemsInBatch} item(s) in this dispatch, ${itemsPending} item(s) pending.` : 'Set quantities for the next delivery batch.' },
+                      [OrderStatus.PFD]:     { num: 2, color: 'bg-amber-500',   title: 'Prepare for Delivery',   hint: isPartialBatch ? `${itemsInBatch} item(s) in this batch, ${itemsPending} item(s) set to 0 — will be dispatched later.` : 'Update allocation if needed, download PI, then mark as Ready for Delivery.' },
                       [OrderStatus.RFD]:     { num: 3, color: 'bg-blue-500',    title: 'Dispatch Order',         hint: 'Upload 3 shipping documents, scan cartons to verify, then confirm dispatch.' },
                     } as const;
                     const step = stepConfig[currentOrder.status as keyof typeof stepConfig];
@@ -1376,7 +1381,14 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                               {step.num}
                             </div>
                             <div>
-                              <p className="text-sm font-bold text-slate-900">{step.title}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-bold text-slate-900">{step.title}</p>
+                                {isPartialBatch && currentOrder.status !== OrderStatus.RFD && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[9px] font-black uppercase tracking-wider">
+                                    Partial · {itemsInBatch}/{itemsInBatch + itemsPending} items
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-[10px] font-medium text-slate-400">{step.hint}</p>
                             </div>
                           </div>
@@ -1459,13 +1471,15 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                                   </div>
                                 )}
                                 <button
-                                  disabled={uploading || !allItemsAllocated}
-                                  title={!allItemsAllocated ? "Set allocation for all remaining items first" : undefined}
+                                  disabled={uploading || !hasAnyAllocation}
+                                  title={!hasAnyAllocation ? "Set allocation for at least one item" : undefined}
                                   onClick={handleAllocateAndProceed}
                                   className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 text-white rounded-xl font-bold text-xs hover:bg-slate-900 transition-all shadow-md active:scale-95 disabled:opacity-50"
                                 >
                                   {uploading ? <Loader2 size={14} className="animate-spin" /> : <Package size={14} />}
-                                  {[OrderStatus.BOOKED, OrderStatus.PARTIAL].includes(currentOrder.status) ? 'Allocate & Proceed' : 'Update Allocation'}
+                                  {[OrderStatus.BOOKED, OrderStatus.PARTIAL].includes(currentOrder.status)
+                                    ? (isPartialBatch ? `Dispatch ${itemsInBatch} Item(s) Now` : 'Allocate & Proceed')
+                                    : 'Update Allocation'}
                                 </button>
                               </>
                             )}
@@ -1473,8 +1487,8 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                             {/* PFD: Mark RFD */}
                             {currentOrder.status === OrderStatus.PFD && (
                               <button
-                                disabled={uploading || !allItemsAllocated}
-                                title={!allItemsAllocated ? "Allocate all items before marking Ready for Delivery" : undefined}
+                                disabled={uploading || !hasAnyAllocation}
+                                title={!hasAnyAllocation ? "Allocate at least one item before marking Ready for Delivery" : undefined}
                                 onClick={() => handleUpdateStatus(OrderStatus.RFD)}
                                 className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
                               >
