@@ -1297,27 +1297,29 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                                 </div>
                               </td>
                               <td className="px-4 py-4 text-center bg-amber-50/20">
-                                <input 
+                                <input
                                   type="number"
-                                  value={blockingState[item.variantId!]?.blockedCartonCount ?? item.blockedCartonCount ?? 0}
+                                  value={(() => { const v = blockingState[item.variantId!]?.blockedCartonCount ?? item.blockedCartonCount ?? 0; return v === 0 ? "" : v; })()}
+                                  placeholder="0"
                                   min={0}
                                   max={Math.min(
                                     item.cartonCount - (item.fulfilledCartonCount || 0),
                                     (item.blockedCartonCount || 0) + getAssortmentLiveCartons(0)
                                   )}
                                   onChange={(e) => handleCartonBlockingChange(item.variantId!, parseInt(e.target.value) || 0, item)}
-                                  className="w-14 h-7 text-center bg-white border border-amber-200 rounded text-xs font-black text-amber-600 outline-none focus:ring-1 focus:ring-amber-500"
+                                  className="w-14 h-7 text-center bg-white border border-amber-200 rounded text-xs font-black text-amber-600 outline-none focus:ring-1 focus:ring-amber-500 placeholder:text-amber-200"
                                 />
                               </td>
                               <td className="px-4 py-4 text-center bg-indigo-50/20">
                                 {[OrderStatus.BOOKED, OrderStatus.PARTIAL, OrderStatus.PFD, OrderStatus.RFD].includes(currentOrder.status) ? (
                                   <input
                                     type="number"
-                                    value={allocations[item.variantId!]?.allocatedCartonCount ?? 0}
+                                    value={(() => { const v = allocations[item.variantId!]?.allocatedCartonCount ?? 0; return v === 0 ? "" : v; })()}
+                                    placeholder="0"
                                     min={0}
                                     max={item.cartonCount - (item.fulfilledCartonCount || 0)}
                                     onChange={(e) => handleCartonAllocationChange(item.variantId!, parseInt(e.target.value) || 0, item)}
-                                    className="w-14 h-7 text-center bg-white border border-indigo-200 rounded text-xs font-black text-indigo-600 outline-none focus:ring-1 focus:ring-indigo-500"
+                                    className="w-14 h-7 text-center bg-white border border-indigo-200 rounded text-xs font-black text-indigo-600 outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-indigo-200"
                                   />
                                 ) : (
                                   <p className="text-sm font-black text-indigo-500 leading-none">{item.allocatedCartonCount || 0}</p>
