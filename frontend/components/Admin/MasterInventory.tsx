@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react';
-import { Search, Plus, Minus, Database, ArrowUpCircle, ArrowDownCircle, AlertTriangle, X, ChevronDown, ImageIcon, Package, Layers } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, Plus, Minus, Database, ArrowUpCircle, ArrowDownCircle, AlertTriangle, X, ChevronDown, ImageIcon, Package, Layers, TrendingUp, Lock, ShoppingCart } from 'lucide-react';
 import { Inventory, Article } from '../../types';
 import { getImageUrl } from '../../utils/imageUtils';
 import { formatAssortment } from '../../utils/assortmentUtils';
+import { apiFetch } from '../../services/api';
 
 interface MasterInventoryProps {
   inventory: Inventory[];
@@ -20,6 +21,40 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
   const [qty, setQty] = useState(0);
   const [lowStockThreshold, setLowStockThreshold] = useState(10);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [totalPOPairs, setTotalPOPairs] = useState(0);
+
+  // Compute live + blocked pairs from articles prop (always in sync)
+  const { totalLivePairs, totalBlockedPairs } = useMemo(() => {
+    let live = 0;
+    let blocked = 0;
+    articles.forEach(a => {
+      (a.variants || []).forEach(v => {
+        Object.values(v.sizeMap || {}).forEach((cell: any) => {
+          live += Number(cell?.qty || 0);
+          blocked += Number(cell?.blockedQty || 0);
+        });
+      });
+    });
+    return { totalLivePairs: live, totalBlockedPairs: blocked };
+  }, [articles]);
+
+  // Fetch total approved PO pairs (once on mount)
+  useEffect(() => {
+    apiFetch("/purchase-orders?limit=1000")
+      .then((res: any) => {
+        const pos: any[] = res.data || [];
+        let total = 0;
+        pos.forEach(po => {
+          if (po.billStatus === "APPROVED") {
+            (po.items || []).forEach((item: any) => {
+              total += Number(item.quantity || 0);
+            });
+          }
+        });
+        setTotalPOPairs(total);
+      })
+      .catch(() => {});
+  }, []);
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
@@ -86,6 +121,46 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Row */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-white rounded-2xl border border-emerald-200 shadow-sm p-4 flex items-center gap-4">
+          <div className="p-2.5 bg-emerald-50 rounded-xl">
+            <TrendingUp size={20} className="text-emerald-600" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Live Stock</p>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-slate-900">{totalLivePairs.toLocaleString()}</span>
+              <span className="text-xs font-bold text-slate-400">pairs</span>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl border border-indigo-200 shadow-sm p-4 flex items-center gap-4">
+          <div className="p-2.5 bg-indigo-50 rounded-xl">
+            <ShoppingCart size={20} className="text-indigo-600" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Approved PO</p>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-slate-900">{totalPOPairs.toLocaleString()}</span>
+              <span className="text-xs font-bold text-slate-400">pairs</span>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl border border-amber-200 shadow-sm p-4 flex items-center gap-4">
+          <div className="p-2.5 bg-amber-50 rounded-xl">
+            <Lock size={20} className="text-amber-600" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Blocked</p>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-slate-900">{totalBlockedPairs.toLocaleString()}</span>
+              <span className="text-xs font-bold text-slate-400">pairs</span>
+            </div>
           </div>
         </div>
       </div>
@@ -254,10 +329,10 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                                    </td>
                                    <td className="px-6 py-3 text-center">
                                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white border border-slate-100 shadow-sm">
-                                         <div 
+                                         {/* <div 
                                            className="w-3 h-3 rounded-full border border-slate-200 shadow-inner" 
                                            style={{ backgroundColor: variant.color?.toLowerCase() || '#eee' }}
-                                         />
+                                         /> */}
                                          <span className="text-[10px] font-bold text-slate-600 uppercase">{variant.color}</span>
                                       </div>
                                    </td>
