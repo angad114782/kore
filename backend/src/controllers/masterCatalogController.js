@@ -130,3 +130,29 @@ exports.resetVariantStock = async (req, res) => {
     return sendError(res, err);
   }
 };
+
+exports.stockMovement = async (req, res) => {
+  try {
+    const { type, cartons, reason, note } = req.body;
+    if (!["INWARD", "OUTWARD"].includes(type)) {
+      return res.status(400).json({ message: "type must be INWARD or OUTWARD" });
+    }
+    if (!cartons || cartons < 1) {
+      return res.status(400).json({ message: "cartons must be at least 1" });
+    }
+    if (!reason) {
+      return res.status(400).json({ message: "reason is required" });
+    }
+    const data = await masterCatalogService.stockMovement(req.params.variantId, {
+      type,
+      cartons: Number(cartons),
+      reason,
+      note: note || "",
+      user: req.user,
+    });
+    emitCatalogUpdated("updated", data.articleId);
+    return res.json({ message: `Stock ${type.toLowerCase()} recorded`, data });
+  } catch (err) {
+    return sendError(res, err);
+  }
+};

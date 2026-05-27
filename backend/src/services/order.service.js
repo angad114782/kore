@@ -2,6 +2,7 @@ const Order = require("../models/Order");
 const User = require("../models/User");
 const MasterCatalog = require("../models/MasterCatalog");
 const Return = require("../models/Return");
+const activityLog = require("./activityLog.service");
 
 const generateNextOrderNumber = async () => {
   const lastOrder = await Order.findOne()
@@ -648,6 +649,15 @@ const processReturn = async (orderId, returnData) => {
     await order.save();
     
     await newReturn.save();
+
+    activityLog.createLog({
+      action: "RETURN_PROCESSED",
+      entityType: "ORDER",
+      entityId: String(orderId),
+      description: `Return ${returnNumber}: ${totalCartons} carton(s) / ${totalPairs} pairs returned from order ${order.orderNumber} (${order.distributorName})${reason ? ` — ${reason}` : ""}`,
+      metadata: { returnId: String(newReturn._id), returnNumber, orderId: String(orderId), orderNumber: order.orderNumber, totalCartons, totalPairs, reason },
+    });
+
     return newReturn;
   } catch (error) {
     throw new Error(`Failed to process return: ${error.message}`);

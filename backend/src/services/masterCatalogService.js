@@ -789,3 +789,53 @@ exports.resetVariantStock = async (variantIdStr) => {
     message: `Reset complete. ${grnResult.deletedCount} GRNs removed, ${orderResult.modifiedCount} Orders cleaned.` 
   };
 };
+// Stock Movement — manually adjust sizeMap.qty for a variant
+exports.stockMovement = async (variantIdStr, { type, cartons, reason, note, user }) => {
+  const MasterCatalog = require("../models/MasterCatalog");
+  const activityLog = require("./activityLog.service");
+
+  const catalog = await MasterCatalog.findOne({ "variants._id": variantIdStr });
+  if (!catalog) {
+    const err = new Error("Variant not found"); err.statusCode = 404; throw err;
+  }
+  const variant = catalog.variants.id(variantIdStr);
+  if (!variant) {
+    const err = new Error("Variant not found in catalog"); err.statusCode = 404; throw err;
+  }
+
+  const sizeQuantitiesData =
+    variant.sizeQuantities && typeof variant.sizeQuantities.toJSON === "function"
+      ? variant.sizeQuantities.toJSON()
+      : Object.fromEntries(variant.sizeQuantities || []);
+
+  const delta = {};
+  Object.entries(sizeQuantitiesData).forEach(([size, qtyPerCarton]) => {
+    const pairs = Math.round(Number(qtyPerCarton || 0) * cartons);
+    if (pairs <= 0) return;
+    delta[size] = pairs;
+    const cell = variant.sizeMap.get(size) || { qty: 0, blockedQty: 0, sku: "" };
+    if (type === "INWARD") {
+      cell.qty = (cell.qty || 0) + pairs;
+    } else {
+      cell.qty = Math.max(0, (cell.qty || 0) - pairs);
+    }
+    variant.sizeMap.set(size, cell);
+  });
+
+  catalog.markModified("variants");
+  await catalog.save();
+
+  const dirLabel = type === "INWARD" ? "Inward" : "Outward";
+  const totalPairs = Object.values(delta).reduce((s, v) => s + v, 0);
+
+  await activityLog.createLog({
+    action: type === "INWARD" ? "STOCK_INWARD" : "STOCK_OUTWARD",
+    entityType: "STOCK",
+    entityId: String(variantIdStr),
+    description: `Stock ${dirLabel}: ${cartons} carton(s) / ${totalPairs} pairs for "${variant.itemName || variant.color}" — ${reason}${note ? `: ${note}` : ""}`,
+    metadata: { variantId: variantIdStr, articleId: String(catalog._id), cartons, totalPairs, delta, reason, note, type },
+    user,
+  });
+
+  return { variantId: variantIdStr, articleId: String(catalog._id), type, cartons, totalPairs, delta };
+};

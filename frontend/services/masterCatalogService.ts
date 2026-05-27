@@ -141,4 +141,11 @@ export const masterCatalogService = {
       method: "DELETE",
     });
   },
+
+  async stockMovement(variantId: string, payload: { type: 'INWARD' | 'OUTWARD'; cartons: number; reason: string; note?: string }) {
+    return apiFetch(`/master-catalog/variants/${variantId}/stock-movement`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
 };

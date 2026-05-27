@@ -924,6 +924,7 @@ const App: React.FC = () => {
               articles={articles}
               onInward={handleInwardStock}
               onOutward={handleOutwardStock}
+              onRefresh={fetchArticles}
             />
           )}
 

@@ -1,25 +1,39 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Plus, Minus, Database, ArrowUpCircle, ArrowDownCircle, AlertTriangle, X, ChevronDown, ImageIcon, Package, Layers, TrendingUp, Lock, ShoppingCart } from 'lucide-react';
+import { Search, Plus, Minus, Database, ArrowUpCircle, ArrowDownCircle, AlertTriangle, X, ChevronDown, ImageIcon, Package, TrendingUp, Lock, ShoppingCart, ChevronRight, CheckCircle, Loader2 } from 'lucide-react';
 import { Inventory, Article } from '../../types';
 import { getImageUrl } from '../../utils/imageUtils';
 import { formatAssortment } from '../../utils/assortmentUtils';
 import { apiFetch } from '../../services/api';
+import { masterCatalogService } from '../../services/masterCatalogService';
+import { toast } from 'sonner';
 
 interface MasterInventoryProps {
   inventory: Inventory[];
   articles: Article[];
   onInward: (articleId: string, cartons: number) => void;
   onOutward: (articleId: string, cartons: number) => void;
+  onRefresh?: () => void;
 }
 
-const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, onInward, onOutward }) => {
+const INWARD_REASONS = ['Purchase / GRN', 'Returned Stock', 'Stock Transfer In', 'Manual Correction', 'Other'];
+const OUTWARD_REASONS = ['Damage / Defect', 'Sample Issue', 'Lost / Missing', 'Stock Transfer Out', 'Manual Correction', 'Other'];
+
+const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, onRefresh }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [movementType, setMovementType] = useState<'INWARD' | 'OUTWARD'>('INWARD');
-  const [selectedArticleId, setSelectedArticleId] = useState('');
-  const [qty, setQty] = useState(0);
   const [lowStockThreshold, setLowStockThreshold] = useState(10);
+
+  // Multi-step stock movement
+  const [showModal, setShowModal] = useState(false);
+  const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
+  const [movementType, setMovementType] = useState<'INWARD' | 'OUTWARD'>('INWARD');
+  const [modalArticleSearch, setModalArticleSearch] = useState('');
+  const [selectedArticleId, setSelectedArticleId] = useState('');
+  const [selectedVariantId, setSelectedVariantId] = useState('');
+  const [cartons, setCartons] = useState('');
+  const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [totalPOPairs, setTotalPOPairs] = useState(0);
   const [poPairsPerArticle, setPoPairsPerArticle] = useState<Record<string, number>>({});
@@ -77,24 +91,49 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
            article?.sku.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
-  const handleMovementSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedArticleId && qty > 0) {
-      if (movementType === 'INWARD') {
-        onInward(selectedArticleId, qty);
-      } else {
-        onOutward(selectedArticleId, qty);
-      }
-      setShowModal(false);
-      setQty(0);
+  const openMovementModal = (type: 'INWARD' | 'OUTWARD', articleId = '', variantId = '') => {
+    setMovementType(type);
+    setSelectedArticleId(articleId);
+    setSelectedVariantId(variantId);
+    setModalArticleSearch('');
+    setCartons('');
+    setReason('');
+    setNote('');
+    setStep(articleId ? 1 : 0);
+    setShowModal(true);
+  };
+
+  const closeModal = () => { setShowModal(false); setStep(0); };
+
+  const handleMovementSubmit = async () => {
+    if (!selectedVariantId || !cartons || !reason) return;
+    setSubmitting(true);
+    try {
+      await masterCatalogService.stockMovement(selectedVariantId, {
+        type: movementType,
+        cartons: Number(cartons),
+        reason,
+        note,
+      });
+      toast.success(`Stock ${movementType === 'INWARD' ? 'inward' : 'outward'} recorded (${cartons} carton(s))`);
+      closeModal();
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to record stock movement');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const openMovementModal = (type: 'INWARD' | 'OUTWARD', articleId: string = '') => {
-    setMovementType(type);
-    setSelectedArticleId(articleId);
-    setShowModal(true);
-  };
+  const selectedArticle = articles.find(a => a.id === selectedArticleId);
+  const selectedVariant = selectedArticle?.variants?.find(v => v.id === selectedVariantId);
+  const variantLive = selectedVariant ? Object.values(selectedVariant.sizeMap || {}).reduce((s, c: any) => s + (c?.qty || 0), 0) : 0;
+  const reasonOptions = movementType === 'INWARD' ? INWARD_REASONS : OUTWARD_REASONS;
+
+  const filteredModalArticles = articles.filter(a =>
+    a.name.toLowerCase().includes(modalArticleSearch.toLowerCase()) ||
+    a.sku.toLowerCase().includes(modalArticleSearch.toLowerCase())
+  );
 
   return (
     <div className="space-y-6">
@@ -110,24 +149,30 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
           <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Alert Threshold:</span>
-            <input 
-              type="number" 
+            <span className="text-[10px] font-bold text-slate-400 uppercase">Alert:</span>
+            <input
+              type="number"
               className="w-12 bg-transparent font-bold text-indigo-600 outline-none"
               value={lowStockThreshold}
               onChange={(e) => setLowStockThreshold(parseInt(e.target.value) || 0)}
             />
           </div>
-          <div className="relative flex-1 md:w-64">
+          <div className="relative flex-1 md:w-56">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="Search products..." 
+            <input
+              type="text"
+              placeholder="Search products..."
               className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          <button
+            onClick={() => openMovementModal('INWARD')}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-100"
+          >
+            <ArrowUpCircle size={16} /> Stock Movement
+          </button>
         </div>
       </div>
 
@@ -373,17 +418,17 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                                     </td>
                                    <td className="px-6 py-3">
                                       <div className="flex justify-end items-center gap-2">
-                                        <button 
-                                          onClick={() => openMovementModal('OUTWARD', article.id)}
+                                        <button
+                                          onClick={() => openMovementModal('OUTWARD', article.id, variant.id)}
                                           className="flex items-center gap-1.5 px-2.5 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[9px] font-bold hover:bg-rose-100 transition-all border border-rose-100"
                                         >
-                                          <Minus size={12} /> Stock Outward
+                                          <Minus size={12} /> Outward
                                         </button>
-                                        <button 
-                                          onClick={() => openMovementModal('INWARD', article.id)}
-                                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-[9px] font-bold hover:bg-indigo-100 transition-all border border-indigo-100"
+                                        <button
+                                          onClick={() => openMovementModal('INWARD', article.id, variant.id)}
+                                          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-bold hover:bg-emerald-100 transition-all border border-emerald-100"
                                         >
-                                          <Plus size={12} /> Stock Inward
+                                          <Plus size={12} /> Inward
                                         </button>
                                       </div>
                                    </td>
@@ -401,68 +446,319 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
         })}
       </div>
 
-      {/* Movement Modal */}
+      {/* Multi-Step Stock Movement Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-           <div className="bg-white rounded-3xl w-full max-w-md p-6 md:p-8 shadow-2xl animate-in zoom-in-95 duration-200">
-              <div className="flex justify-between items-start mb-6">
-                <div className={`p-3 rounded-2xl ${movementType === 'INWARD' ? 'bg-emerald-50' : 'bg-rose-50'}`}>
-                  {movementType === 'INWARD' ? (
-                    <ArrowUpCircle className="text-emerald-600" size={32} />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200 max-h-[92vh] flex flex-col">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl ${movementType === 'INWARD' ? 'bg-emerald-50' : 'bg-rose-50'}`}>
+                  {movementType === 'INWARD'
+                    ? <ArrowUpCircle size={22} className="text-emerald-600" />
+                    : <ArrowDownCircle size={22} className="text-rose-600" />}
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock Movement</p>
+                  <h3 className="text-base font-bold text-slate-900 leading-tight">
+                    {step === 0 ? 'Choose Type' : step === 1 ? 'Select Variant' : step === 2 ? 'Quantity & Reason' : 'Confirm'}
+                  </h3>
+                </div>
+              </div>
+              <button onClick={closeModal} className="p-2 text-slate-400 hover:text-slate-600 transition-colors rounded-lg hover:bg-slate-100">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Step Indicators */}
+            <div className="flex items-center gap-1.5 px-6 pt-4 pb-2 shrink-0">
+              {[0, 1, 2, 3].map(s => (
+                <div key={s} className={`h-1 flex-1 rounded-full transition-all duration-300 ${s <= step ? (movementType === 'INWARD' ? 'bg-emerald-500' : 'bg-rose-500') : 'bg-slate-100'}`} />
+              ))}
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+
+              {/* Step 0: Type selection */}
+              {step === 0 && (
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    onClick={() => { setMovementType('INWARD'); setStep(1); }}
+                    className="flex flex-col items-center gap-3 p-5 bg-emerald-50 border-2 border-emerald-200 rounded-2xl hover:border-emerald-400 hover:bg-emerald-100 transition-all group"
+                  >
+                    <div className="p-3 bg-emerald-100 rounded-xl group-hover:bg-emerald-200 transition-colors">
+                      <ArrowUpCircle size={28} className="text-emerald-600" />
+                    </div>
+                    <div className="text-center">
+                      <p className="font-black text-emerald-700 text-sm">Stock Inward</p>
+                      <p className="text-[10px] text-emerald-500 mt-0.5">Add stock to warehouse</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => { setMovementType('OUTWARD'); setStep(1); }}
+                    className="flex flex-col items-center gap-3 p-5 bg-rose-50 border-2 border-rose-200 rounded-2xl hover:border-rose-400 hover:bg-rose-100 transition-all group"
+                  >
+                    <div className="p-3 bg-rose-100 rounded-xl group-hover:bg-rose-200 transition-colors">
+                      <ArrowDownCircle size={28} className="text-rose-600" />
+                    </div>
+                    <div className="text-center">
+                      <p className="font-black text-rose-700 text-sm">Stock Outward</p>
+                      <p className="text-[10px] text-rose-500 mt-0.5">Remove stock from warehouse</p>
+                    </div>
+                  </button>
+                </div>
+              )}
+
+              {/* Step 1: Article → Variant select */}
+              {step === 1 && (
+                <div className="space-y-3">
+                  {/* Article picker */}
+                  {!selectedArticleId ? (
+                    <div>
+                      <div className="relative mb-2">
+                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Search article..."
+                          autoFocus
+                          className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+                          value={modalArticleSearch}
+                          onChange={e => setModalArticleSearch(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                        {filteredModalArticles.map(a => (
+                          <button
+                            key={a.id}
+                            onClick={() => setSelectedArticleId(a.id)}
+                            className="w-full flex items-center gap-3 p-3 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-xl transition-all text-left"
+                          >
+                            <img src={getImageUrl(a.imageUrl)} alt="" className="w-9 h-9 rounded-lg object-cover border border-slate-100 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-slate-800 truncate">{a.name}</p>
+                              <p className="text-[10px] font-mono text-slate-400">{a.sku}</p>
+                            </div>
+                            <ChevronRight size={14} className="text-slate-300 shrink-0" />
+                          </button>
+                        ))}
+                        {filteredModalArticles.length === 0 && (
+                          <p className="text-center text-sm text-slate-400 py-6 italic">No articles found</p>
+                        )}
+                      </div>
+                    </div>
                   ) : (
-                    <ArrowDownCircle className="text-rose-600" size={32} />
+                    <div>
+                      {/* Selected article chip */}
+                      <div className="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-100 rounded-xl mb-3">
+                        <img src={getImageUrl(selectedArticle!.imageUrl)} alt="" className="w-8 h-8 rounded-lg object-cover border border-indigo-100" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-indigo-800 truncate">{selectedArticle!.name}</p>
+                          <p className="text-[9px] font-mono text-indigo-400">{selectedArticle!.sku}</p>
+                        </div>
+                        <button onClick={() => { setSelectedArticleId(''); setSelectedVariantId(''); }} className="text-indigo-300 hover:text-indigo-600 p-1 transition-colors">
+                          <X size={14} />
+                        </button>
+                      </div>
+                      {/* Variant list */}
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Select Variant</p>
+                      <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                        {(selectedArticle!.variants || []).map(v => {
+                          const livePairs = Object.values(v.sizeMap || {}).reduce((s, c: any) => s + (c?.qty || 0), 0);
+                          return (
+                            <button
+                              key={v.id}
+                              onClick={() => { setSelectedVariantId(v.id); setStep(2); }}
+                              className="w-full flex items-center gap-3 p-3 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 rounded-xl transition-all text-left"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-slate-800 truncate">{v.itemName || `${v.color} · ${v.sizeRange}`}</p>
+                                <p className="text-[9px] text-slate-400 font-mono">{formatAssortment(v.sizeQuantities)}</p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-xs font-black text-emerald-600">{Math.floor(livePairs / 24)} Ctns</p>
+                                <p className="text-[9px] text-slate-400">{livePairs} prs</p>
+                              </div>
+                              <ChevronRight size={14} className="text-slate-300 shrink-0" />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   )}
                 </div>
-                <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 p-2 transition-colors">
-                  <X size={24} />
-                </button>
-              </div>
-              
-              <h3 className="text-2xl font-bold text-slate-900 mb-2">
-                Stock {movementType === 'INWARD' ? 'Inward' : 'Outward'} Movement
-              </h3>
-              <p className="text-slate-500 text-sm mb-6">
-                {movementType === 'INWARD' 
-                  ? 'Record new production or purchase arrivals to the master warehouse.' 
-                  : 'Record stock deduction due to sample issues, returns, or other manual removals.'}
-              </p>
-              
-              <form onSubmit={handleMovementSubmit} className="space-y-4">
-                 <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">Select Article</label>
-                    <select 
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      value={selectedArticleId}
-                      onChange={(e) => setSelectedArticleId(e.target.value)}
-                      required
-                    >
-                       <option value="">Choose an article...</option>
-                       {articles.map(a => <option key={a.id} value={a.id}>{a.name} ({a.sku})</option>)}
-                    </select>
-                 </div>
-                 <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">Quantity (Cartons)</label>
-                    <input 
-                      type="number" 
-                      min="1"
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      value={qty}
-                      onChange={(e) => setQty(parseInt(e.target.value) || 0)}
-                      required
+              )}
+
+              {/* Step 2: Qty + Reason */}
+              {step === 2 && selectedVariant && (
+                <div className="space-y-4">
+                  {/* Variant summary chip */}
+                  <div className={`flex items-center gap-3 p-3 rounded-xl border ${movementType === 'INWARD' ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-slate-800 truncate">{selectedVariant.itemName || selectedVariant.color}</p>
+                      <p className="text-[9px] text-slate-500">{selectedArticle?.name} · {formatAssortment(selectedVariant.sizeQuantities)}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-black text-emerald-600">{Math.floor(variantLive / 24)} Ctns live</p>
+                    </div>
+                  </div>
+
+                  {/* Carton count */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Cartons to {movementType === 'INWARD' ? 'Add' : 'Remove'}</label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min="1"
+                        autoFocus
+                        placeholder="0"
+                        className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-lg font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 placeholder:text-slate-300"
+                        value={cartons}
+                        onChange={e => setCartons(e.target.value)}
+                      />
+                      <div className="text-right shrink-0">
+                        <p className="text-lg font-black text-slate-400">{cartons ? Number(cartons) * 24 : 0}</p>
+                        <p className="text-[9px] text-slate-400 uppercase tracking-wide">Pairs</p>
+                      </div>
+                    </div>
+                    <p className="text-[9px] text-slate-400 mt-1 font-medium">1 Carton = 24 Pairs</p>
+                  </div>
+
+                  {/* Reason */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Reason</label>
+                    <div className="flex flex-wrap gap-2">
+                      {reasonOptions.map(r => (
+                        <button
+                          key={r}
+                          onClick={() => setReason(r)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${reason === r
+                            ? (movementType === 'INWARD' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-rose-600 text-white border-rose-600')
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300'}`}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Optional note */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Note <span className="font-normal text-slate-400">(optional)</span></label>
+                    <input
+                      type="text"
+                      placeholder="Add details..."
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      value={note}
+                      onChange={e => setNote(e.target.value)}
                     />
-                    <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-wider">Note: 1 Carton = 24 Pairs</p>
-                 </div>
-                 <button 
-                   className={`w-full text-white py-4 rounded-xl font-bold transition-all shadow-lg mt-4 ${
-                     movementType === 'INWARD' 
-                       ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100' 
-                       : 'bg-rose-600 hover:bg-rose-700 shadow-rose-100'
-                   }`}
-                 >
-                   Confirm Stock {movementType === 'INWARD' ? 'Inward' : 'Outward'}
-                 </button>
-              </form>
-           </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Confirmation */}
+              {step === 3 && selectedVariant && (
+                <div className="space-y-4">
+                  <div className={`rounded-2xl border-2 p-5 ${movementType === 'INWARD' ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}>
+                    <div className="flex items-center gap-3 mb-4">
+                      {movementType === 'INWARD'
+                        ? <ArrowUpCircle size={28} className="text-emerald-600 shrink-0" />
+                        : <ArrowDownCircle size={28} className="text-rose-600 shrink-0" />}
+                      <div>
+                        <p className={`text-sm font-black uppercase tracking-wider ${movementType === 'INWARD' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          Stock {movementType === 'INWARD' ? 'Inward' : 'Outward'}
+                        </p>
+                        <p className="text-xs text-slate-500">{selectedArticle?.name}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Variant</span>
+                        <span className="font-bold text-slate-800">{selectedVariant.itemName || selectedVariant.color}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Cartons</span>
+                        <span className="font-bold text-slate-800">{cartons} Ctns</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Pairs</span>
+                        <span className="font-bold text-slate-800">{Number(cartons) * 24} prs</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Reason</span>
+                        <span className="font-bold text-slate-800">{reason}</span>
+                      </div>
+                      {note && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Note</span>
+                          <span className="font-bold text-slate-800 text-right max-w-[60%] truncate">{note}</span>
+                        </div>
+                      )}
+                      <div className="border-t border-slate-200/60 pt-2 mt-2 flex justify-between">
+                        <span className="text-slate-500">Current Live Stock</span>
+                        <span className="font-bold text-slate-800">{Math.floor(variantLive / 24)} Ctns ({variantLive} prs)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">After Movement</span>
+                        <span className={`font-black ${movementType === 'INWARD' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {Math.floor(Math.max(0, variantLive + (movementType === 'INWARD' ? 1 : -1) * Number(cartons) * 24) / 24)} Ctns
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer actions */}
+            <div className="flex items-center gap-3 px-6 py-4 border-t border-slate-100 shrink-0">
+              {step > 0 && (
+                <button
+                  onClick={() => setStep((s) => Math.max(0, s - 1) as 0 | 1 | 2 | 3)}
+                  className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
+                >
+                  Back
+                </button>
+              )}
+              {step === 0 && (
+                <button onClick={closeModal} className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">
+                  Cancel
+                </button>
+              )}
+              {step === 1 && selectedVariantId && (
+                <button
+                  onClick={() => setStep(2)}
+                  className="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all"
+                >
+                  Next
+                </button>
+              )}
+              {step === 2 && (
+                <button
+                  disabled={!cartons || Number(cartons) < 1 || !reason}
+                  onClick={() => setStep(3)}
+                  className="flex-1 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Review
+                </button>
+              )}
+              {step === 3 && (
+                <button
+                  disabled={submitting}
+                  onClick={handleMovementSubmit}
+                  className={`flex-1 py-3 rounded-xl text-white text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                    movementType === 'INWARD'
+                      ? 'bg-emerald-600 hover:bg-emerald-700 shadow-sm shadow-emerald-100'
+                      : 'bg-rose-600 hover:bg-rose-700 shadow-sm shadow-rose-100'
+                  } disabled:opacity-50`}
+                >
+                  {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                  {submitting ? 'Saving...' : `Confirm ${movementType === 'INWARD' ? 'Inward' : 'Outward'}`}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

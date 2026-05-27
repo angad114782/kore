@@ -25,5 +25,6 @@ router.delete("/:id", ctrl.deleteMasterCatalog);
 // Stock aggregation
 router.get("/variants/:variantId/stock", ctrl.getVariantStock);
 router.post("/variants/:variantId/reset-stock", ctrl.resetVariantStock);
+router.post("/variants/:variantId/stock-movement", ctrl.stockMovement);
 
 module.exports = router;
