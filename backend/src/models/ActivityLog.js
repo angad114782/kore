@@ -16,6 +16,7 @@ const activityLogSchema = new mongoose.Schema(
         "CATALOG_CREATED", "CATALOG_UPDATED", "CATALOG_DELETED",
         "STOCK_INWARD", "STOCK_OUTWARD",
         "RETURN_PROCESSED",
+        "PAYMENT_RECEIVED",
       ],
       required: true,
     },

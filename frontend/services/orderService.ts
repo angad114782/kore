@@ -32,9 +32,15 @@ export const orderService = {
     return axios.patch(
       `${API_URL}/${id}/status`,
       { status },
-      {
-        headers: getAuthHeaders(),
-      }
+      { headers: getAuthHeaders() }
     );
+  },
+
+  getOverdueOrders: async () => {
+    return axios.get(`${API_URL}/overdue`, { headers: getAuthHeaders() });
+  },
+
+  markOrderPaid: async (id: string, note?: string) => {
+    return axios.patch(`${API_URL}/${id}/mark-paid`, { note }, { headers: getAuthHeaders() });
   },
 };

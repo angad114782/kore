@@ -18,10 +18,9 @@ interface DispatchOrder {
 interface Summary { totalOrders: number; totalAmount: number; totalPairs: number; }
 
 const statusColor: Record<string, string> = {
-  DISPATCHED: "bg-blue-100 text-blue-700",
-  DELIVERED:  "bg-emerald-100 text-emerald-700",
-  CONFIRMED:  "bg-indigo-100 text-indigo-700",
-  RECEIVED:   "bg-purple-100 text-purple-700",
+  OFD:      "bg-blue-100 text-blue-700",
+  RECEIVED: "bg-emerald-100 text-emerald-700",
+  PARTIAL:  "bg-amber-100 text-amber-700",
 };
 
 const DispatchReport: React.FC = () => {

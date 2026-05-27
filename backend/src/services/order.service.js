@@ -504,6 +504,7 @@ const updateOrderStatus = async (orderId, status, {
 
       // Determine final status
       updateData.status = allFulfilled ? "RECEIVED" : "PARTIAL";
+      if (!order.deliveredAt) updateData.deliveredAt = new Date();
       updateData.items = order.items;
       updateData.fulfillmentHistory = order.fulfillmentHistory;
       order.markModified("items");

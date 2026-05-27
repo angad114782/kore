@@ -11,6 +11,7 @@ import { Order, Inventory, Article, OrderStatus, PurchaseOrder } from '../../typ
 import { getInventoryInsights } from '../../services/geminiService';
 import { poService } from '../../services/poService';
 import { getImageUrl } from '../../utils/imageUtils';
+import OverduePayments from '../shared/OverduePayments';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type DateFilter = 'all' | 'this_month' | 'last_month' | 'this_year' | 'custom';
@@ -769,6 +770,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Overdue Payments */}
+      <OverduePayments isAdmin={true} />
 
     </div>
   );

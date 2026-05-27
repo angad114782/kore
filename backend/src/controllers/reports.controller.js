@@ -73,15 +73,11 @@ const getStockReport = async (req, res) => {
 const getDispatchReport = async (req, res) => {
   try {
     const { startDate, endDate, page = 1, limit = 20 } = req.query;
-    const query = { status: { $in: ["DISPATCHED", "DELIVERED", "CONFIRMED", "RECEIVED"] } };
+    const query = { status: { $in: ["OFD", "RECEIVED", "PARTIAL"] } };
     if (startDate || endDate) {
       query.date = {};
-      if (startDate) query.date.$gte = new Date(startDate);
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        query.date.$lte = end;
-      }
+      if (startDate) query.date.$gte = startDate;
+      if (endDate) query.date.$lte = endDate;
     }
 
     const total = await Order.countDocuments(query);
@@ -118,13 +114,9 @@ const getReturnReport = async (req, res) => {
     const { startDate, endDate, page = 1, limit = 20 } = req.query;
     const query = {};
     if (startDate || endDate) {
-      query.date = {};
-      if (startDate) query.date.$gte = new Date(startDate);
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        query.date.$lte = end;
-      }
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) { const end = new Date(endDate); end.setHours(23,59,59,999); query.createdAt.$lte = end; }
     }
 
     const total = await Return.countDocuments(query);

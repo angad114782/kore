@@ -45,6 +45,7 @@ import StockReport from "./components/Admin/StockReport";
 import DispatchReport from "./components/Admin/DispatchReport";
 import ReturnReport from "./components/Admin/ReturnReport";
 import { masterCatalogService } from "./services/masterCatalogService";
+import OverduePayments from "./components/shared/OverduePayments";
 
 // ✅ NEW: Sidebar component (create this file separately)
 import Sidebar from "./components/Layout/Sidebar";
@@ -1158,6 +1159,9 @@ const DistributorDashboard: React.FC<{
           <div className="absolute bottom-0 left-0 -ml-8 -mb-8 w-32 h-32 bg-indigo-400/20 rounded-full blur-2xl" />
         </div>
       </div>
+
+      {/* Overdue Payments — distributor view (read-only) */}
+      <OverduePayments isAdmin={false} />
     </div>
   );
 };

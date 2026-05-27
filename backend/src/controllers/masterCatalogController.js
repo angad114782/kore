@@ -15,7 +15,7 @@ exports.createMasterCatalog = async (req, res) => {
       action: "CATALOG_CREATED",
       entityType: "CATALOG",
       entityId: String(doc._id),
-      description: `Article "${doc.name}" added to catalog by ${req.user?.name || "admin"}`,
+      description: `Article "${doc.articleName}" added to catalog by ${req.user?.name || "admin"}`,
       user: req.user,
     });
 
@@ -68,7 +68,7 @@ exports.updateMasterCatalog = async (req, res) => {
       action: "CATALOG_UPDATED",
       entityType: "CATALOG",
       entityId: String(req.params.id),
-      description: `Article "${doc.name}" updated by ${req.user?.name || "admin"}`,
+      description: `Article "${doc.articleName}" updated by ${req.user?.name || "admin"}`,
       user: req.user,
     });
 

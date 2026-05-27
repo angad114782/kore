@@ -41,4 +41,8 @@ router.get(
   OrderController.getReturnHistory
 );
 
+// Payment
+router.get("/overdue", role(["admin", "superadmin", "distributor"]), OrderController.getOverdueOrders);
+router.patch("/:id/mark-paid", role(["admin", "superadmin"]), OrderController.markOrderPaid);
+
 module.exports = router;

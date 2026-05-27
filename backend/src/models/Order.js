@@ -194,6 +194,15 @@ const OrderSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    paymentStatus: {
+      type: String,
+      enum: ["PENDING", "PAID"],
+      default: "PENDING",
+    },
+    paidAt: { type: Date, default: null },
+    paidBy: { type: String, default: null },
+    paymentNote: { type: String, default: null },
+    deliveredAt: { type: Date, default: null },
   },
   {
     timestamps: true,

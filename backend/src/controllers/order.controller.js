@@ -193,6 +193,63 @@ const getReturnHistory = async (req, res) => {
   }
 };
 
+const getOverdueOrders = async (req, res) => {
+  try {
+    const Distributor = require("../models/Distributor");
+    const isDistributor = req.user.role === "distributor";
+
+    const query = {
+      status: { $in: ["RECEIVED", "PARTIAL"] },
+      paymentStatus: { $ne: "PAID" },
+    };
+    if (isDistributor) query.distributorId = req.user.id;
+
+    const orders = await Order.find(query)
+      .sort({ deliveredAt: 1, createdAt: 1 })
+      .lean();
+
+    const now = Date.now();
+    const result = orders.map(o => {
+      const base = o.deliveredAt ? new Date(o.deliveredAt) : new Date(o.date || o.createdAt);
+      const daysSince = Math.floor((now - base.getTime()) / (1000 * 60 * 60 * 24));
+      const urgency = daysSince > 80 ? "RED" : daysSince > 60 ? "YELLOW" : "NORMAL";
+      return { ...o, daysSinceDelivery: daysSince, urgency };
+    }).filter(o => o.urgency !== "NORMAL");
+
+    res.json({ success: true, data: result, total: result.length });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const markOrderPaid = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { note } = req.body;
+    const order = await Order.findById(id);
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+    order.paymentStatus = "PAID";
+    order.paidAt = new Date();
+    order.paidBy = req.user?.name || "admin";
+    order.paymentNote = note || "";
+    await order.save();
+
+    activityLog.createLog({
+      action: "PAYMENT_RECEIVED",
+      entityType: "ORDER",
+      entityId: String(id),
+      description: `Payment received for order #${order.orderNumber} (${order.distributorName})${note ? ` — ${note}` : ""}`,
+      metadata: { orderId: String(id), orderNumber: order.orderNumber, paidAt: order.paidAt },
+      user: req.user,
+    });
+
+    emitOrderUpdate(order);
+    res.json({ success: true, data: order });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   createOrder,
   getDistributorOrders,
@@ -200,4 +257,6 @@ module.exports = {
   updateOrderStatus,
   processReturn,
   getReturnHistory,
+  getOverdueOrders,
+  markOrderPaid,
 };
