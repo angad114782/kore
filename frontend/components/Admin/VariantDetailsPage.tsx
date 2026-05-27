@@ -149,11 +149,6 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
   const currentLiveStockMap = stockData?.liveStockMap || {};
   const currentBlockedStockMap = stockData?.blockedStockMap || {};
 
-  const totalPairs = Object.values(currentLiveStockMap).reduce(
-    (s: number, v) => s + (Number(v) || 0),
-    0
-  );
-
   const totalAssortment = Object.values(currentAssortmentMap).reduce(
     (s: number, v) => s + (Number(v) || 0),
     0
@@ -195,6 +190,8 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
     availableStockMap[sz] = Math.max(0, (currentLiveStockMap[sz] || 0) - (currentBlockedStockMap[sz] || 0));
   });
 
+  const totalAvailable = Object.values(availableStockMap).reduce((s, v) => s + v, 0);
+
   const liveCartonsCount = calculateAssortmentCartons(availableStockMap);
 
   // Clear identity: Variant SKU or Article SKU, no auto-generated strings
@@ -229,14 +226,14 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
           Catalogue
         </button>
         <div className="flex items-center gap-1.5">
-          <button
+          {/* <button
             onClick={handleResetStock}
             disabled={resetting}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors disabled:opacity-50"
           >
             {resetting ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
             Reset Inventory
-          </button>
+          </button> */}
           <button
             onClick={() => onEditArticle(article.id)}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
@@ -412,7 +409,7 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
             />
             <SpecRow label="Sole Color" value={article.soleColor || "—"} />
             <SpecRow label="HSN Code" value={variant.hsnCode || "—"} mono />
-            <SpecRow
+            {/* <SpecRow
               label="Assortment Qty"
               value={String(totalAssortment)}
               badge={
@@ -420,10 +417,10 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                   ? "emerald"
                   : undefined
               }
-            />
-            <SpecRow label="Live Stock" value={`${totalPairs} prs`} />
-            <SpecRow label="Blocked Stock" value={`${totalBlocked} prs`} badge={totalBlocked > 0 ? "rose" : undefined} />
-            <SpecRow label="Live Stock (Ctn)" value={`${liveCartonsCount} Ctn`} badge={liveCartonsCount > 0 ? "emerald" : "rose"} />
+            /> */}
+            {/* <SpecRow label="Live Stock" value={`${totalPairs} prs`} /> */}
+            {/* <SpecRow label="Blocked Stock" value={`${totalBlocked} prs`} badge={totalBlocked > 0 ? "rose" : undefined} /> */}
+            {/* <SpecRow label="Live Stock (Ctn)" value={`${liveCartonsCount} Ctn`} badge={liveCartonsCount > 0 ? "emerald" : "rose"} /> */}
             <SpecRow label="Manufacturer" value={article.manufacturer || "—"} />
             <SpecRow label="Unit" value={article.unit || "—"} />
             {article.status === "WISHLIST" && (
@@ -452,11 +449,11 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                 <span className="text-xs font-medium text-slate-600">
                   Stock:{" "}
                   <span className="font-bold text-indigo-600">
-                    {totalPairs} pairs
+                    {totalAvailable} pairs
                   </span>
                 </span>
               </div>
-              <div className="flex items-center gap-1.5">
+              {/* <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
                 <span className="text-xs font-medium text-slate-600">
                   Booked:{" "}
@@ -464,7 +461,7 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                     {totalBooked} pairs
                   </span>
                 </span>
-              </div>
+              </div> */}
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
                 <span className="text-xs font-medium text-slate-600">
@@ -527,11 +524,11 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                           <span className="text-[10px] font-bold text-slate-500">Size {sz}</span>
                           <div className="flex items-baseline gap-1.5">
                             <span className={`text-xl font-black leading-none ${qtyClass}`}>{available}</span>
-                            {blocked > 0 && (
+                            {/* {blocked > 0 && (
                               <span className="text-[10px] font-bold text-rose-500">(-{blocked} blk)</span>
-                            )}
+                            )} */}
                           </div>
-                          <p className="text-[8px] font-bold text-slate-400 mt-1 uppercase">Live: {qty}</p>
+                          {/* <p className="text-[8px] font-bold text-slate-400 mt-1 uppercase">Live: {qty}</p> */}
                         </div>
                       </div>
                     );
@@ -540,7 +537,7 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
               </div>
 
               {/* Right Column - Booking Breakdown */}
-              <div className="space-y-3">
+              {/* <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-black text-emerald-600 uppercase tracking-wider flex items-center gap-1.5">
                     <ShoppingBag size={14} /> Booked Qty
@@ -583,7 +580,7 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                     );
                   })}
                 </div>
-              </div>
+              </div> */}
 
               {/* Third Column - PO Breakdown */}
               <div className="space-y-3">
