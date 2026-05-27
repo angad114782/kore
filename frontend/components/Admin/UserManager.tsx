@@ -19,6 +19,7 @@ import { userService } from "../../services/userService";
 import { User, UserRole } from "../../types";
 import Switch from "../ui/Switch";
 import Pagination from "../ui/Pagination";
+import { usePageSize } from "../../utils/usePageSize";
 
 const UserManager: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -27,7 +28,7 @@ const UserManager: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const USER_LIMIT = 20;
+  const [pageSize, setPageSize] = usePageSize("userManager", 20);
   useEffect(() => { setPage(1); }, [search]);
   // --- Draft Persistence ---
   const savedUserDraftStr = localStorage.getItem("kore_user_draft");
@@ -72,7 +73,7 @@ const UserManager: React.FC = () => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const response = await userService.listUsers({ search, page, limit: USER_LIMIT });
+      const response = await userService.listUsers({ search, page, limit: pageSize });
       setUsers(response.data);
       setTotalPages(response.meta?.totalPages || response.meta?.pages || 1);
       setTotal(response.meta?.total || 0);
@@ -417,7 +418,7 @@ const UserManager: React.FC = () => {
               )}
             </tbody>
           </table>
-          <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={USER_LIMIT} />
+          <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={pageSize} onPageSizeChange={setPageSize} />
         </div>
       </div>
 

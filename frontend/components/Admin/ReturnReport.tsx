@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { RotateCcw, Download, RefreshCw, Calendar } from "lucide-react";
 import { reportService } from "../../services/reportService";
 import Pagination from "../ui/Pagination";
+import { usePageSize } from "../../utils/usePageSize";
 
 interface ReturnRow {
   _id: string;
@@ -17,9 +18,8 @@ interface ReturnRow {
 
 interface Summary { totalReturns: number; totalCartons: number; totalPairs: number; }
 
-const LIMIT = 20;
-
 const ReturnReport: React.FC = () => {
+  const [pageSize, setPageSize]   = usePageSize("returnReport", 20);
   const [rows, setRows]           = useState<ReturnRow[]>([]);
   const [summary, setSummary]     = useState<Summary>({ totalReturns: 0, totalCartons: 0, totalPairs: 0 });
   const [loading, setLoading]     = useState(false);
@@ -33,7 +33,7 @@ const ReturnReport: React.FC = () => {
     setLoading(true);
     try {
       const res = await reportService.getReturn({
-        page, limit: LIMIT,
+        page, limit: pageSize,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
       });
@@ -47,7 +47,7 @@ const ReturnReport: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, startDate, endDate]);
+  }, [page, pageSize, startDate, endDate]);
 
   useEffect(() => { fetch(); }, [fetch]);
 
@@ -161,7 +161,7 @@ const ReturnReport: React.FC = () => {
             </table>
           </div>
         )}
-        <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={LIMIT} />
+        <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={pageSize} onPageSizeChange={setPageSize} />
       </div>
     </div>
   );

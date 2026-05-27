@@ -166,6 +166,21 @@ const GRN: React.FC = () => {
     });
   }, []);
 
+  /* ── Reload history on socket event ── */
+  useEffect(() => {
+    const handler = () => {
+      grnService.history(historyFilterParams).then((res) => {
+        setGrnHistory((res.data || []).map((h: any) => ({
+          grnId: h.grnId, grnNo: h.grnNo, refId: h.refId,
+          vendorName: h.vendorName, articleName: h.articleName,
+          totalPairs: h.totalPairs, cartons: h.cartons, createdAt: h.createdAt,
+        })));
+      }).catch(() => {});
+    };
+    window.addEventListener("grnRefetch", handler);
+    return () => window.removeEventListener("grnRefetch", handler);
+  }, [historyFilterParams]);
+
   /* ── Load GRN History ── */
   useEffect(() => {
     grnService
@@ -623,7 +638,8 @@ const GRN: React.FC = () => {
     
     if (newCartonTotal >= 24) {
       if (currentCartonIdx < (selectedItem.cartonCount || 1) - 1) {
-        toast.success(`✅ Carton ${currentCartonIdx + 1} complete! Select the next carton when ready.`);
+        toast.success(`✅ Carton ${currentCartonIdx + 1} complete! Moving to next carton...`);
+        setTimeout(() => setCurrentCartonIdx(prev => prev + 1), 300);
       } else {
         toast.success("All cartons for this item are complete!");
       }

@@ -65,7 +65,7 @@ export const exportPOToPDF = (
     { content: "GST No.", styles: { fontStyle: "bold", fillColor: [240, 245, 240] } },
     vendor?.gstNumber || COMPANY_CONFIG.gst,
     { content: "Brand", styles: { fontStyle: "bold" } },
-    vendor?.brand || COMPANY_CONFIG.brand,
+    po.items.find(i => i.skuCompany)?.skuCompany || vendor?.brand || COMPANY_CONFIG.brand || "-",
     { content: "Delivery Date", styles: { fontStyle: "bold" } },
     deliveryDate,
   ]);
@@ -242,7 +242,7 @@ export const exportOrderToExcel = async (po: PurchaseOrder, vendor?: Vendor) => 
   ].filter(Boolean).join(", ") : "";
 
   addHeaderInfo(6, "Vendor Address", vendorAddress || "—", "Contact", vendor?.displayName || "—", "Phone", vendor?.mobile || "—");
-  addHeaderInfo(7, "Brand", vendor?.brand || COMPANY_CONFIG.brand, "Terms", "—", "Total Qty", po.items.reduce((sum, item) => sum + item.quantity, 0).toFixed(0));
+  addHeaderInfo(7, "Brand", po.items.find(i => i.skuCompany)?.skuCompany || vendor?.brand || COMPANY_CONFIG.brand || "-", "Terms", "—", "Total Qty", po.items.reduce((sum, item) => sum + item.quantity, 0).toFixed(0));
 
   worksheet.addRow([]);
 

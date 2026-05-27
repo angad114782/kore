@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Truck, Download, RefreshCw, Calendar } from "lucide-react";
 import { reportService } from "../../services/reportService";
 import Pagination from "../ui/Pagination";
+import { usePageSize } from "../../utils/usePageSize";
 
 interface DispatchOrder {
   _id: string;
@@ -16,8 +17,6 @@ interface DispatchOrder {
 
 interface Summary { totalOrders: number; totalAmount: number; totalPairs: number; }
 
-const LIMIT = 20;
-
 const statusColor: Record<string, string> = {
   DISPATCHED: "bg-blue-100 text-blue-700",
   DELIVERED:  "bg-emerald-100 text-emerald-700",
@@ -26,6 +25,7 @@ const statusColor: Record<string, string> = {
 };
 
 const DispatchReport: React.FC = () => {
+  const [pageSize, setPageSize]   = usePageSize("dispatchReport", 20);
   const [rows, setRows]           = useState<DispatchOrder[]>([]);
   const [summary, setSummary]     = useState<Summary>({ totalOrders: 0, totalAmount: 0, totalPairs: 0 });
   const [loading, setLoading]     = useState(false);
@@ -39,7 +39,7 @@ const DispatchReport: React.FC = () => {
     setLoading(true);
     try {
       const res = await reportService.getDispatch({
-        page, limit: LIMIT,
+        page, limit: pageSize,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
       });
@@ -53,7 +53,7 @@ const DispatchReport: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, startDate, endDate]);
+  }, [page, pageSize, startDate, endDate]);
 
   useEffect(() => { fetch(); }, [fetch]);
 
@@ -169,7 +169,7 @@ const DispatchReport: React.FC = () => {
             </table>
           </div>
         )}
-        <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={LIMIT} />
+        <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={pageSize} onPageSizeChange={setPageSize} />
       </div>
     </div>
   );

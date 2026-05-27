@@ -40,6 +40,7 @@ import { billService } from "../../services/billService";
 import { exportPOToPDF, exportOrderToExcel } from "../../utils/exportPO";
 import { formatAssortment } from "../../utils/assortmentUtils";
 import Pagination from "../ui/Pagination";
+import { usePageSize } from "../../utils/usePageSize";
 
 // ─── Reusable styles ───────────────────────────────────
 const inputClass =
@@ -48,6 +49,8 @@ const selectClass =
   "w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all font-medium text-slate-700 text-sm cursor-pointer";
 const labelClass =
   "block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2";
+
+const getTaxRateFromMRP = (mrp: number): number => mrp <= 500 ? 5 : mrp <= 1000 ? 12 : 18;
 
 // ─── Empty PO Item ─────────────────────────────────────
 const emptyItem = (): PurchaseOrderItem => ({
@@ -787,6 +790,12 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const handler = () => fetchData();
+    window.addEventListener("poRefetch", handler);
+    return () => window.removeEventListener("poRefetch", handler);
+  }, []);
+
   // ── Draft Persistence ──
   const savedDraftStr = localStorage.getItem("kore_po_draft");
   const savedDraft = savedDraftStr ? JSON.parse(savedDraftStr) : null;
@@ -1199,6 +1208,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
           sku: option.sku,
           skuCompany: option.brand,
           itemTaxCode: option.hsnCode,
+          taxRate: getTaxRateFromMRP(option.mrp || 0),
           image: option.image,
           basePrice: option.basePrice,
           mrp: option.mrp || 0,
@@ -1236,7 +1246,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
           cartonCount: cartonQty,
           // Total pairs is now 24 * number of cartons
           quantity: 24 * cartonQty,
-          taxRate: it.taxRate || 18,
+          taxRate: it.taxRate || getTaxRateFromMRP(it.mrp || 0),
           taxType: it.taxType || "GST",
           sizeMap: updatedSizeMap,
         };
@@ -1620,10 +1630,10 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
   });
 
   const [poPage, setPoPage] = useState(1);
-  const PO_PAGE_SIZE = 10;
+  const [poPageSize, setPoPageSize] = usePageSize("poPage", 20);
   useEffect(() => { setPoPage(1); }, [searchTerm]);
-  const filteredPOs = allFilteredPOs.slice((poPage - 1) * PO_PAGE_SIZE, poPage * PO_PAGE_SIZE);
-  const poTotalPages = Math.ceil(allFilteredPOs.length / PO_PAGE_SIZE);
+  const filteredPOs = allFilteredPOs.slice((poPage - 1) * poPageSize, poPage * poPageSize);
+  const poTotalPages = Math.ceil(allFilteredPOs.length / poPageSize);
 
   // ═══════════════════ RENDER ═══════════════════
 
@@ -1811,7 +1821,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                 </tbody>
               </table>
             </div>
-            <Pagination currentPage={poPage} totalPages={poTotalPages} onPageChange={setPoPage} totalItems={allFilteredPOs.length} itemsPerPage={PO_PAGE_SIZE} />
+            <Pagination currentPage={poPage} totalPages={poTotalPages} onPageChange={setPoPage} totalItems={allFilteredPOs.length} itemsPerPage={poPageSize} onPageSizeChange={setPoPageSize} />
             </>
           )}
         </div>

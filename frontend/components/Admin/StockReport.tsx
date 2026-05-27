@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Search, Download, Package, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
 import { reportService } from "../../services/reportService";
 import Pagination from "../ui/Pagination";
+import { usePageSize } from "../../utils/usePageSize";
+
+interface SizeCell { qty: number; blockedQty: number; }
 
 interface Variant {
   variantId: string;
@@ -11,6 +14,8 @@ interface Variant {
   mrp: number;
   listingStatus: string;
   sizeQuantities: Record<string, number>;
+  sizeStock: Record<string, SizeCell>;
+  totalStock: number;
 }
 
 interface StockRow {
@@ -20,12 +25,12 @@ interface StockRow {
   category: string;
   brand: string;
   totalVariants: number;
+  totalStock: number;
   variants: Variant[];
 }
 
-const LIMIT = 30;
-
 const StockReport: React.FC = () => {
+  const [pageSize, setPageSize] = usePageSize("stockReport", 30);
   const [rows, setRows] = useState<StockRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -38,7 +43,7 @@ const StockReport: React.FC = () => {
   const fetch = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await reportService.getStock({ page, limit: LIMIT, q: search || undefined });
+      const res = await reportService.getStock({ page, limit: pageSize, q: search || undefined });
       const d = res.data;
       setRows(d.data || []);
       setTotal(d.meta?.total || 0);
@@ -48,7 +53,7 @@ const StockReport: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, pageSize, search]);
 
   useEffect(() => { fetch(); }, [fetch]);
 
@@ -63,11 +68,14 @@ const StockReport: React.FC = () => {
   };
 
   const exportCsv = () => {
-    const lines = ["Article,SKU,Category,Brand,Variant,Color,Size Range,MRP,Status,Size Quantities"];
+    const lines = ["Article,SKU,Category,Brand,Variant,Color,Size Range,MRP,Status,Total Stock,Stock by Size (qty/blocked)"];
     rows.forEach(r => {
       r.variants.forEach(v => {
-        const sizes = Object.entries(v.sizeQuantities).map(([s, q]) => `${s}:${q}`).join(" ");
-        lines.push(`"${r.articleName}","${r.sku}","${r.category}","${r.brand}","${v.itemName}","${v.color}","${v.sizeRange}",${v.mrp},"${v.listingStatus}","${sizes}"`);
+        const sizes = Object.entries(v.sizeStock || {})
+          .sort((a, b) => Number(a[0]) - Number(b[0]))
+          .map(([s, c]) => `${s}:${c.qty}/${c.blockedQty}`)
+          .join(" ");
+        lines.push(`"${r.articleName}","${r.sku}","${r.category}","${r.brand}","${v.itemName}","${v.color}","${v.sizeRange}",${v.mrp},"${v.listingStatus}",${v.totalStock},"${sizes}"`);
       });
     });
     const blob = new Blob([lines.join("\n")], { type: "text/csv" });
@@ -130,6 +138,7 @@ const StockReport: React.FC = () => {
                 <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-xs">Category</th>
                 <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-xs">Brand</th>
                 <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-xs text-right">Variants</th>
+                <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-xs text-right">Total Stock</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -149,10 +158,13 @@ const StockReport: React.FC = () => {
                     <td className="px-4 py-3 text-right">
                       <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded-full">{row.totalVariants}</span>
                     </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded-full">{row.totalStock ?? 0} pairs</span>
+                    </td>
                   </tr>
                   {expanded.has(row.articleId) && (
                     <tr>
-                      <td colSpan={6} className="px-4 pb-4 bg-slate-50/70">
+                      <td colSpan={7} className="px-4 pb-4 bg-slate-50/70">
                         <div className="rounded-xl border border-slate-200 overflow-hidden mt-1">
                           <table className="w-full text-xs">
                             <thead className="bg-white">
@@ -162,7 +174,8 @@ const StockReport: React.FC = () => {
                                 <th className="px-3 py-2 text-left font-semibold text-slate-500">Size Range</th>
                                 <th className="px-3 py-2 text-right font-semibold text-slate-500">MRP</th>
                                 <th className="px-3 py-2 text-left font-semibold text-slate-500">Status</th>
-                                <th className="px-3 py-2 text-left font-semibold text-slate-500">Carton Assortment</th>
+                                <th className="px-3 py-2 text-right font-semibold text-slate-500">Stock (pairs)</th>
+                                <th className="px-3 py-2 text-left font-semibold text-slate-500">Live Stock by Size (qty / blocked)</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -177,8 +190,18 @@ const StockReport: React.FC = () => {
                                       {v.listingStatus?.toUpperCase()}
                                     </span>
                                   </td>
+                                  <td className="px-3 py-2 text-right font-bold text-emerald-700">{v.totalStock ?? 0}</td>
                                   <td className="px-3 py-2 font-mono text-slate-500">
-                                    {Object.entries(v.sizeQuantities).sort((a, b) => Number(a[0]) - Number(b[0])).map(([s, q]) => `${s}:${q}`).join("  ")}
+                                    {Object.entries(v.sizeStock || {})
+                                      .sort((a, b) => Number(a[0]) - Number(b[0]))
+                                      .map(([s, c]) => (
+                                        <span key={s} className="mr-2 whitespace-nowrap">
+                                          <span className="text-slate-600 font-semibold">{s}</span>
+                                          <span className="text-slate-400">:</span>
+                                          <span className="text-emerald-700">{c.qty}</span>
+                                          {c.blockedQty > 0 && <span className="text-amber-600">/{c.blockedQty}</span>}
+                                        </span>
+                                      ))}
                                   </td>
                                 </tr>
                               ))}
@@ -193,7 +216,7 @@ const StockReport: React.FC = () => {
             </tbody>
           </table>
         )}
-        <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={LIMIT} />
+        <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={pageSize} onPageSizeChange={setPageSize} />
       </div>
     </div>
   );

@@ -15,23 +15,45 @@ const getStockReport = async (req, res) => {
       .limit(Number(limit))
       .lean();
 
-    const data = catalogs.map((c) => ({
-      articleId: c._id,
-      articleName: c.articleName,
-      sku: c.sku,
-      category: typeof c.category === "object" ? c.category?.name : c.category,
-      brand: typeof c.brand === "object" ? c.brand?.name : c.brand,
-      totalVariants: (c.variants || []).length,
-      variants: (c.variants || []).map((v) => ({
-        variantId: v._id,
-        itemName: v.itemName,
-        color: v.color,
-        sizeRange: v.sizeRange,
-        mrp: v.mrp,
-        listingStatus: v.listingStatus,
-        sizeQuantities: v.sizeQuantities ? Object.fromEntries(v.sizeQuantities) : {},
-      })),
-    }));
+    const data = catalogs.map((c) => {
+      const variants = (c.variants || []).map((v) => {
+        // sizeMap contains actual live stock (qty + blockedQty per size)
+        const rawSizeMap = v.sizeMap instanceof Map ? Object.fromEntries(v.sizeMap) : (v.sizeMap || {});
+        const sizeStock = {};
+        let variantTotalStock = 0;
+        Object.entries(rawSizeMap).forEach(([sz, cell]) => {
+          const qty = Number(cell?.qty || 0);
+          const blockedQty = Number(cell?.blockedQty || 0);
+          sizeStock[sz] = { qty, blockedQty };
+          variantTotalStock += qty;
+        });
+
+        return {
+          variantId: v._id,
+          itemName: v.itemName,
+          color: v.color,
+          sizeRange: v.sizeRange,
+          mrp: v.mrp,
+          listingStatus: v.listingStatus,
+          sizeQuantities: v.sizeQuantities ? Object.fromEntries(v.sizeQuantities) : {},
+          sizeStock,
+          totalStock: variantTotalStock,
+        };
+      });
+
+      const articleTotalStock = variants.reduce((s, v) => s + v.totalStock, 0);
+
+      return {
+        articleId: c._id,
+        articleName: c.articleName,
+        sku: c.sku,
+        category: typeof c.category === "object" ? c.category?.name : c.category,
+        brand: typeof c.brand === "object" ? c.brand?.name : c.brand,
+        totalVariants: variants.length,
+        totalStock: articleTotalStock,
+        variants,
+      };
+    });
 
     res.json({
       success: true,

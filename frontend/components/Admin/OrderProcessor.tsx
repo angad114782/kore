@@ -20,6 +20,7 @@ import { Order, OrderStatus, Article, Inventory } from '../../types';
 import OrderDetail from '../Distributor/OrderDetail';
 import { distributorOrderService } from '../../services/distributorOrderService';
 import Pagination from '../ui/Pagination';
+import { usePageSize } from '../../utils/usePageSize';
 import { toast } from 'sonner';
 
 interface OrderProcessorProps {
@@ -39,6 +40,7 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, inventory, up
   const [orders, setOrders] = useState<Order[]>([]);
   const [meta, setMeta] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = usePageSize("orderProcessor", 20);
   const [loading, setLoading] = useState(false);
 
   const [startDate, setStartDate] = useState('');
@@ -51,7 +53,7 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, inventory, up
       if (!silent) setLoading(true);
       const res = await distributorOrderService.getAllOrders({
         page: currentPage,
-        limit: 10,
+        limit: pageSize,
         q: searchQuery,
         status: statusFilter === 'ALL' ? undefined : statusFilter,
         startDate: startDate || undefined,
@@ -67,7 +69,7 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, inventory, up
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [currentPage, searchQuery, statusFilter, startDate, endDate, sortBy, sortDesc]);
+  }, [currentPage, pageSize, searchQuery, statusFilter, startDate, endDate, sortBy, sortDesc]);
 
   // Refetch when dependencies change
   useEffect(() => {
@@ -289,13 +291,14 @@ const OrderProcessor: React.FC<OrderProcessorProps> = ({ articles, inventory, up
       </div>
 
       {/* Pagination */}
-      {meta && meta.totalPages > 1 && (
+      {meta && (
         <Pagination
           currentPage={currentPage}
           totalPages={meta.totalPages}
           onPageChange={setCurrentPage}
           totalItems={meta.total}
-          itemsPerPage={meta.limit}
+          itemsPerPage={pageSize}
+          onPageSizeChange={setPageSize}
         />
       )}
     </div>

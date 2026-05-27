@@ -334,18 +334,22 @@ const App: React.FC = () => {
         description: `Vendor: ${data.vendorName || ""} · ${data.totalPairs || ""} pairs`,
         duration: 4000,
       });
+      if (fetchArticlesRef.current) fetchArticlesRef.current();
+      window.dispatchEvent(new CustomEvent("grnRefetch"));
     });
 
     socket.on("poCreated", (data) => {
       const u = userRef.current;
       if (!u || u.role === UserRole.DISTRIBUTOR) return;
       toast.info(`PO #${data.poNumber} created`, { description: `Vendor: ${data.vendorName}`, duration: 4000 });
+      window.dispatchEvent(new CustomEvent("poRefetch"));
     });
 
     socket.on("poUpdated", (data) => {
       const u = userRef.current;
       if (!u || u.role === UserRole.DISTRIBUTOR) return;
       toast.info(`PO #${data.poNumber} updated`, { duration: 3000 });
+      window.dispatchEvent(new CustomEvent("poRefetch"));
     });
 
     socket.on("billApproved", (data) => {

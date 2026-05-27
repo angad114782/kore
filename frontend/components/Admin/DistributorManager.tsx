@@ -28,6 +28,7 @@ import ConfirmDialog, { useConfirm } from "../ui/ConfirmDialog";
 import distributorService from "../../services/distributorService";
 import { toast } from "sonner";
 import Pagination from "../ui/Pagination";
+import { usePageSize } from "../../utils/usePageSize";
 
 interface DistributorManagerProps {
   orders: any[]; // Used just for the list
@@ -231,7 +232,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const DIST_LIMIT = 15;
+  const [pageSize, setPageSize] = usePageSize("distributorManager", 20);
   React.useEffect(() => { setPage(1); }, [searchQuery]);
   const [creatingLoading, setCreatingLoading] = useState(false);
 
@@ -298,7 +299,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
         const response = await distributorService.listDistributors({
           search: searchQuery || undefined,
           page,
-          limit: DIST_LIMIT,
+          limit: pageSize,
         });
         const mapped = (response.items || []).map((d: any) => ({
           ...d,
@@ -316,7 +317,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
     };
 
     fetchDistributors();
-  }, [searchQuery, page]);
+  }, [searchQuery, page, pageSize]);
 
   const handleCreateDistributor = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1369,7 +1370,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                 </tbody>
               </table>
             )}
-            <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={DIST_LIMIT} />
+            <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={pageSize} onPageSizeChange={setPageSize} />
           </div>
         </div>
       </div>

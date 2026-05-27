@@ -30,6 +30,7 @@ import {
 import { vendorService } from "../../services/vendorService";
 import Switch from "../ui/Switch";
 import Pagination from "../ui/Pagination";
+import { usePageSize } from "../../utils/usePageSize";
 
 // ─── Empty Defaults ────────────────────────────────────
 const emptyAddress = (): VendorAddress => ({
@@ -108,12 +109,12 @@ const VendorManager: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const VENDOR_LIMIT = 15;
+  const [pageSize, setPageSize] = usePageSize("vendorManager", 20);
 
   const fetchVendors = async (p = page) => {
     try {
       setLoading(true);
-      const res = await vendorService.listVendors({ page: p, limit: VENDOR_LIMIT });
+      const res = await vendorService.listVendors({ page: p, limit: pageSize });
       const mapped = (res.data || []).map((v: any) => ({
         ...v,
         id: v._id || v.id,
@@ -131,7 +132,7 @@ const VendorManager: React.FC = () => {
 
   useEffect(() => {
     fetchVendors(page);
-  }, [page]);
+  }, [page, pageSize]);
 
   // ── Draft Persistence ──
   const savedDraftStr = localStorage.getItem("kore_vendor_draft");
@@ -534,7 +535,7 @@ const VendorManager: React.FC = () => {
                   ))}
                 </tbody>
               </table>
-            <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={VENDOR_LIMIT} />
+            <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={pageSize} onPageSizeChange={setPageSize} />
             </div>
           )}
         </div>

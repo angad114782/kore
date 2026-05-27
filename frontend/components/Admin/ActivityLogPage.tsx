@@ -9,11 +9,11 @@ import {
   BookOpen,
   ScanLine,
   RefreshCw,
-  ChevronLeft,
-  ChevronRight,
   Search,
 } from "lucide-react";
 import { activityLogService, ActivityLogEntry } from "../../services/activityLogService";
+import Pagination from "../ui/Pagination";
+import { usePageSize } from "../../utils/usePageSize";
 
 const ACTION_COLORS: Record<string, string> = {
   LOGIN: "bg-blue-100 text-blue-700",
@@ -69,27 +69,28 @@ const ActivityLogPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [entityFilter, setEntityFilter] = useState("ALL");
   const [search, setSearch] = useState("");
-  const LIMIT = 30;
+  const [pageSize, setPageSize] = usePageSize("activityLog", 30);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
       const res = await activityLogService.list({
         page,
-        limit: LIMIT,
+        limit: pageSize,
         entityType: entityFilter === "ALL" ? undefined : entityFilter,
       });
       const data = res?.data ?? res;
       setLogs(Array.isArray(data) ? data : []);
-      if (res?.meta) setTotalPages(res.meta.totalPages ?? 1);
+      if (res?.meta) { setTotalPages(res.meta.totalPages ?? 1); setTotal(res.meta.total ?? 0); }
     } catch (err) {
       console.error("ActivityLog fetch error:", err);
     } finally {
       setLoading(false);
     }
-  }, [page, entityFilter]);
+  }, [page, pageSize, entityFilter]);
 
   useEffect(() => {
     fetchLogs();
@@ -202,30 +203,7 @@ const ActivityLogPage: React.FC = () => {
         )}
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-slate-500">
-            Page {page} of {totalPages}
-          </p>
-          <div className="flex gap-2">
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-              className="flex items-center gap-1 px-3 py-2 text-sm border border-slate-200 rounded-xl hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
-            >
-              <ChevronLeft size={15} /> Prev
-            </button>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-              className="flex items-center gap-1 px-3 py-2 text-sm border border-slate-200 rounded-xl hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
-            >
-              Next <ChevronRight size={15} />
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} totalItems={total} itemsPerPage={pageSize} onPageSizeChange={setPageSize} />
     </div>
   );
 };
