@@ -368,10 +368,10 @@ const ArticleCard: React.FC<{
                 </div>
               ))}
             </div>
-            <div className="mt-2 pt-2 border-t border-slate-200/50 px-1 flex justify-between items-center">
+            {/* <div className="mt-2 pt-2 border-t border-slate-200/50 px-1 flex justify-between items-center">
               <span className="text-[10px] font-bold text-slate-500 uppercase">Carton Total</span>
               <span className="text-xs font-black text-slate-900">{totalPairsPerCarton} Pairs</span>
-            </div>
+            </div> */}
           </div>
         )}
 
@@ -405,7 +405,7 @@ const ArticleCard: React.FC<{
             className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-2xl px-6 font-black text-sm transition-all shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 group/btn active:scale-95"
           >
             <ShoppingCart size={16} className="group-hover/btn:scale-110 transition-transform" />
-            <span>Add to Cart</span>
+            {/* <span>Add to Cart</span> */}
           </button>
         </div>
       </div>

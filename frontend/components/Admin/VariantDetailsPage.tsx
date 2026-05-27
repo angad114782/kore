@@ -405,7 +405,7 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
             <SpecRow
               label="Color"
               value={variant.color || "—"}
-              dot={variant.color}
+              // dot={variant.color}
             />
             <SpecRow label="Sole Color" value={article.soleColor || "—"} />
             <SpecRow label="HSN Code" value={variant.hsnCode || "—"} mono />
@@ -445,10 +445,10 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
             </h3>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500"></span>
                 <span className="text-xs font-medium text-slate-600">
                   Stock:{" "}
-                  <span className="font-bold text-indigo-600">
+                  <span className="font-bold text-green-600">
                     {totalAvailable} pairs
                   </span>
                 </span>
@@ -472,10 +472,10 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
                 <span className="text-xs font-medium text-slate-600">
                   Blocked:{" "}
-                  <span className="font-bold text-amber-600">
+                  <span className="font-bold text-indigo-600">
                     {totalBlocked} pairs
                   </span>
                 </span>
@@ -490,11 +490,11 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
               <p className="text-sm font-medium text-slate-500 uppercase tracking-widest">Fetching live inventory...</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Left Column - Size Stock Breakdown */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
+                  <h4 className="text-xs font-black text-green-600 uppercase tracking-wider flex items-center gap-1.5">
                     <Package size={14} /> Live Stock
                   </h4>
                   <span className="text-[10px] font-bold text-slate-400">
@@ -511,9 +511,9 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
 
                     let bgClass =
                       qty > 0
-                        ? "bg-indigo-50/60 border-indigo-200"
+                        ? "bg-green-50/60 border-green-200"
                         : "bg-rose-50/60 border-rose-200";
-                    let qtyClass = qty > 0 ? "text-indigo-600" : "text-rose-600";
+                    let qtyClass = qty > 0 ? "text-green-600" : "text-rose-600";
 
                     return (
                       <div
@@ -629,7 +629,7 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
               {/* Fourth Column - Blocked Breakdown */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black text-amber-600 uppercase tracking-wider flex items-center gap-1.5">
+                  <h4 className="text-xs font-black text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
                     <Package size={14} /> Blocked Stock
                   </h4>
                   <span className="text-[10px] font-bold text-slate-400">
@@ -637,18 +637,18 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {sizes.map((sz) => {
                     const cleanSz = sz.trim();
                     const blockedQty = Number(currentBlockedStockMap[cleanSz] ?? currentBlockedStockMap[sz]) || 0;
-                    const statusColor = blockedQty === 0 ? "slate" : "amber";
+                    const statusColor = blockedQty === 0 ? "slate" : "red";
 
                     return (
                       <div
                         key={sz}
                         className={`p-3 rounded-xl border transition-all hover:shadow-md ${
-                          statusColor === "amber"
-                            ? "bg-amber-50/60 border-amber-200"
+                          statusColor === "red"
+                            ? "bg-indigo-50/60 border-indigo-200"
                             : "bg-slate-50/60 border-slate-200"
                         }`}
                       >
@@ -659,7 +659,7 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                           <div
                             className={`text-xl font-black leading-none ${
                               blockedQty > 0
-                                ? "text-amber-600"
+                                ? "text-indigo-600"
                                 : "text-slate-300"
                             }`}
                           >

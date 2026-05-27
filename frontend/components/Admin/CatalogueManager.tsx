@@ -782,7 +782,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
             >
               {/* Master Row */}
               <div
-                className="flex items-center gap-4 p-4 md:p-1 cursor-pointer hover:bg-slate-50/50 transition-colors"
+                className="flex items-center gap-4 p-4 md:ps-4 cursor-pointer hover:bg-slate-50/50 transition-colors"
                 onClick={() => toggleExpand(article.id)}
               >
                 {/* Removed parent image per request */}
@@ -981,13 +981,13 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                                     </td>
                                     <td className="px-6 py-3">
                                       <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                                        <span
+                                        {/* <span
                                           className="w-3 h-3 rounded-full border border-slate-300 shrink-0"
                                           style={{
                                             backgroundColor:
                                               v.color?.toLowerCase() || "#ccc",
                                           }}
-                                        />
+                                        /> */}
                                         {v.color || "—"}
                                       </span>
                                     </td>

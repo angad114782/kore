@@ -814,9 +814,9 @@ const App: React.FC = () => {
             <h2 className="text-2xl font-bold capitalize text-slate-900">
               {activeTab.replace(/_/g, " ")}
             </h2>
-            <p className="text-slate-500 text-sm">
+            {/* <p className="text-slate-500 text-sm">
               Kore Kollective Distribution Portal
-            </p>
+            </p> */}
           </div>
         </header>
 
