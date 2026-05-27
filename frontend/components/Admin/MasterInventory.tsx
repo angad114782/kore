@@ -22,6 +22,7 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
   const [lowStockThreshold, setLowStockThreshold] = useState(10);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [totalPOPairs, setTotalPOPairs] = useState(0);
+  const [poPairsPerArticle, setPoPairsPerArticle] = useState<Record<string, number>>({});
 
   // Compute live + blocked pairs from articles prop (always in sync)
   const { totalLivePairs, totalBlockedPairs } = useMemo(() => {
@@ -38,20 +39,25 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
     return { totalLivePairs: live, totalBlockedPairs: blocked };
   }, [articles]);
 
-  // Fetch total approved PO pairs (once on mount)
+  // Fetch approved PO pairs — global total + per-article map
   useEffect(() => {
     apiFetch("/purchase-orders?limit=1000")
       .then((res: any) => {
         const pos: any[] = res.data || [];
         let total = 0;
+        const perArticle: Record<string, number> = {};
         pos.forEach(po => {
           if (po.billStatus === "APPROVED") {
             (po.items || []).forEach((item: any) => {
-              total += Number(item.quantity || 0);
+              const qty = Number(item.quantity || 0);
+              total += qty;
+              const aid = String(item.articleId || "");
+              if (aid) perArticle[aid] = (perArticle[aid] || 0) + qty;
             });
           }
         });
         setTotalPOPairs(total);
+        setPoPairsPerArticle(perArticle);
       })
       .catch(() => {});
   }, []);
@@ -186,8 +192,7 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
             sum + Object.values(v.sizeMap || {}).reduce((s, c: any) => s + (Number(c?.qty) || 0), 0), 0);
           const articleBlockedPairs = (article.variants || []).reduce((sum, v) =>
             sum + Object.values(v.sizeMap || {}).reduce((s, c: any) => s + (Number(c?.blockedQty) || 0), 0), 0);
-          const articleBookedPairs = (article.variants || []).reduce((sum, v) =>
-            sum + Object.values(v.bookingMap || {}).reduce((s, q) => s + (Number(q) || 0), 0), 0);
+          const articlePOPairs = poPairsPerArticle[article.id] || 0;
 
           const isLowStock = articleLivePairs < lowStockThreshold * 24;
 
@@ -233,12 +238,12 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                     <p className="text-[9px] text-slate-400 mt-0.5">{articleLivePairs} prs</p>
                   </div>
                   <div className="text-center w-28 border-l border-slate-100 pl-4">
-                    <p className="text-[9px] font-black text-rose-500 uppercase tracking-widest mb-0.5">Booked</p>
+                    <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest mb-0.5">PO</p>
                     <div className="flex items-baseline justify-center gap-1">
-                      <span className="text-xl font-black text-slate-900">{Math.floor(articleBookedPairs / 24)}</span>
+                      <span className="text-xl font-black text-slate-900">{Math.floor(articlePOPairs / 24)}</span>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ctns</span>
                     </div>
-                    <p className="text-[9px] text-slate-400 mt-0.5">{articleBookedPairs} prs</p>
+                    <p className="text-[9px] text-slate-400 mt-0.5">{articlePOPairs} prs</p>
                   </div>
                   <div className="text-center w-28 border-l border-slate-100 pl-4">
                     <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5">Blocked</p>
@@ -267,10 +272,10 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                   <p className="text-sm font-black text-slate-900">{Math.floor(articleLivePairs / 24)} <span className="text-[8px] text-slate-400">Ctns</span></p>
                   <p className="text-[8px] text-slate-400">{articleLivePairs} prs</p>
                 </div>
-                <div className="bg-rose-50/50 p-2.5 rounded-xl text-center border border-rose-100">
-                  <p className="text-[8px] font-black text-rose-600 uppercase tracking-tighter mb-0.5">Booked</p>
-                  <p className="text-sm font-black text-slate-900">{Math.floor(articleBookedPairs / 24)} <span className="text-[8px] text-slate-400">Ctns</span></p>
-                  <p className="text-[8px] text-slate-400">{articleBookedPairs} prs</p>
+                <div className="bg-indigo-50/50 p-2.5 rounded-xl text-center border border-indigo-100">
+                  <p className="text-[8px] font-black text-indigo-600 uppercase tracking-tighter mb-0.5">PO</p>
+                  <p className="text-sm font-black text-slate-900">{Math.floor(articlePOPairs / 24)} <span className="text-[8px] text-slate-400">Ctns</span></p>
+                  <p className="text-[8px] text-slate-400">{articlePOPairs} prs</p>
                 </div>
                 <div className="bg-amber-50/50 p-2.5 rounded-xl text-center border border-amber-100">
                   <p className="text-[8px] font-black text-amber-600 uppercase tracking-tighter mb-0.5">Blocked</p>
