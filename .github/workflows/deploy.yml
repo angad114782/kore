@@ -1,4 +1,4 @@
-name: Deploy Kore to Server
+name: Deploy to Production
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy on server via SSH
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
@@ -20,31 +20,24 @@ jobs:
           script: |
             set -e
 
-            echo "Starting deploy..."
+            cd /var/www/ttcart
 
-            cd /var/www/kore
-
-            echo "Pulling latest code..."
-            export GIT_SSH_COMMAND='ssh -i /root/.ssh/kore_deploy_key -o StrictHostKeyChecking=no'
+            echo ">>> Pulling latest code..."
             git fetch origin main
             git reset --hard origin/main
 
-            echo "Installing backend dependencies..."
-            cd /var/www/kore/backend
-            npm install
-
-            echo "Restarting backend..."
-            pm2 restart kore-backend || pm2 start src/server.js --name kore-backend
+            echo ">>> Backend: install & restart..."
+            cd /var/www/ttcart/backend
+            npm install --omit=dev
+            pm2 restart ttcart-backend || pm2 start src/server.js --name ttcart-backend
             pm2 save
 
-            echo "Installing frontend dependencies..."
-            cd /var/www/kore/frontend
+            echo ">>> Frontend: install & build..."
+            cd /var/www/ttcart/frontend
             npm install
-
-            echo "Building frontend..."
             npm run build
 
-            echo "Reloading nginx..."
+            echo ">>> Reloading nginx..."
             systemctl reload nginx
 
-            echo "Deploy completed successfully."
+            echo ">>> Deploy done."
