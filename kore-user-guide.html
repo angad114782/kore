@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kore Kollective — User Guide</title>
+<style>
+  /* ─── RESET & BASE ─── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 13px; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #f0f4f8;
+    color: #1a202c;
+    line-height: 1.6;
+  }
+
+  /* ─── PRINT ─── */
+  @media print {
+    body { background: white; font-size: 11px; }
+    .page { box-shadow: none; margin: 0; border-radius: 0; page-break-after: always; }
+    .no-print { display: none; }
+    .page-break { page-break-before: always; }
+    @page { margin: 12mm 14mm; size: A4; }
+  }
+
+  /* ─── LAYOUT ─── */
+  .page {
+    background: white;
+    max-width: 860px;
+    margin: 24px auto;
+    border-radius: 16px;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.10);
+    overflow: hidden;
+  }
+
+  /* ─── ROLE COLORS ─── */
+  :root {
+    --superadmin: #6d28d9;   --superadmin-light: #ede9fe;  --superadmin-mid: #8b5cf6;
+    --admin:      #1d4ed8;   --admin-light:      #dbeafe;  --admin-mid:      #3b82f6;
+    --manager:    #0f766e;   --manager-light:    #ccfbf1;  --manager-mid:    #14b8a6;
+    --supervisor: #b45309;   --supervisor-light: #fef3c7;  --supervisor-mid: #f59e0b;
+    --accountant: #b91c1c;   --accountant-light: #fee2e2;  --accountant-mid: #ef4444;
+    --distributor:#0e7490;   --distributor-light:#cffafe;  --distributor-mid:#06b6d4;
+  }
+
+  /* ─── COVER PAGE ─── */
+  .cover {
+    background: linear-gradient(135deg, #1e1b4b 0%, #3730a3 50%, #4f46e5 100%);
+    color: white;
+    padding: 64px 56px 56px;
+    min-height: 560px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 320px; height: 320px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 50%;
+  }
+  .cover::after {
+    content: '';
+    position: absolute;
+    bottom: -60px; left: -60px;
+    width: 240px; height: 240px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 50%;
+  }
+  .cover-logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 48px;
+  }
+  .cover-logo-icon {
+    width: 52px; height: 52px;
+    background: rgba(255,255,255,0.15);
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+  }
+  .cover-logo-text { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.5px; }
+  .cover-logo-text span { color: #a5b4fc; }
+  .cover-title { font-size: 2.8rem; font-weight: 900; line-height: 1.15; margin-bottom: 16px; }
+  .cover-subtitle { font-size: 1.1rem; color: #c7d2fe; max-width: 480px; line-height: 1.7; }
+  .cover-meta {
+    display: flex; gap: 32px; margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(255,255,255,0.15);
+  }
+  .cover-meta-item { font-size: 0.85rem; color: #a5b4fc; }
+  .cover-meta-item strong { display: block; color: white; font-size: 1rem; }
+
+  /* ─── ROLE BADGE ROW ON COVER ─── */
+  .cover-roles {
+    display: flex; flex-wrap: wrap; gap: 10px; margin-top: 36px;
+  }
+  .role-pill {
+    padding: 6px 16px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .pill-sa  { background: var(--superadmin-mid); color: white; }
+  .pill-ad  { background: var(--admin-mid);      color: white; }
+  .pill-mg  { background: var(--manager-mid);    color: white; }
+  .pill-sv  { background: var(--supervisor-mid); color: white; }
+  .pill-ac  { background: var(--accountant-mid); color: white; }
+  .pill-dt  { background: var(--distributor-mid);color: white; }
+
+  /* ─── SECTION HEADER ─── */
+  .section-header {
+    padding: 32px 48px 20px;
+    border-bottom: 2px solid #f1f5f9;
+  }
+  .section-header h2 {
+    font-size: 1.5rem; font-weight: 800; color: #1e293b;
+  }
+  .section-header p { color: #64748b; margin-top: 4px; font-size: 0.9rem; }
+
+  /* ─── CONTENT AREA ─── */
+  .content { padding: 28px 48px 40px; }
+
+  /* ─── ROLE CARD ─── */
+  .role-card {
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 28px;
+    border: 1.5px solid;
+  }
+  .role-card-header {
+    padding: 18px 24px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .role-icon {
+    width: 44px; height: 44px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; background: rgba(255,255,255,0.25);
+  }
+  .role-card-header h3 { font-size: 1.15rem; font-weight: 800; }
+  .role-card-header p { font-size: 0.82rem; opacity: 0.85; margin-top: 2px; }
+  .role-card-body { padding: 20px 24px; background: white; }
+
+  /* Superadmin */
+  .card-sa { border-color: var(--superadmin); }
+  .card-sa .role-card-header { background: linear-gradient(135deg, var(--superadmin), var(--superadmin-mid)); color: white; }
+  /* Admin */
+  .card-ad { border-color: var(--admin); }
+  .card-ad .role-card-header { background: linear-gradient(135deg, var(--admin), var(--admin-mid)); color: white; }
+  /* Manager */
+  .card-mg { border-color: var(--manager); }
+  .card-mg .role-card-header { background: linear-gradient(135deg, var(--manager), var(--manager-mid)); color: white; }
+  /* Supervisor */
+  .card-sv { border-color: var(--supervisor); }
+  .card-sv .role-card-header { background: linear-gradient(135deg, var(--supervisor), var(--supervisor-mid)); color: white; }
+  /* Accountant */
+  .card-ac { border-color: var(--accountant); }
+  .card-ac .role-card-header { background: linear-gradient(135deg, var(--accountant), var(--accountant-mid)); color: white; }
+  /* Distributor */
+  .card-dt { border-color: var(--distributor); }
+  .card-dt .role-card-header { background: linear-gradient(135deg, var(--distributor), var(--distributor-mid)); color: white; }
+
+  /* ─── PERMISSION TABLE ─── */
+  .perm-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 14px; }
+  .perm-table th {
+    text-align: left; padding: 8px 12px;
+    background: #f8fafc; color: #475569;
+    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;
+    border-bottom: 2px solid #e2e8f0;
+  }
+  .perm-table td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; }
+  .perm-table tr:last-child td { border-bottom: none; }
+  .perm-table tr:hover td { background: #f8fafc; }
+
+  .badge-yes {
+    background: #dcfce7; color: #166534;
+    padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+  }
+  .badge-no  {
+    background: #fee2e2; color: #991b1b;
+    padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+  }
+  .badge-partial {
+    background: #fef3c7; color: #92400e;
+    padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+  }
+
+  /* ─── STEP BOX ─── */
+  .steps { margin-top: 16px; }
+  .step {
+    display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start;
+  }
+  .step-num {
+    min-width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem; font-weight: 800; color: white; flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .step-body { flex: 1; }
+  .step-body strong { display: block; font-size: 0.9rem; color: #1e293b; }
+  .step-body span { font-size: 0.82rem; color: #64748b; }
+
+  /* ─── FLOW DIAGRAM ─── */
+  .flow {
+    display: flex; align-items: stretch;
+    gap: 0; overflow-x: auto; margin: 20px 0;
+    padding-bottom: 8px;
+  }
+  .flow-step {
+    flex: 1; min-width: 90px;
+    display: flex; flex-direction: column; align-items: center;
+    position: relative;
+  }
+  .flow-step:not(:last-child)::after {
+    content: '→';
+    position: absolute;
+    right: -10px; top: 18px;
+    font-size: 1.1rem; color: #94a3b8; z-index: 2;
+  }
+  .flow-box {
+    padding: 10px 8px;
+    border-radius: 10px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.78rem;
+    width: 90%;
+    line-height: 1.3;
+  }
+  .flow-desc { font-size: 0.7rem; color: #64748b; margin-top: 6px; text-align: center; }
+
+  .flow-booked   { background: #dbeafe; color: #1d4ed8; border: 2px solid #93c5fd; }
+  .flow-pfd      { background: #f3e8ff; color: #7c3aed; border: 2px solid #c4b5fd; }
+  .flow-rfd      { background: #fef3c7; color: #b45309; border: 2px solid #fcd34d; }
+  .flow-ofd      { background: #ffedd5; color: #c2410c; border: 2px solid #fdba74; }
+  .flow-received { background: #dcfce7; color: #166534; border: 2px solid #86efac; }
+
+  /* ─── INFO BOX ─── */
+  .info-box {
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin: 16px 0;
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .info-box .icon { font-size: 1.3rem; flex-shrink: 0; margin-top: 1px; }
+  .info-box h4 { font-size: 0.88rem; font-weight: 700; margin-bottom: 4px; }
+  .info-box p { font-size: 0.82rem; }
+
+  .info-blue   { background: #dbeafe; border-left: 4px solid #3b82f6; color: #1e3a8a; }
+  .info-green  { background: #dcfce7; border-left: 4px solid #22c55e; color: #14532d; }
+  .info-orange { background: #fef3c7; border-left: 4px solid #f59e0b; color: #78350f; }
+  .info-red    { background: #fee2e2; border-left: 4px solid #ef4444; color: #7f1d1d; }
+
+  /* ─── GRID ─── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 16px; }
+
+  /* ─── MODULE CARD ─── */
+  .module-card {
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .module-card h4 { font-size: 0.88rem; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
+  .module-card ul { padding-left: 16px; }
+  .module-card li { font-size: 0.8rem; color: #475569; margin-bottom: 4px; }
+  .module-card .mod-icon { font-size: 1.5rem; margin-bottom: 8px; }
+
+  /* ─── PAGE NUMBER ─── */
+  .page-footer {
+    padding: 16px 48px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .page-footer span { font-size: 0.75rem; color: #94a3b8; }
+
+  /* ─── PRINT BUTTON ─── */
+  .print-btn {
+    position: fixed; bottom: 24px; right: 24px;
+    background: #4f46e5; color: white;
+    border: none; border-radius: 12px;
+    padding: 14px 28px; font-size: 0.95rem; font-weight: 700;
+    cursor: pointer; box-shadow: 0 4px 20px rgba(79,70,229,0.4);
+    z-index: 1000;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .print-btn:hover { background: #4338ca; transform: translateY(-1px); }
+
+  /* ─── DIVIDER ─── */
+  .divider { height: 1px; background: #f1f5f9; margin: 20px 0; }
+
+  /* ─── BIG PERMISSION MATRIX ─── */
+  .matrix-wrap { overflow-x: auto; margin-top: 16px; }
+  .matrix-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  .matrix-table th {
+    padding: 10px 12px; text-align: center;
+    border-bottom: 2px solid #e2e8f0;
+    white-space: nowrap; font-size: 0.73rem;
+  }
+  .matrix-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
+  .matrix-table .feature-col { font-weight: 600; color: #374151; text-align: left; }
+  .matrix-table .th-sa  { color: var(--superadmin); }
+  .matrix-table .th-ad  { color: var(--admin); }
+  .matrix-table .th-mg  { color: var(--manager); }
+  .matrix-table .th-sv  { color: var(--supervisor); }
+  .matrix-table .th-ac  { color: var(--accountant); }
+  .matrix-table .th-dt  { color: var(--distributor); }
+  .matrix-table .dot-yes     { display:inline-block;width:18px;height:18px;border-radius:50%;background:#22c55e;margin:auto; }
+  .matrix-table .dot-no      { display:inline-block;width:18px;height:18px;border-radius:50%;background:#e5e7eb;margin:auto; }
+  .matrix-table .dot-partial { display:inline-block;width:18px;height:18px;border-radius:50%;background:#f59e0b;margin:auto; }
+  .matrix-table .center-col  { text-align: center; }
+  .matrix-table tr:hover td  { background: #f8fafc; }
+
+  /* ─── HIGHLIGHT ─── */
+  .highlight {
+    display: inline-block;
+    background: #fef3c7; color: #92400e;
+    border-radius: 6px; padding: 2px 8px;
+    font-weight: 700; font-size: 0.82rem;
+  }
+  .highlight-blue {
+    display: inline-block;
+    background: #dbeafe; color: #1d4ed8;
+    border-radius: 6px; padding: 2px 8px;
+    font-weight: 700; font-size: 0.82rem;
+  }
+
+  /* ─── RULE CARD ─── */
+  .rule-card {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    display: flex; gap: 14px; align-items: center;
+  }
+  .rule-num {
+    min-width: 36px; height: 36px; border-radius: 10px;
+    background: #4f46e5; color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 1rem; flex-shrink: 0;
+  }
+  .rule-text strong { font-size: 0.9rem; color: #1e293b; }
+  .rule-text p { font-size: 0.82rem; color: #64748b; margin-top: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════ PAGE 1 — COVER ═══════════════════ -->
+<div class="page">
+  <div class="cover">
+    <div>
+      <div class="cover-logo">
+        <div class="cover-logo-icon">👟</div>
+        <div class="cover-logo-text">Kore <span>Kollective</span></div>
+      </div>
+
+      <div class="cover-title">
+        User Guide &amp;<br/>Role Handbook
+      </div>
+      <div class="cover-subtitle">
+        Yeh guide aapko batati hai ki Kore Kollective portal kya hai, kaun log isko use kar sakte hain, unka kya kaam hai, aur portal ko kadam-ba-kadam kaise use karein.
+      </div>
+
+      <div class="cover-roles">
+        <span class="role-pill pill-sa">🛡️ Super Admin</span>
+        <span class="role-pill pill-ad">👑 Admin</span>
+        <span class="role-pill pill-mg">🗂️ Manager</span>
+        <span class="role-pill pill-sv">🔍 Supervisor</span>
+        <span class="role-pill pill-ac">💰 Accountant</span>
+        <span class="role-pill pill-dt">🏪 Distributor</span>
+      </div>
+    </div>
+
+    <div class="cover-meta">
+      <div class="cover-meta-item">
+        <strong>Version</strong>1.0
+      </div>
+      <div class="cover-meta-item">
+        <strong>Language</strong>Hindi + English
+      </div>
+      <div class="cover-meta-item">
+        <strong>Company</strong>Kore Kollective
+      </div>
+      <div class="cover-meta-item">
+        <strong>Date</strong>June 2026
+      </div>
+    </div>
+  </div>
+
+  <div class="page-footer">
+    <span>Kore Kollective — Confidential</span>
+    <span>Page 1</span>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGE 2 — SYSTEM OVERVIEW ═══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h2>🏢 Yeh Portal Kya Hai?</h2>
+    <p>Ek aam bhasha mein samajhna</p>
+  </div>
+  <div class="content">
+
+    <div class="info-box info-blue">
+      <div class="icon">💡</div>
+      <div>
+        <h4>Seedha baat</h4>
+        <p>Kore Kollective ek <strong>jootaa vitran (footwear distribution) ka digital office</strong> hai. Jaise aap ek dukaan mein sab kuch — maal, order, hisaab — register mein likhte hain, waise hi yahan sab kuch computer par hota hai. Koi bhi cheez paper pe nahi — sab online, sab safe.</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 24px; margin-bottom: 8px; font-weight: 800; font-size: 1rem; color: #1e293b;">Kore Kollective ka Kaam ka Chakra</div>
+
+    <!-- Flow -->
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-box" style="background:#ede9fe;color:#6d28d9;border:2px solid #c4b5fd;">🏭<br/>Vendor se<br/>Maal Kharidna</div>
+        <div class="flow-desc">PO → GRN</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box" style="background:#dbeafe;color:#1d4ed8;border:2px solid #93c5fd;">📦<br/>Stock<br/>Warehouse</div>
+        <div class="flow-desc">Inventory</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box" style="background:#f0fdf4;color:#166534;border:2px solid #86efac;">🏪<br/>Distributor<br/>Order Kare</div>
+        <div class="flow-desc">Cart → Checkout</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box" style="background:#fff7ed;color:#c2410c;border:2px solid #fdba74;">🚚<br/>Maal<br/>Dispatch</div>
+        <div class="flow-desc">OFD → Received</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-box" style="background:#fef3c7;color:#92400e;border:2px solid #fcd34d;">💵<br/>Payment<br/>Receive</div>
+        <div class="flow-desc">Hisaab saaf</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div style="font-weight: 800; font-size: 1rem; color: #1e293b; margin-bottom: 12px;">Portal ke Main Sections</div>
+
+    <div class="grid-3">
+      <div class="module-card">
+        <div class="mod-icon">🛒</div>
+        <h4>Purchases</h4>
+        <ul>
+          <li>Purchase Order (PO)</li>
+          <li>GRN — Maal aana</li>
+          <li>Vendors manage</li>
+          <li>Bills</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <div class="mod-icon">📦</div>
+        <h4>Inventory</h4>
+        <ul>
+          <li>Catalogue — product list</li>
+          <li>Master Stock</li>
+          <li>Inward / Outward</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <div class="mod-icon">📋</div>
+        <h4>Sales</h4>
+        <ul>
+          <li>Orders manage</li>
+          <li>Returns handle</li>
+          <li>Payment status</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <div class="mod-icon">👥</div>
+        <h4>Partners</h4>
+        <ul>
+          <li>Distributors</li>
+          <li>Credit limits</li>
+          <li>Discount %</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <div class="mod-icon">📊</div>
+        <h4>Reports</h4>
+        <ul>
+          <li>Stock Report</li>
+          <li>Dispatch Report</li>
+          <li>Return Report</li>
+        </ul>
+      </div>
+      <div class="module-card">
+        <div class="mod-icon">🏪</div>
+        <h4>Distributor</h4>
+        <ul>
+          <li>Shop — products browse</li>
+          <li>Cart + Checkout</li>
+          <li>My Orders</li>
+          <li>Wishlist</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="info-box info-green">
+      <div class="icon">📱</div>
+      <div>
+        <h4>Real-Time Notifications</h4>
+        <p>Jab bhi koi order update hoga, GRN submit hogi, ya return aayega — sabko <strong>turant notification milti hai</strong> portal par hi. Koi refresh karne ki zaroorat nahi.</p>
+      </div>
+    </div>
+
+  </div>
+  <div class="page-footer">
+    <span>Kore Kollective — Confidential</span>
+    <span>Page 2</span>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGE 3 — LOGIN + ROLE OVERVIEW ═══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h2>🔑 Portal Mein Kaise Login Karein?</h2>
+    <p>Har kisi ke liye alag login ID aur password hota hai</p>
+  </div>
+  <div class="content">
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num" style="background:#4f46e5;">1</div>
+        <div class="step-body">
+          <strong>Browser mein portal ka link kholein</strong>
+          <span>Chrome, Firefox, ya koi bhi browser chalein</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num" style="background:#4f46e5;">2</div>
+        <div class="step-body">
+          <strong>Email ID aur Password dalein</strong>
+          <span>Aapka email aur password admin ne diya hoga</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num" style="background:#4f46e5;">3</div>
+        <div class="step-body">
+          <strong>"Login" button dabayein</strong>
+          <span>Aap seedha apne role ke hisaab se Dashboard par pahunch jaayenge</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num" style="background:#4f46e5;">4</div>
+        <div class="step-body">
+          <strong>Logout karna na bhoolein</strong>
+          <span>Sidebar ke neeche Logout button hai — kaam khatam hone par zaroor click karein</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <div style="font-weight: 800; font-size: 1rem; color: #1e293b; margin-bottom: 16px;">6 Tarah ke Users — Ek Nazar Mein</div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:12px;background:var(--superadmin-light);border:1.5px solid var(--superadmin);">
+        <div style="font-size:1.6rem;">🛡️</div>
+        <div style="flex:1;">
+          <div style="font-weight:800;color:var(--superadmin);font-size:0.95rem;">SUPER ADMIN</div>
+          <div style="font-size:0.82rem;color:#4c1d95;margin-top:2px;">Sabse bada adhikar — sab kuch dekh sakta hai, sab kuch kar sakta hai. Users bana sakta hai, delete kar sakta hai.</div>
+        </div>
+        <div style="background:var(--superadmin);color:white;border-radius:8px;padding:4px 12px;font-size:0.75rem;font-weight:700;white-space:nowrap;">Full Access</div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:12px;background:var(--admin-light);border:1.5px solid var(--admin);">
+        <div style="font-size:1.6rem;">👑</div>
+        <div style="flex:1;">
+          <div style="font-weight:800;color:var(--admin);font-size:0.95rem;">ADMIN</div>
+          <div style="font-size:0.82rem;color:#1e3a8a;margin-top:2px;">Pura business manage karta hai — catalog, PO, GRN, orders, distributors sab. Sirf users nahi bana sakta.</div>
+        </div>
+        <div style="background:var(--admin);color:white;border-radius:8px;padding:4px 12px;font-size:0.75rem;font-weight:700;white-space:nowrap;">High Access</div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:12px;background:var(--manager-light);border:1.5px solid var(--manager);">
+        <div style="font-size:1.6rem;">🗂️</div>
+        <div style="flex:1;">
+          <div style="font-weight:800;color:var(--manager);font-size:0.95rem;">MANAGER</div>
+          <div style="font-size:0.82rem;color:#134e4a;margin-top:2px;">Din-bhar ka operations manage karta hai — orders, stock, GRN sab dekhta hai. Users aur Activity Log nahi dekh sakta.</div>
+        </div>
+        <div style="background:var(--manager);color:white;border-radius:8px;padding:4px 12px;font-size:0.75rem;font-weight:700;white-space:nowrap;">Medium-High</div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:12px;background:var(--supervisor-light);border:1.5px solid var(--supervisor);">
+        <div style="font-size:1.6rem;">🔍</div>
+        <div style="flex:1;">
+          <div style="font-weight:800;color:var(--supervisor);font-size:0.95rem;">SUPERVISOR</div>
+          <div style="font-size:0.82rem;color:#78350f;margin-top:2px;">Field/warehouse level monitoring — stock dekh sakta hai, orders dekh sakta hai. Manager jitna kaam.</div>
+        </div>
+        <div style="background:var(--supervisor);color:white;border-radius:8px;padding:4px 12px;font-size:0.75rem;font-weight:700;white-space:nowrap;">Medium</div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:12px;background:var(--accountant-light);border:1.5px solid var(--accountant);">
+        <div style="font-size:1.6rem;">💰</div>
+        <div style="flex:1;">
+          <div style="font-weight:800;color:var(--accountant);font-size:0.95rem;">ACCOUNTANT</div>
+          <div style="font-size:0.82rem;color:#7f1d1d;margin-top:2px;">Bills, payments, overdue orders — hisaab-kitaab ka kaam. Same access as Manager/Supervisor.</div>
+        </div>
+        <div style="background:var(--accountant);color:white;border-radius:8px;padding:4px 12px;font-size:0.75rem;font-weight:700;white-space:nowrap;">Medium</div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:12px;background:var(--distributor-light);border:1.5px solid var(--distributor);">
+        <div style="font-size:1.6rem;">🏪</div>
+        <div style="flex:1;">
+          <div style="font-weight:800;color:var(--distributor);font-size:0.95rem;">DISTRIBUTOR</div>
+          <div style="font-size:0.82rem;color:#164e63;margin-top:2px;">Sirf apne kaam ka portal — products dekho, cart mein daalo, order karo, apne orders track karo. Koi admin cheez nahi dikhti.</div>
+        </div>
+        <div style="background:var(--distributor);color:white;border-radius:8px;padding:4px 12px;font-size:0.75rem;font-weight:700;white-space:nowrap;">Limited</div>
+      </div>
+
+    </div>
+
+  </div>
+  <div class="page-footer">
+    <span>Kore Kollective — Confidential</span>
+    <span>Page 3</span>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGE 4 — SUPER ADMIN ═══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h2 style="color:var(--superadmin);">🛡️ Super Admin — Pura Adhikar</h2>
+    <p>Sabse bada role — koi bhi kaam rok nahi sakta</p>
+  </div>
+  <div class="content">
+
+    <div class="role-card card-sa">
+      <div class="role-card-header">
+        <div class="role-icon">🛡️</div>
+        <div>
+          <h3>Super Admin</h3>
+          <p>Kore Kollective ka maalik / top manager. Sab kuch dekh aur kar sakta hai.</p>
+        </div>
+      </div>
+      <div class="role-card-body">
+
+        <div style="font-weight:700;font-size:0.88rem;color:#1e293b;margin-bottom:10px;">✅ Kya kya kar sakta hai</div>
+        <table class="perm-table">
+          <tr><th>Section</th><th>Kya kar sakta hai</th><th>Access</th></tr>
+          <tr><td>Dashboard</td><td>Saare orders, inventory, India map statistics</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Catalogue</td><td>Products add, edit, delete; variants manage</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Purchase Order (PO)</td><td>PO banana, dekhna, edit karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>GRN</td><td>Maal received entry karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Bills</td><td>Bill approve / reject karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Vendors</td><td>Vendor add, edit, delete</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Master Stock</td><td>Stock inward/outward manually karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Orders</td><td>Saare distributors ke orders — status change karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Returns</td><td>Return process karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Distributors</td><td>Distributor add, edit; credit limit, discount set karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>👑 Users</td><td>Naye users banana, password reset, role change</td><td><span class="badge-yes">✓ Sirf Super Admin</span></td></tr>
+          <tr><td>👑 Activity Log</td><td>Dekho kisne kya kiya — poora audit trail</td><td><span class="badge-yes">✓ Sirf SA + Admin</span></td></tr>
+          <tr><td>Reports</td><td>Stock, Dispatch, Return — teeno reports</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Profile</td><td>Apni profile edit karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+        </table>
+
+        <div class="info-box info-orange" style="margin-top:18px;">
+          <div class="icon">⚠️</div>
+          <div>
+            <h4>Dhyaan rakhein</h4>
+            <p>Super Admin ke paas <strong>Users tab</strong> hoti hai jahan se naye employees ke accounts banaye jaate hain. Yeh kaam sirf Super Admin hi kar sakta hai — koi aur nahi.</p>
+          </div>
+        </div>
+
+        <div style="font-weight:700;font-size:0.88rem;color:#1e293b;margin:18px 0 10px;">📋 Kaam ka Tarika (Step-by-step)</div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num" style="background:var(--superadmin);">1</div>
+            <div class="step-body"><strong>Login karein → Dashboard dekhein</strong><span>Orders ki sankhya, pending deliveries, overdue payments sab dikhenge</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--superadmin);">2</div>
+            <div class="step-body"><strong>Naya employee aaya? Users → "Add User" karein</strong><span>Naam, email, password, role — sab bharein</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--superadmin);">3</div>
+            <div class="step-body"><strong>Activity Log se kisi bhi kaam ki jaanch karein</strong><span>Kisne order banaya, kisne status badla — sab record mein hai</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--superadmin);">4</div>
+            <div class="step-body"><strong>Distributor ka credit limit ya discount badhana ho toh Distributors tab</strong><span>Select karein distributor → Edit → Credit Limit change karein</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="page-footer">
+    <span>Kore Kollective — Confidential</span>
+    <span>Page 4</span>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGE 5 — ADMIN + MANAGER ═══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h2>👑 Admin &amp; 🗂️ Manager</h2>
+    <p>Day-to-day business operations chalane wale roles</p>
+  </div>
+  <div class="content">
+
+    <!-- ADMIN -->
+    <div class="role-card card-ad">
+      <div class="role-card-header">
+        <div class="role-icon">👑</div>
+        <div>
+          <h3>Admin</h3>
+          <p>Pura business manage karta hai — Super Admin jaisa, bas Users tab nahi.</p>
+        </div>
+      </div>
+      <div class="role-card-body">
+        <div style="font-weight:700;font-size:0.85rem;color:#1e293b;margin-bottom:8px;">Kya kar sakta hai / nahi kar sakta</div>
+        <table class="perm-table">
+          <tr><th>Feature</th><th>Access</th></tr>
+          <tr><td>Catalogue, PO, GRN, Bills, Vendors, Stock</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Orders process karna (status change)</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Distributors manage + credit/discount</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Activity Log dekhna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Reports (Stock / Dispatch / Return)</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Users banana / delete karna</td><td><span class="badge-no">✗ Nahi — sirf Super Admin</span></td></tr>
+        </table>
+
+        <div style="font-weight:700;font-size:0.85rem;color:#1e293b;margin:14px 0 8px;">🔑 Admin ka Roz ka Kaam</div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num" style="background:var(--admin);font-size:0.7rem;">PO</div>
+            <div class="step-body"><strong>Vendor se maal order karo</strong><span>PO tab → New PO → Vendor chunein → Items add karein → Save</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--admin);font-size:0.7rem;">GRN</div>
+            <div class="step-body"><strong>Maal aane par GRN banao</strong><span>GRN tab → New GRN → PO no. bharo → Received qty bharo → Submit</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--admin);font-size:0.7rem;">ORD</div>
+            <div class="step-body"><strong>Distributor orders process karo</strong><span>Orders tab → order select → status BOOKED→PFD→RFD→OFD set karo</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--admin);font-size:0.7rem;">Bill</div>
+            <div class="step-body"><strong>Vendor ka bill approve karo</strong><span>Bills tab → pending bills dekhein → Approve ya Reject</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MANAGER -->
+    <div class="role-card card-mg">
+      <div class="role-card-header">
+        <div class="role-icon">🗂️</div>
+        <div>
+          <h3>Manager</h3>
+          <p>Roz ka operation manage karta hai — Admin jaisa hi access, sirf Users aur Activity Log nahi.</p>
+        </div>
+      </div>
+      <div class="role-card-body">
+        <table class="perm-table">
+          <tr><th>Feature</th><th>Access</th></tr>
+          <tr><td>Catalogue, PO, GRN, Vendors, Stock, Orders, Returns</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Distributors dekhna + manage</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Reports</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Users banana</td><td><span class="badge-no">✗ Nahi</span></td></tr>
+          <tr><td>Activity Log</td><td><span class="badge-no">✗ Nahi</span></td></tr>
+        </table>
+
+        <div class="info-box info-green" style="margin-top:12px;">
+          <div class="icon">✅</div>
+          <div>
+            <h4>Manager ka Mukhya Kaam</h4>
+            <p>Stock manage karna, orders timely dispatch karana, returns handle karna, aur distributors se coordination banana.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="page-footer">
+    <span>Kore Kollective — Confidential</span>
+    <span>Page 5</span>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGE 6 — SUPERVISOR + ACCOUNTANT ═══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h2>🔍 Supervisor &amp; 💰 Accountant</h2>
+    <p>Field monitoring aur hisaab-kitaab ke roles</p>
+  </div>
+  <div class="content">
+
+    <!-- SUPERVISOR -->
+    <div class="role-card card-sv">
+      <div class="role-card-header">
+        <div class="role-icon">🔍</div>
+        <div>
+          <h3>Supervisor</h3>
+          <p>Warehouse ya field mein kaam karne wala — stock aur orders par nazar rakhta hai.</p>
+        </div>
+      </div>
+      <div class="role-card-body">
+        <table class="perm-table">
+          <tr><th>Feature</th><th>Access</th></tr>
+          <tr><td>Dashboard — sab orders, stats dekhna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Catalogue dekhna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>GRN enter karna (maal receive)</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Master Stock dekhna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Orders dekhna + status change</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Returns process karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>PO banana / Vendor manage</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Users banana / Activity Log</td><td><span class="badge-no">✗ Nahi</span></td></tr>
+        </table>
+
+        <div style="font-weight:700;font-size:0.85rem;color:#1e293b;margin:14px 0 8px;">📋 Supervisor ka Roz ka Kaam</div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num" style="background:var(--supervisor);">1</div>
+            <div class="step-body"><strong>Subah Dashboard kholein</strong><span>Pending orders dekho, kya dispatch hona hai aaj</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--supervisor);">2</div>
+            <div class="step-body"><strong>Maal aane par GRN fill karein</strong><span>GRN tab → PO number se match karein → quantity check karein → Submit</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--supervisor);">3</div>
+            <div class="step-body"><strong>Outward maal hone par Order status update karein</strong><span>Orders → OFD mark karein → invoice upload karein</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACCOUNTANT -->
+    <div class="role-card card-ac">
+      <div class="role-card-header">
+        <div class="role-icon">💰</div>
+        <div>
+          <h3>Accountant</h3>
+          <p>Paise ka hisaab — bills, payments, overdue orders manage karta hai.</p>
+        </div>
+      </div>
+      <div class="role-card-body">
+        <table class="perm-table">
+          <tr><th>Feature</th><th>Access</th></tr>
+          <tr><td>Dashboard — Overdue Payments section</td><td><span class="badge-yes">✓ Haan (Zaruri)</span></td></tr>
+          <tr><td>Bills tab — Approve / Reject vendor bills</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Orders — Payment received mark karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Reports — Stock, Dispatch, Return</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Catalogue, PO, GRN, Vendors</td><td><span class="badge-yes">✓ Haan</span></td></tr>
+          <tr><td>Users, Activity Log banana</td><td><span class="badge-no">✗ Nahi</span></td></tr>
+        </table>
+
+        <div class="info-box info-red" style="margin-top:14px;">
+          <div class="icon">🚨</div>
+          <div>
+            <h4>Overdue Payment Alert</h4>
+            <p>Dashboard par ek <strong>red aur yellow warning section</strong> dikhta hai — jis distributor ne delivery ke baad bhi payment nahi ki woh list mein aa jaate hain.</p>
+            <p style="margin-top:6px;"><strong>60+ din = 🟡 Yellow Warning &nbsp;|&nbsp; 80+ din = 🔴 Red Alert</strong></p>
+            <p style="margin-top:6px;">Payment aane par Orders tab mein jaake "Mark as Paid" karein.</p>
+          </div>
+        </div>
+
+        <div style="font-weight:700;font-size:0.85rem;color:#1e293b;margin:14px 0 8px;">📋 Accountant ka Roz ka Kaam</div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num" style="background:var(--accountant);">1</div>
+            <div class="step-body"><strong>Dashboard → Overdue Payments check karein</strong><span>Kitne distributors ka payment pending hai, kitne din se</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--accountant);">2</div>
+            <div class="step-body"><strong>Bills tab → Vendor bills approve ya reject karein</strong><span>Har PO ka bill verify karein — amount, GST sab match kare</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--accountant);">3</div>
+            <div class="step-body"><strong>Payment aane par "Mark as Paid" karein</strong><span>Orders → order dhundho → Mark Paid → note likho</span></div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--accountant);">4</div>
+            <div class="step-body"><strong>Reports se mahine ki report nikalein</strong><span>Stock Report / Dispatch Report → date filter → Export</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="page-footer">
+    <span>Kore Kollective — Confidential</span>
+    <span>Page 6</span>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGE 7 — DISTRIBUTOR ═══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h2 style="color:var(--distributor);">🏪 Distributor — Shopping aur Orders</h2>
+    <p>Jo maal kharidta hai — uska alag aur simple portal</p>
+  </div>
+  <div class="content">
+
+    <div class="role-card card-dt">
+      <div class="role-card-header">
+        <div class="role-icon">🏪</div>
+        <div>
+          <h3>Distributor</h3>
+          <p>Jootai kharidne wala retailer — apna dedicated shopping portal milta hai. Koi admin cheez nahi dikhti.</p>
+        </div>
+      </div>
+      <div class="role-card-body">
+
+        <div class="grid-2" style="margin-bottom:16px;">
+          <div class="info-box info-blue" style="margin:0;">
+            <div>
+              <h4>✅ Distributor KYA dekh sakta hai</h4>
+              <p>Dashboard, Wishlist, Catalogue (Shop), Cart, My Orders, Profile</p>
+            </div>
+          </div>
+          <div class="info-box info-red" style="margin:0;">
+            <div>
+              <h4>❌ Distributor KYA nahi dekh sakta</h4>
+              <p>PO, GRN, Bills, Vendors, Users, Reports, Other distributors ke orders</p>
+            </div>
+          </div>
+        </div>
+
+        <div style="font-weight:700;font-size:0.88rem;color:#1e293b;margin-bottom:12px;">🛍️ Kadam-ba-Kadam — Order Kaise Karein</div>
+
+        <div class="steps">
+          <div class="step">
+            <div class="step-num" style="background:var(--distributor);">1</div>
+            <div class="step-body">
+              <strong>Login karein → Dashboard dekhein</strong>
+              <span>Aapke apne orders, credit balance, aur cart ki jaankari milegi</span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--distributor);">2</div>
+            <div class="step-body">
+              <strong>Catalogue (Shop) tab mein products dekhein</strong>
+              <span>Sirf AVAILABLE products dikhenge — jo abhi order ho sakte hain</span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--distributor);">3</div>
+            <div class="step-body">
+              <strong>Product chunein → Size aur quantity dalein</strong>
+              <span>⚠️ Yaad rakhein: <strong>1 carton = 24 pairs</strong>. Sirf 24 ke multiple mein order hoga (24, 48, 72...)</span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--distributor);">4</div>
+            <div class="step-body">
+              <strong>"Add to Cart" dabayein</strong>
+              <span>Product cart mein chala jayega — ek se zyada products add kar sakte hain</span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--distributor);">5</div>
+            <div class="step-body">
+              <strong>Cart tab → "Checkout" button dabayein</strong>
+              <span>System aapka credit limit check karega — agar limit mein hai to order hoga</span>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num" style="background:var(--distributor);">6</div>
+            <div class="step-body">
+              <strong>My Orders mein order track karein</strong>
+              <span>BOOKED → PFD → RFD → OFD → RECEIVED — har step par notification milegi</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div style="font-weight:700;font-size:0.88rem;color:#1e293b;margin-bottom:10px;">⭐ Wishlist Kya Hai?</div>
+        <div class="info-box info-blue" style="margin:0 0 16px 0;">
+          <div class="icon">⭐</div>
+          <div>
+            <h4>Future ke products — Wishlist mein save karein</h4>
+            <p>Kuch products abhi available nahi hote — unhe <strong>WISHLIST stage</strong> mein rakha jaata hai. Inhe aap Wishlist tab mein dekh sakte hain aur cart mein daal sakte hain, lekin order sirf AVAILABLE products ka hi BOOKED hoga.</p>
+          </div>
+        </div>
+
+        <div style="font-weight:700;font-size:0.88rem;color:#1e293b;margin-bottom:10px;">💳 Credit Limit Kya Hoti Hai?</div>
+        <div class="rule-card">
+          <div class="rule-num">💳</div>
+          <div class="rule-text">
+            <strong>Credit Limit = Kitne rupaye tak order kar sakte hain</strong>
+            <p>Admin ne aapke liye ek limit set ki hai. Agar order ka total us limit se zyada hua — order nahi hoga aur message aayega. Pehle payment karo — limit phir se available hogi.</p>
+          </div>
+        </div>
+
+        <div style="font-weight:700;font-size:0.88rem;color:#1e293b;margin:14px 0 10px;">📦 Order Status — Kya Matlab?</div>
+
+        <div class="flow" style="gap:4px;">
+          <div class="flow-step">
+            <div class="flow-box flow-booked">📝<br/>BOOKED</div>
+            <div class="flow-desc">Order liya gaya, process hoga</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-box flow-pfd">⚙️<br/>PFD</div>
+            <div class="flow-desc">Taiyaari ho rahi hai</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-box flow-rfd">📫<br/>RFD</div>
+            <div class="flow-desc">Maal ready hai</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-box flow-ofd">🚚<br/>OFD</div>
+            <div class="flow-desc">Maal raste mein hai</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-box flow-received">✅<br/>RECEIVED</div>
+            <div class="flow-desc">Maal mil gaya!</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+  <div class="page-footer">
+    <span>Kore Kollective — Confidential</span>
+    <span>Page 7</span>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGE 8 — FULL PERMISSION MATRIX ═══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h2>📊 Poora Permission Matrix — Ek Nazan Mein</h2>
+    <p>Kisका kya access hai — ek table mein sab kuch</p>
+  </div>
+  <div class="content">
+
+    <!-- Color legend -->
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+      <span style="font-size:0.8rem;font-weight:700;color:#374151;">Color Legend:</span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;">
+        <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--superadmin)"></span>Super Admin
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;">
+        <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--admin)"></span>Admin
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;">
+        <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--manager)"></span>Manager
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;">
+        <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--supervisor)"></span>Supervisor
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;">
+        <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--accountant)"></span>Accountant
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;">
+        <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--distributor)"></span>Distributor
+      </span>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+      <span style="font-size:0.78rem;font-weight:600;">🟢 = Full Access &nbsp;&nbsp; 🟡 = Partial / Read Only &nbsp;&nbsp; ⚪ = No Access</span>
+    </div>
+
+    <div class="matrix-wrap">
+      <table class="matrix-table">
+        <thead>
+          <tr>
+            <th style="text-align:left;min-width:160px;">Feature / Section</th>
+            <th class="th-sa">🛡️<br/>Super<br/>Admin</th>
+            <th class="th-ad">👑<br/>Admin</th>
+            <th class="th-mg">🗂️<br/>Manager</th>
+            <th class="th-sv">🔍<br/>Super<br/>visor</th>
+            <th class="th-ac">💰<br/>Accoun<br/>tant</th>
+            <th class="th-dt">🏪<br/>Distri<br/>butor</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="feature-col">📊 Dashboard (Admin)</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr><td class="feature-col">🏪 Dashboard (Distributor)</td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-yes"></span></td></tr>
+          <tr style="background:#fafafa;"><td colspan="7" style="padding:6px 12px;font-size:0.72rem;font-weight:700;color:#94a3b8;letter-spacing:1px;">PURCHASES</td></tr>
+          <tr><td class="feature-col">📄 Purchase Order (PO)</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr><td class="feature-col">🚚 GRN (Maal receive)</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr><td class="feature-col">🏭 Vendors Manage</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr><td class="feature-col">🧾 Bills Approve/Reject</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr style="background:#fafafa;"><td colspan="7" style="padding:6px 12px;font-size:0.72rem;font-weight:700;color:#94a3b8;letter-spacing:1px;">INVENTORY</td></tr>
+          <tr><td class="feature-col">📚 Catalogue (View+Edit)</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr><td class="feature-col">🗄️ Master Stock Manage</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr style="background:#fafafa;"><td colspan="7" style="padding:6px 12px;font-size:0.72rem;font-weight:700;color:#94a3b8;letter-spacing:1px;">SALES</td></tr>
+          <tr><td class="feature-col">📋 All Orders (Admin view)</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr><td class="feature-col">🔄 Order Status Change</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr><td class="feature-col">↩️ Returns Process</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr><td class="feature-col">💵 Payment Mark as Paid</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr style="background:#fafafa;"><td colspan="7" style="padding:6px 12px;font-size:0.72rem;font-weight:700;color:#94a3b8;letter-spacing:1px;">PARTNERS &amp; ADMIN</td></tr>
+          <tr><td class="feature-col">👥 Distributors Manage</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr><td class="feature-col">🔑 Users Banana / Delete</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr><td class="feature-col">🕵️ Activity Log Dekhna</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr style="background:#fafafa;"><td colspan="7" style="padding:6px 12px;font-size:0.72rem;font-weight:700;color:#94a3b8;letter-spacing:1px;">REPORTS</td></tr>
+          <tr><td class="feature-col">📈 Stock Report</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr><td class="feature-col">🚛 Dispatch Report</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr><td class="feature-col">↩️ Return Report</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+          <tr style="background:#fafafa;"><td colspan="7" style="padding:6px 12px;font-size:0.72rem;font-weight:700;color:#94a3b8;letter-spacing:1px;">DISTRIBUTOR ONLY</td></tr>
+          <tr><td class="feature-col">🛍️ Shop (Browse Products)</td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-yes"></span></td></tr>
+          <tr><td class="feature-col">🛒 Cart + Checkout</td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-yes"></span></td></tr>
+          <tr><td class="feature-col">⭐ Wishlist</td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-yes"></span></td></tr>
+          <tr><td class="feature-col">📦 My Orders Track</td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-yes"></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="page-footer">
+    <span>Kore Kollective — Confidential</span>
+    <span>Page 8</span>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGE 9 — BUSINESS RULES + TIPS ═══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h2>📌 Zaroori Niyam aur Tips</h2>
+    <p>Yeh niyam portal mein automatically laagu hote hain</p>
+  </div>
+  <div class="content">
+
+    <div class="rule-card">
+      <div class="rule-num">1</div>
+      <div class="rule-text">
+        <strong>1 Carton = 24 Pairs — Sirf 24 ke Multiple mein Order Hoga</strong>
+        <p>Agar aap 23 pairs cart mein daalte hain — order nahi hoga. 24, 48, 72, 96... — aise hi hona chahiye. Yeh rule automatic check hota hai.</p>
+      </div>
+    </div>
+
+    <div class="rule-card">
+      <div class="rule-num">2</div>
+      <div class="rule-text">
+        <strong>Credit Limit — Order karne se pehle balance check hota hai</strong>
+        <p>Har distributor ka ek maximum credit limit hoti hai. Agar aapka order total us limit se zyada hua — system automatic block kar deta hai. Payment karo, limit phir free hogi.</p>
+      </div>
+    </div>
+
+    <div class="rule-card">
+      <div class="rule-num">3</div>
+      <div class="rule-text">
+        <strong>AVAILABLE vs WISHLIST — Product ka Stage</strong>
+        <p><strong>AVAILABLE:</strong> Product abhi order kar sakte hain (Shop mein dikhta hai) &nbsp;|&nbsp; <strong>WISHLIST:</strong> Abhi nahi aaya, baad mein aayega (Wishlist mein save karo). Expectation date dikhti hai.</p>
+      </div>
+    </div>
+
+    <div class="rule-card">
+      <div class="rule-num">4</div>
+      <div class="rule-text">
+        <strong>Discount Percentage — Distributor-wise Alag</strong>
+        <p>Har distributor ka alag discount % hota hai jo admin ne set kiya hai. Checkout par automatically apply hota hai — manually calculate karne ki zaroorat nahi.</p>
+      </div>
+    </div>
+
+    <div class="rule-card">
+      <div class="rule-num">5</div>
+      <div class="rule-text">
+        <strong>GRN se Stock Update Hoti Hai</strong>
+        <p>Jab tak GRN submit nahi hoga — stock portal mein nahi badhega. Maal aa gaya to pehle GRN banaao, tabhi stock catalog mein dikhega.</p>
+      </div>
+    </div>
+
+    <div class="rule-card">
+      <div class="rule-num">6</div>
+      <div class="rule-text">
+        <strong>Overdue Payment Alert — 60 aur 80 Din</strong>
+        <p>Delivery ke baad bhi payment nahi ayi to:  <strong style="color:#b45309;">60+ din = Yellow warning</strong> &nbsp;|&nbsp; <strong style="color:#991b1b;">80+ din = Red alert</strong> — Dashboard par dono admins ko dikhega.</p>
+      </div>
+    </div>
+
+    <div class="rule-card">
+      <div class="rule-num">7</div>
+      <div class="rule-text">
+        <strong>Real-Time Notifications — Refresh ki Zaroorat Nahi</strong>
+        <p>Kisi ne bhi order kiya, status change kiya, GRN submit ki — sab logon ko turant notification milti hai portal par. Browser open rahe, sab auto update hota hai.</p>
+      </div>
+    </div>
+
+    <div class="rule-card">
+      <div class="rule-num">8</div>
+      <div class="rule-text">
+        <strong>Partial Fulfillment — Order ka Kuch Hissa Pehle Milega</strong>
+        <p>Agar stock ka kuch hissa abhi available hai — to pehla batch dispatch hoga (PARTIAL status). Baaki baad mein aayega. Har batch ki alag history hoti hai.</p>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div style="font-weight:800;font-size:1rem;color:#1e293b;margin-bottom:12px;">🆘 Problem Aaye To Kya Karein?</div>
+
+    <div class="grid-2">
+      <div class="info-box info-orange" style="margin:0;">
+        <div class="icon">🔐</div>
+        <div>
+          <h4>Password bhool gaye?</h4>
+          <p>Super Admin se contact karein — woh password reset kar denge Users tab se.</p>
+        </div>
+      </div>
+      <div class="info-box info-blue" style="margin:0;">
+        <div class="icon">💳</div>
+        <div>
+          <h4>Credit limit khatam ho gayi?</h4>
+          <p>Admin se credit limit badhwane ke liye ya pehle outstanding payment karo.</p>
+        </div>
+      </div>
+      <div class="info-box info-green" style="margin:0;">
+        <div class="icon">📦</div>
+        <div>
+          <h4>Order status nahi badal raha?</h4>
+          <p>Admin / Supervisor se contact karein — woh manually status update karenge.</p>
+        </div>
+      </div>
+      <div class="info-box info-red" style="margin:0;">
+        <div class="icon">❌</div>
+        <div>
+          <h4>Cart mein add nahi ho raha?</h4>
+          <p>Check karein: quantity 24 ka multiple hai? Product AVAILABLE stage mein hai? Credit limit baaki hai?</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="page-footer">
+    <span>Kore Kollective — Confidential</span>
+    <span>Page 9</span>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGE 10 — QUICK REFERENCE CARD ═══════════════════ -->
+<div class="page page-break">
+  <div class="section-header">
+    <h2>⚡ Quick Reference — Jaldi Dhundho</h2>
+    <p>Roz kaam aane wali cheezein ek jagah</p>
+  </div>
+  <div class="content">
+
+    <div class="grid-2">
+
+      <div>
+        <div style="font-weight:800;font-size:0.9rem;color:var(--superadmin);margin-bottom:8px;">🛡️ Super Admin — Khaas Kaam</div>
+        <div style="background:var(--superadmin-light);border-radius:10px;padding:14px;border:1px solid #c4b5fd;">
+          <ul style="padding-left:16px;font-size:0.82rem;color:#4c1d95;">
+            <li style="margin-bottom:5px;">New employee account banana → <strong>Users tab</strong></li>
+            <li style="margin-bottom:5px;">Kisi ka role change karna → <strong>Users tab → Edit</strong></li>
+            <li style="margin-bottom:5px;">Audit trail dekhna → <strong>Activity Log</strong></li>
+            <li style="margin-bottom:5px;">Distributor credit limit set karna → <strong>Distributors → Edit</strong></li>
+          </ul>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-weight:800;font-size:0.9rem;color:var(--admin);margin-bottom:8px;">👑 Admin — Roz ka Kaam</div>
+        <div style="background:var(--admin-light);border-radius:10px;padding:14px;border:1px solid #93c5fd;">
+          <ul style="padding-left:16px;font-size:0.82rem;color:#1e3a8a;">
+            <li style="margin-bottom:5px;">Naya product add karo → <strong>Catalogue</strong></li>
+            <li style="margin-bottom:5px;">Vendor se order karo → <strong>PO tab</strong></li>
+            <li style="margin-bottom:5px;">Maal receive karo → <strong>GRN tab</strong></li>
+            <li style="margin-bottom:5px;">Order dispatch karo → <strong>Orders → OFD</strong></li>
+          </ul>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-weight:800;font-size:0.9rem;color:var(--accountant);margin-bottom:8px;">💰 Accountant — Hisaab Kaam</div>
+        <div style="background:var(--accountant-light);border-radius:10px;padding:14px;border:1px solid #fca5a5;">
+          <ul style="padding-left:16px;font-size:0.82rem;color:#7f1d1d;">
+            <li style="margin-bottom:5px;">Overdue check karo → <strong>Dashboard bottom</strong></li>
+            <li style="margin-bottom:5px;">Bill approve karo → <strong>Bills tab</strong></li>
+            <li style="margin-bottom:5px;">Payment receive karo → <strong>Orders → Mark Paid</strong></li>
+            <li style="margin-bottom:5px;">Month report → <strong>Reports tab</strong></li>
+          </ul>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-weight:800;font-size:0.9rem;color:var(--distributor);margin-bottom:8px;">🏪 Distributor — Order Karo</div>
+        <div style="background:var(--distributor-light);border-radius:10px;padding:14px;border:1px solid #67e8f9;">
+          <ul style="padding-left:16px;font-size:0.82rem;color:#164e63;">
+            <li style="margin-bottom:5px;">Products dekho → <strong>Catalogue / Shop tab</strong></li>
+            <li style="margin-bottom:5px;">Cart mein daalo → <strong>Add to Cart (24 pairs min)</strong></li>
+            <li style="margin-bottom:5px;">Order karo → <strong>Cart → Checkout</strong></li>
+            <li style="margin-bottom:5px;">Order track karo → <strong>My Orders</strong></li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="divider"></div>
+
+    <div style="font-weight:800;font-size:0.9rem;color:#1e293b;margin-bottom:12px;">🔢 Important Numbers Yaad Rakhein</div>
+
+    <div style="display:flex;gap:14px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:140px;background:#f0fdf4;border:2px solid #86efac;border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:2rem;font-weight:900;color:#166534;">24</div>
+        <div style="font-size:0.78rem;color:#166534;font-weight:600;">Pairs per Carton<br/>(minimum order unit)</div>
+      </div>
+      <div style="flex:1;min-width:140px;background:#fef3c7;border:2px solid #fcd34d;border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:2rem;font-weight:900;color:#92400e;">60</div>
+        <div style="font-size:0.78rem;color:#92400e;font-weight:600;">Days = Yellow Warning<br/>(Overdue Payment)</div>
+      </div>
+      <div style="flex:1;min-width:140px;background:#fee2e2;border:2px solid #fca5a5;border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:2rem;font-weight:900;color:#991b1b;">80</div>
+        <div style="font-size:0.78rem;color:#991b1b;font-weight:600;">Days = Red Alert<br/>(Critical Overdue)</div>
+      </div>
+      <div style="flex:1;min-width:140px;background:#ede9fe;border:2px solid #c4b5fd;border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:2rem;font-weight:900;color:#6d28d9;">5</div>
+        <div style="font-size:0.78rem;color:#6d28d9;font-weight:600;">Order Status Steps<br/>BOOKED→RECEIVED</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Footer note -->
+    <div style="text-align:center;padding:16px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;">
+      <div style="font-size:1.1rem;font-weight:800;color:#1e293b;margin-bottom:4px;">👟 Kore Kollective</div>
+      <div style="font-size:0.8rem;color:#64748b;">Footwear Distribution Management Portal</div>
+      <div style="font-size:0.75rem;color:#94a3b8;margin-top:8px;">Yeh document confidential hai. Sirf authorized users ke liye.</div>
+    </div>
+
+  </div>
+  <div class="page-footer">
+    <span>Kore Kollective — Confidential</span>
+    <span>Page 10</span>
+  </div>
+</div>
+
+<!-- ─── PRINT BUTTON ─── -->
+<button class="print-btn no-print" onclick="window.print()">
+  🖨️ PDF Save / Print Karein
+</button>
+
+</body>
+</html>
