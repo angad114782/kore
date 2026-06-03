@@ -1,19 +1,13 @@
-name: Debug Secrets
+name: Network Test
 
 on:
   workflow_dispatch:
 
 jobs:
-  debug:
+  test:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Show secret lengths
+      - name: Test Port 22
         run: |
-          echo "HOST length: ${#HOST}"
-          echo "PORT length: ${#PORT}"
-          echo "USERNAME length: ${#USERNAME}"
-        env:
-          HOST: ${{ secrets.HOST }}
-          PORT: ${{ secrets.PORT }}
-          USERNAME: ${{ secrets.USERNAME }}
+          nc -vz ${{ secrets.HOST }} ${{ secrets.PORT }}
