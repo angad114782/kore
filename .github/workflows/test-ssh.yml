@@ -1,24 +1,18 @@
-name: Test SSH
+name: Debug Secrets
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  debug:
     runs-on: ubuntu-latest
-
     steps:
-      - name: SSH Test
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.PORT }}
-          debug: true
-          timeout: 60s
-          command_timeout: 2m
-          script: |
-            whoami
-            hostname
-            pwd
+      - name: Show secret lengths
+        run: |
+          echo "HOST length: ${#HOST}"
+          echo "PORT length: ${#PORT}"
+          echo "USERNAME length: ${#USERNAME}"
+        env:
+          HOST: ${{ secrets.HOST }}
+          PORT: ${{ secrets.PORT }}
+          USERNAME: ${{ secrets.USERNAME }}
