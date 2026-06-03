@@ -265,9 +265,9 @@ const StockReport: React.FC = () => {
               <tr>
                 <th className="px-4 py-3 w-8"></th>
                 <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-xs">Article</th>
-                <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-xs">SKU</th>
+                {/* <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-xs">SKU</th>
                 <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-xs">Category</th>
-                <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-xs">Brand</th>
+                <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-xs">Brand</th> */}
                 <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-xs">Health</th>
                 <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-xs text-right">Variants</th>
                 <th className="px-4 py-3 font-bold text-slate-500 uppercase tracking-wider text-xs text-right">Total Stock</th>
@@ -290,9 +290,9 @@ const StockReport: React.FC = () => {
                         {expanded.has(row.articleId) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                       </td>
                       <td className="px-4 py-3 font-semibold text-slate-800">{row.articleName}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{row.sku}</td>
+                      {/* <td className="px-4 py-3 font-mono text-xs text-slate-500">{row.sku}</td>
                       <td className="px-4 py-3 text-slate-600">{row.category}</td>
-                      <td className="px-4 py-3 text-slate-600">{row.brand}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.brand}</td> */}
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black ${hc.chipClass}`}>
                           {hc.icon}{hc.label}

@@ -116,8 +116,8 @@ const OrderSchema = new mongoose.Schema(
   {
     orderNumber: {
       type: String,
-      required: true,
-      unique: true,
+      default: null,
+      sparse: true, // allows multiple null values with unique index
     },
     distributorId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -132,10 +132,15 @@ const OrderSchema = new mongoose.Schema(
       type: String, // Storing as formatted string (e.g. "YYYY-MM-DD") for display based on frontend types
       required: true,
     },
+    orderType: {
+      type: String,
+      enum: ["REGULAR", "PREORDER"],
+      default: "REGULAR",
+    },
     status: {
       type: String,
-      enum: ["BOOKED", "PFD", "RFD", "OFD", "RECEIVED", "PARTIAL"],
-      default: "BOOKED",
+      enum: ["PRE_BOOKED", "CONFIRMED", "PENDING", "BOOKED", "PFD", "RFD", "OFD", "RECEIVED", "PARTIAL", "CANCELLED"],
+      default: "PENDING",
     },
     billUrl: {
       type: String,
@@ -165,6 +170,10 @@ const OrderSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Delivery agent info — filled when marking Out for Delivery
+    deliveryAgentName: { type: String, default: null },
+    deliveryAgentMobile: { type: String, default: null },
+    deliveryNote: { type: String, default: null },
     items: [OrderItemSchema],
     fulfillmentHistory: [FulfillmentHistorySchema],
     totalAmount: {
@@ -203,6 +212,12 @@ const OrderSchema = new mongoose.Schema(
     paidBy: { type: String, default: null },
     paymentNote: { type: String, default: null },
     deliveredAt: { type: Date, default: null },
+    // Booking commitment fields — filled when admin confirms order
+    expectedDispatchDate: { type: Date, default: null },
+    bookingPriority: { type: String, enum: ['NORMAL', 'URGENT'], default: 'NORMAL' },
+    adminNote: { type: String, default: null },
+    stockStatus: { type: String, enum: ['DISPATCH_READY', 'BLOCK_HOLD', 'NO_STOCK'], default: null },
+    blockReason: { type: String, default: null },
   },
   {
     timestamps: true,

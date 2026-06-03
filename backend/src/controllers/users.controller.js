@@ -9,10 +9,17 @@ exports.createUser = async (req, res, next) => {
   try {
     const user = await usersService.createUser(req.body);
 
-    return created(res, {
-      message: "User created successfully",
-      data: user,
+    const activityLog = require("../services/activityLog.service");
+    activityLog.createLog({
+      action: "USER_CREATED",
+      entityType: "USER",
+      entityId: String(user._id || user.id),
+      description: `New user "${user.name}" (${user.role}) created by ${req.user?.name || "admin"}`,
+      metadata: { role: user.role, email: user.email },
+      user: req.user,
     });
+
+    return created(res, { message: "User created successfully", data: user });
   } catch (err) {
     next(err);
   }
@@ -102,6 +109,41 @@ exports.changePassword = async (req, res, next) => {
 };
 
 /* --------------------------------------------------
+   🔑 ADMIN RESET PASSWORD (no old password required)
+   Increments tokenVersion → auto-logout target user from all devices
+-------------------------------------------------- */
+exports.adminResetPassword = async (req, res, next) => {
+  try {
+    const actorRole = req.user?.role;
+    if (!["superadmin", "admin"].includes(actorRole)) {
+      return fail(res, { status: 403, message: "Not authorized to reset passwords" });
+    }
+
+    const targetUserId = req.params.id;
+    const { newPassword } = req.body;
+
+    if (!newPassword) {
+      return fail(res, { status: 400, message: "newPassword is required" });
+    }
+
+    await usersService.adminResetPassword(targetUserId, newPassword);
+
+    const activityLog = require("../services/activityLog.service");
+    activityLog.createLog({
+      action: "PASSWORD_RESET",
+      entityType: "USER",
+      entityId: targetUserId,
+      description: `Password reset for user ${targetUserId} by ${req.user?.name || actorRole}. All sessions invalidated.`,
+      user: req.user,
+    });
+
+    return ok(res, { message: "Password reset. User has been logged out from all devices.", data: null });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/* --------------------------------------------------
    ✏ UPDATE USER
 -------------------------------------------------- */
 exports.updateUser = async (req, res, next) => {
@@ -117,16 +159,18 @@ exports.updateUser = async (req, res, next) => {
       return fail(res, { status: 400, message: "Invalid user ID" });
     }
 
-    const user = await usersService.updateUser(
-      actorUserId,
-      targetUserId,
-      req.body
-    );
+    const user = await usersService.updateUser(actorUserId, targetUserId, req.body);
 
-    return ok(res, {
-      message: "User updated successfully",
-      data: user,
+    const activityLog = require("../services/activityLog.service");
+    activityLog.createLog({
+      action: "USER_UPDATED",
+      entityType: "USER",
+      entityId: targetUserId,
+      description: `User "${user.name}" updated by ${req.user?.name || "admin"}`,
+      user: req.user,
     });
+
+    return ok(res, { message: "User updated successfully", data: user });
   } catch (err) {
     next(err);
   }

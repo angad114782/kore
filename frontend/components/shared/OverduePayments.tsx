@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, CheckCircle, Clock, X, IndianRupee, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, X, IndianRupee, Loader2, ArrowRight, Calendar, CreditCard, TrendingUp } from 'lucide-react';
 import { orderService } from '../../services/orderService';
 import { toast } from 'sonner';
 
@@ -12,6 +12,9 @@ interface OverdueOrder {
   finalAmount?: number;
   totalAmount: number;
   daysSinceDelivery: number;
+  daysOverdue: number;
+  paymentTerms: string;
+  paymentDays: number;
   urgency: 'YELLOW' | 'RED';
   status: string;
 }
@@ -19,9 +22,18 @@ interface OverdueOrder {
 interface OverduePaymentsProps {
   isAdmin?: boolean;
   onPaymentMarked?: () => void;
+  showAll?: boolean;
+  onSeeAll?: () => void;
 }
 
-const OverduePayments: React.FC<OverduePaymentsProps> = ({ isAdmin = false, onPaymentMarked }) => {
+const DASHBOARD_LIMIT = 5;
+
+const OverduePayments: React.FC<OverduePaymentsProps> = ({
+  isAdmin = false,
+  onPaymentMarked,
+  showAll = false,
+  onSeeAll,
+}) => {
   const [orders, setOrders] = useState<OverdueOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -59,10 +71,15 @@ const OverduePayments: React.FC<OverduePaymentsProps> = ({ isAdmin = false, onPa
     }
   };
 
-  if (!loading && orders.length === 0) return null;
-
   const red = orders.filter(o => o.urgency === 'RED');
   const yellow = orders.filter(o => o.urgency === 'YELLOW');
+  const displayOrders = showAll ? orders : orders.slice(0, DASHBOARD_LIMIT);
+  const hasMore = !showAll && orders.length > DASHBOARD_LIMIT;
+
+  // Kabhi null return mat karo — hamesha section dikhao
+
+  // Total overdue amount
+  const totalOverdue = orders.reduce((s, o) => s + (o.finalAmount || o.totalAmount || 0), 0);
 
   return (
     <>
@@ -74,8 +91,12 @@ const OverduePayments: React.FC<OverduePaymentsProps> = ({ isAdmin = false, onPa
               <AlertTriangle size={18} className="text-rose-600" />
             </div>
             <div>
-              <h3 className="font-bold text-slate-900 text-sm">Overdue Payments</h3>
-              <p className="text-[10px] text-slate-400">Delivered orders awaiting payment</p>
+              <h3 className="font-bold text-slate-900 text-sm">
+                {showAll ? 'Overdue Payments — Full List' : 'Overdue Payments'}
+              </h3>
+              <p className="text-[10px] text-slate-400">
+                Based on distributor payment terms · {orders.length} order{orders.length !== 1 ? 's' : ''} overdue
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -92,15 +113,48 @@ const OverduePayments: React.FC<OverduePaymentsProps> = ({ isAdmin = false, onPa
           </div>
         </div>
 
+        {/* Summary strip — page mode only */}
+        {showAll && !loading && orders.length > 0 && (
+          <div className="grid grid-cols-3 divide-x divide-slate-100 bg-slate-50/60 border-b border-slate-100">
+            <div className="px-5 py-3">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Overdue Amount</p>
+              <div className="flex items-center gap-1 mt-1">
+                <IndianRupee size={13} className="text-slate-700" />
+                <span className="font-black text-slate-900">{totalOverdue.toLocaleString()}</span>
+              </div>
+            </div>
+            <div className="px-5 py-3">
+              <p className="text-[10px] font-bold text-rose-500 uppercase tracking-wider">🔴 Critical (&gt;30 days overdue)</p>
+              <p className="font-black text-rose-600 mt-1">{red.length} orders</p>
+            </div>
+            <div className="px-5 py-3">
+              <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">🟡 Warning (overdue)</p>
+              <p className="font-black text-amber-600 mt-1">{yellow.length} orders</p>
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-10">
             <Loader2 size={22} className="animate-spin text-slate-300" />
           </div>
+        ) : orders.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-14 text-center px-6">
+            <div className="w-14 h-14 bg-emerald-50 rounded-full flex items-center justify-center mb-4">
+              <CheckCircle size={28} className="text-emerald-500" />
+            </div>
+            <p className="font-bold text-slate-700 text-sm">No overdue payments!</p>
+            <p className="text-xs text-slate-400 mt-1 max-w-xs">
+              All delivered orders are paid within their payment terms. Great job!
+            </p>
+          </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {orders.map(o => {
+            {displayOrders.map(o => {
               const isRed = o.urgency === 'RED';
               const amount = o.finalAmount || o.totalAmount || 0;
+              const deliveredDate = o.deliveredAt || o.date;
+
               return (
                 <div
                   key={o._id}
@@ -114,13 +168,28 @@ const OverduePayments: React.FC<OverduePaymentsProps> = ({ isAdmin = false, onPa
                   <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isRed ? 'bg-rose-500 animate-pulse' : 'bg-amber-400'}`} />
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-sm text-slate-800">{o.orderNumber}</span>
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${isRed ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}>
-                        {o.daysSinceDelivery}d overdue
+                        {o.daysOverdue}d overdue
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-500">
+                        Terms: {o.paymentTerms || `${o.paymentDays} days`}
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 truncate">{o.distributorName}</p>
+                    {showAll && (
+                      <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-400">
+                        <span className="flex items-center gap-1">
+                          <Calendar size={9} />
+                          Delivered: {new Date(deliveredDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock size={9} />
+                          Due by: {new Date(new Date(deliveredDate).getTime() + o.paymentDays * 86400000).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="text-right shrink-0">
@@ -130,7 +199,9 @@ const OverduePayments: React.FC<OverduePaymentsProps> = ({ isAdmin = false, onPa
                     </div>
                     <div className="flex items-center gap-1 justify-end mt-0.5">
                       <Clock size={9} className="text-slate-400" />
-                      <span className="text-[9px] text-slate-400">{new Date(o.deliveredAt || o.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
+                      <span className="text-[9px] text-slate-400">
+                        {new Date(deliveredDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                      </span>
                     </div>
                   </div>
 
@@ -145,6 +216,21 @@ const OverduePayments: React.FC<OverduePaymentsProps> = ({ isAdmin = false, onPa
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* See All footer */}
+        {!loading && hasMore && (
+          <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50/40">
+            <span className="text-[11px] text-slate-400">
+              Showing {DASHBOARD_LIMIT} of {orders.length} overdue orders
+            </span>
+            <button
+              onClick={onSeeAll}
+              className="flex items-center gap-1.5 text-rose-600 font-bold text-xs hover:text-rose-700 transition-colors"
+            >
+              See All <ArrowRight size={13} />
+            </button>
           </div>
         )}
       </div>

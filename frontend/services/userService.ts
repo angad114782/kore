@@ -82,3 +82,17 @@ export const userService = {
     return response.data;
   },
 };
+
+export const roleService = {
+  list: async (): Promise<{ name: string; label: string; base: boolean; id?: string }[]> => {
+    const res = await apiFetch("/roles");
+    return res.data || [];
+  },
+  create: async (label: string): Promise<{ name: string; label: string; base: boolean; id: string }> => {
+    const res = await apiFetch("/roles", { method: "POST", body: JSON.stringify({ label }) });
+    return res.data;
+  },
+  remove: async (name: string): Promise<void> => {
+    await apiFetch(`/roles/${name}`, { method: "DELETE" });
+  },
+};

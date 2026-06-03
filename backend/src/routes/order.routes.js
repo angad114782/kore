@@ -13,6 +13,7 @@ router.post("/", role(["distributor"]), OrderController.createOrder);
 router.get("/my-orders", role(["distributor"]), OrderController.getDistributorOrders);
 
 // Admin routes
+router.get("/stats", role(["admin", "superadmin"]), OrderController.getOrderStatsCtrl);
 router.get("/", role(["admin", "superadmin"]), OrderController.getAllOrders);
 
 // Status update — admin can set any status, distributor can mark as RECEIVED with bill
@@ -44,5 +45,13 @@ router.get(
 // Payment
 router.get("/overdue", role(["admin", "superadmin", "distributor"]), OrderController.getOverdueOrders);
 router.patch("/:id/mark-paid", role(["admin", "superadmin"]), OrderController.markOrderPaid);
+
+// Pre-orders (admin)
+router.get("/pre-orders", role(["admin", "superadmin", "manager", "supervisor", "accountant"]), OrderController.getPreOrdersCtrl);
+router.patch("/:id/release", role(["admin", "superadmin"]), OrderController.releasePreOrderCtrl);
+
+// Edit / Delete (distributor own orders, or admin)
+router.patch("/:id/edit", role(["distributor", "admin", "superadmin"]), OrderController.editOrderCtrl);
+router.delete("/:id", role(["distributor", "admin", "superadmin"]), OrderController.deleteOrderCtrl);
 
 module.exports = router;

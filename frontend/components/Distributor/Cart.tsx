@@ -1,5 +1,5 @@
 
-import React from "react";
+import React, { useState } from "react";
 import {
   ShoppingCart,
   Trash2,
@@ -8,7 +8,10 @@ import {
   AlertCircle,
   Info,
   CreditCard,
+  Percent,
+  FileText,
 } from "lucide-react";
+import TermsModal from "./TermsModal";
 import { User, Article, Assortment } from "../../types";
 import { getImageUrl } from "../../utils/imageUtils";
 
@@ -37,11 +40,17 @@ interface CartProps {
   addToCart?: (id: string) => void;
   removeFromCart?: (id: string, variantId?: string) => void;
   clearCartItem: (articleId: string, variantId?: string) => void;
-  onCheckout: () => void;
+  onCheckout: (gstPercent: number) => void;
   total: number;
   assortments: Assortment[];
   user?: User;
 }
+
+// Format number: round to 2 decimal, show as Indian currency
+const fmt = (n: number) => {
+  const rounded = Math.round(n * 100) / 100;
+  return rounded.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
 
 const Cart: React.FC<CartProps> = ({
   articles,
@@ -52,15 +61,18 @@ const Cart: React.FC<CartProps> = ({
   user,
 }) => {
   const currentUser = user;
+  const [gstPercent, setGstPercent] = useState<number>(5);
+  const [gstError, setGstError] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   const discountPercentage = currentUser?.discountPercentage || 0;
-  const discountAmount = (total * discountPercentage) / 100;
-  const finalAmount = total - discountAmount;
-  
+  const discountAmount     = Math.round((total * discountPercentage) / 100 * 100) / 100;
+  const afterDiscount      = Math.round((total - discountAmount) * 100) / 100;
+  const gstAmount          = Math.round((afterDiscount * gstPercent) / 100 * 100) / 100;
+  const finalAmount        = Math.round((afterDiscount + gstAmount) * 100) / 100;
+
   const availableCredit = currentUser?.availableCredit ?? 0;
-  // Based on strict 0 requirements from backend:
-  // If credit is exactly 0, they cannot order at all.
-  // If credit < required, they cannot order.
   const isCreditExceeded = availableCredit === 0 || finalAmount > availableCredit;
 
   if (cart.length === 0) {
@@ -250,24 +262,63 @@ const Cart: React.FC<CartProps> = ({
             </div>
             
             <div className="pt-4 border-t border-white/10 space-y-2">
+              {/* Subtotal */}
               <div className="flex justify-between items-end">
                 <span className="text-xs font-bold text-slate-400">Subtotal</span>
-                <span className="text-sm font-bold text-slate-300">
-                  ₹{total.toLocaleString()}
-                </span>
+                <span className="text-sm font-bold text-slate-300">₹{fmt(total)}</span>
               </div>
+
+              {/* Discount */}
               {discountPercentage > 0 && (
                 <div className="flex justify-between items-end">
                   <span className="text-xs font-bold text-emerald-400">Discount ({discountPercentage}%)</span>
-                  <span className="text-sm font-bold text-emerald-400">
-                    -₹{discountAmount.toLocaleString()}
-                  </span>
+                  <span className="text-sm font-bold text-emerald-400">-₹{fmt(discountAmount)}</span>
                 </div>
               )}
-              <div className="flex justify-between items-end pt-2 border-t border-white/5">
-                <span className="text-xs font-bold text-slate-300">Final Amount</span>
-                <span className={`text-xl font-black tracking-tight ${isCreditExceeded ? 'text-red-400' : 'text-indigo-400'}`}>
-                  ₹{finalAmount.toLocaleString()}
+
+              {/* After-discount subtotal (if discount applied) */}
+              {discountPercentage > 0 && (
+                <div className="flex justify-between items-end text-slate-400/70">
+                  <span className="text-[10px]">After discount</span>
+                  <span className="text-xs font-bold">₹{fmt(afterDiscount)}</span>
+                </div>
+              )}
+
+              {/* GST — editable, required */}
+              <div className="flex justify-between items-center pt-1">
+                <div className="flex items-center gap-1.5">
+                  <Percent size={11} className="text-amber-400" />
+                  <span className="text-xs font-bold text-amber-400">GST</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={28}
+                      step={0.5}
+                      required
+                      value={gstPercent}
+                      onChange={e => {
+                        const v = parseFloat(e.target.value);
+                        setGstError(isNaN(v) || v < 0);
+                        setGstPercent(isNaN(v) ? 0 : v);
+                      }}
+                      className={`w-14 text-center bg-white/10 text-amber-300 text-xs font-bold rounded-lg px-1.5 py-0.5 border outline-none focus:ring-1 focus:ring-amber-400 ${gstError ? 'border-red-400' : 'border-white/20'}`}
+                    />
+                    <span className="text-[10px] text-amber-400/70">%</span>
+                  </div>
+                </div>
+                <span className="text-sm font-bold text-amber-400">+₹{fmt(gstAmount)}</span>
+              </div>
+              {gstError && <p className="text-[9px] text-red-400">GST % is required (0–28)</p>}
+
+              {/* Final Payable */}
+              <div className="flex justify-between items-end pt-2 border-t border-white/10">
+                <div>
+                  <span className="text-xs font-bold text-slate-300">Total Payable</span>
+                  <p className="text-[9px] text-slate-500">incl. GST @ {gstPercent}%</p>
+                </div>
+                <span className={`text-2xl font-black tracking-tight ${isCreditExceeded ? 'text-red-400' : 'text-white'}`}>
+                  ₹{fmt(finalAmount)}
                 </span>
               </div>
             </div>
@@ -289,14 +340,57 @@ const Cart: React.FC<CartProps> = ({
             </div>
           </div>
 
+          {/* T&C checkbox — mandatory */}
+          <div className="mb-4">
+            <label className="flex items-start gap-2 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={e => setTermsAccepted(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded accent-white cursor-pointer shrink-0"
+              />
+              <span className="text-[10px] text-slate-300 leading-relaxed">
+                I have read and agree to the{" "}
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(true)}
+                  className="underline text-indigo-300 hover:text-white font-bold"
+                >
+                  Terms & Conditions
+                </button>
+                ,{" "}
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(true)}
+                  className="underline text-indigo-300 hover:text-white font-bold"
+                >
+                  Disclaimer
+                </button>{" "}
+                and{" "}
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(true)}
+                  className="underline text-indigo-300 hover:text-white font-bold"
+                >
+                  Privacy Policy
+                </button>
+              </span>
+            </label>
+            {!termsAccepted && availableItems.length > 0 && (
+              <p className="text-[9px] text-amber-400 mt-1 ml-6">Required to place order</p>
+            )}
+          </div>
+
           <button
-            onClick={onCheckout}
-            disabled={availableItems.length === 0 || isCreditExceeded}
+            onClick={() => onCheckout(gstPercent)}
+            disabled={availableItems.length === 0 || isCreditExceeded || gstError || gstPercent < 0 || !termsAccepted}
             className="w-full bg-white text-slate-900 py-3 rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-slate-100 transition-all active:scale-95 group disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Confirm Order
             <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
           </button>
+
+          {showTermsModal && <TermsModal onClose={() => setShowTermsModal(false)} />}
           
           {availableItems.length === 0 && cart.length > 0 && (
             <p className="text-[9px] text-slate-400 mt-3 text-center italic">

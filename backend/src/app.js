@@ -20,6 +20,10 @@ const distributorRoutes = require("./routes/distributor.routes");
 const orderRoutes = require("./routes/order.routes");
 const activityLogRoutes = require("./routes/activityLog.routes");
 const reportRoutes = require("./routes/reports.routes");
+const gstRoutes = require("./routes/gst.routes");
+const settingsRoutes = require("./routes/settings.routes");
+const notificationRoutes = require("./routes/notification.routes");
+const rolesRoutes = require("./routes/roles.routes");
 const errorMiddleware = require("./middlewares/error.middleware");
 
 const app = express();
@@ -65,6 +69,10 @@ app.use("/api/distributors", distributorRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/activity-logs", activityLogRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/gst", gstRoutes);
+app.use("/api/settings", settingsRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/roles", rolesRoutes);
 /* ------------------ 404 HANDLER ------------------ */
 app.use((req, res, next) => {
   res.status(404).json({ message: "Route not found" });

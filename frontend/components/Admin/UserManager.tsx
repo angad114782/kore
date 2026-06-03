@@ -1,25 +1,160 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Users,
   UserPlus,
   Search,
   Shield,
   Mail,
-  Trash2,
-  MoreVertical,
+  Phone,
   AlertCircle,
   CheckCircle2,
   X,
   Edit3,
   Edit,
   Loader2,
+  Plus,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
-import { userService } from "../../services/userService";
+import { userService, roleService } from "../../services/userService";
 import { User, UserRole } from "../../types";
 import Switch from "../ui/Switch";
 import Pagination from "../ui/Pagination";
 import { usePageSize } from "../../utils/usePageSize";
+
+interface RoleOption { name: string; label: string; base: boolean; id?: string }
+
+const ROLE_COLORS: Record<string, string> = {
+  superadmin: "bg-purple-100 text-purple-700",
+  admin:      "bg-indigo-100 text-indigo-700",
+  manager:    "bg-emerald-100 text-emerald-700",
+  supervisor: "bg-amber-100 text-amber-700",
+  accountant: "bg-rose-100 text-rose-700",
+  investor:   "bg-cyan-100 text-cyan-700",
+  staff:      "bg-slate-100 text-slate-600",
+};
+const colorFor = (name: string) => ROLE_COLORS[name] || "bg-violet-100 text-violet-700";
+
+// ── Custom Role Dropdown ────────────────────────────────────────────────────
+const RoleSelect: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  roles: RoleOption[];
+  onRoleCreated: (r: RoleOption) => void;
+  disabled?: boolean;
+}> = ({ value, onChange, roles, onRoleCreated, disabled }) => {
+  const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        btnRef.current && !btnRef.current.contains(e.target as Node) &&
+        dropRef.current && !dropRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false); setAdding(false); setNewLabel("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const openDrop = () => {
+    if (disabled) return;
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setDropPos({ top: r.bottom + window.scrollY + 4, left: r.left + window.scrollX, width: r.width });
+    }
+    setOpen(o => !o);
+  };
+
+  const selected = roles.find(r => r.name === value);
+
+  const handleCreate = async () => {
+    if (!newLabel.trim()) return;
+    try {
+      setCreating(true);
+      const created = await roleService.create(newLabel.trim());
+      onRoleCreated(created);
+      onChange(created.name);
+      setAdding(false); setNewLabel(""); setOpen(false);
+      toast.success(`Role "${created.label}" created`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to create role");
+    } finally { setCreating(false); }
+  };
+
+  return (
+    <>
+      <button ref={btnRef} type="button" disabled={disabled} onClick={openDrop}
+        className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all disabled:opacity-50">
+        <span className="flex items-center gap-2">
+          {selected
+            ? <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${colorFor(selected.name)}`}>{selected.label}</span>
+            : <span className="text-slate-400 text-sm">Select role...</span>}
+        </span>
+        <ChevronDown size={14} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div
+          ref={dropRef}
+          style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 9999 }}
+          className="bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden"
+        >
+          <div className="max-h-48 overflow-y-auto">
+            {roles.length === 0 && (
+              <div className="px-4 py-3 text-xs text-slate-400 text-center">Loading roles...</div>
+            )}
+            {roles.map(r => (
+              <button key={r.name} type="button"
+                onClick={() => { onChange(r.name); setOpen(false); }}
+                className={`w-full flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors ${value === r.name ? 'bg-indigo-50/70' : ''}`}>
+                <span className="flex items-center gap-2">
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${colorFor(r.name)}`}>{r.label}</span>
+                  {!r.base && <span className="text-[9px] text-slate-400 font-semibold italic">custom</span>}
+                </span>
+                {value === r.name && <Check size={13} className="text-indigo-600 shrink-0" />}
+              </button>
+            ))}
+          </div>
+
+          <div className="border-t border-slate-100">
+            {adding ? (
+              <div className="flex items-center gap-2 px-3 py-2.5">
+                <input autoFocus type="text" value={newLabel} onChange={e => setNewLabel(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') { setAdding(false); setNewLabel(""); } }}
+                  placeholder="e.g. Warehouse Manager"
+                  className="flex-1 px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400" />
+                <button type="button" onClick={handleCreate} disabled={creating || !newLabel.trim()}
+                  className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40 flex items-center gap-1 shrink-0">
+                  {creating ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+                  Add
+                </button>
+                <button type="button" onClick={() => { setAdding(false); setNewLabel(""); }} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg shrink-0">
+                  <X size={12} />
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setAdding(true)}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors">
+                <Plus size={13} /> Add New Role
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
 
 const UserManager: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -29,7 +164,12 @@ const UserManager: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = usePageSize("userManager", 20);
+  const [roles, setRoles] = useState<RoleOption[]>([]);
   useEffect(() => { setPage(1); }, [search]);
+
+  useEffect(() => {
+    roleService.list().then(setRoles).catch(() => {});
+  }, []);
   // --- Draft Persistence ---
   const savedUserDraftStr = localStorage.getItem("kore_user_draft");
   const savedUserDraft = savedUserDraftStr
@@ -52,6 +192,7 @@ const UserManager: React.FC = () => {
       email: "",
       password: "",
       role: "manager",
+      phone: "",
     }
   );
 
@@ -69,6 +210,9 @@ const UserManager: React.FC = () => {
       localStorage.removeItem("kore_user_draft");
     }
   }, [showModal, editingUser, formData]);
+
+  const roleBadgeClass = (r: string) => colorFor(r);
+  const roleLabel = (r: string) => roles.find(x => x.name === r)?.label || r;
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -90,7 +234,7 @@ const UserManager: React.FC = () => {
 
   const handleOpenAdd = () => {
     setEditingUser(null);
-    setFormData({ name: "", email: "", password: "", role: "manager" });
+    setFormData({ name: "", email: "", password: "", role: "manager", phone: "" });
     setShowModal(true);
   };
 
@@ -99,8 +243,9 @@ const UserManager: React.FC = () => {
     setFormData({
       name: user.name,
       email: user.email,
-      password: "", // Password not editable here for simplicity/security
+      password: "",
       role: user.role,
+      phone: (user as any).phone || "",
     });
     setShowModal(true);
   };
@@ -121,6 +266,7 @@ const UserManager: React.FC = () => {
           name: formData.name,
           email: formData.email,
           role: formData.role,
+          phone: (formData as any).phone || null,
         };
         await userService.updateUser(userId, updateData);
       } else {
@@ -128,7 +274,7 @@ const UserManager: React.FC = () => {
         await userService.createUser(formData);
       }
       setShowModal(false);
-      setFormData({ name: "", email: "", password: "", role: "manager" });
+      setFormData({ name: "", email: "", password: "", role: "manager", phone: "" });
       fetchUsers();
     };
 
@@ -275,23 +421,9 @@ const UserManager: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-slate-50">
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      user.role === UserRole.SUPERADMIN
-                        ? "bg-purple-100 text-purple-700"
-                        : user.role === UserRole.ADMIN
-                        ? "bg-indigo-100 text-indigo-700"
-                        : user.role === UserRole.MANAGER
-                        ? "bg-emerald-100 text-emerald-700"
-                        : user.role === UserRole.SUPERVISOR
-                        ? "bg-amber-100 text-amber-700"
-                        : user.role === UserRole.ACCOUNTANT
-                        ? "bg-rose-100 text-rose-700"
-                        : "bg-slate-100 text-slate-700"
-                    }`}
-                  >
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${roleBadgeClass(user.role)}`}>
                     <Shield size={10} />
-                    {user.role}
+                    {roleLabel(user.role)}
                   </span>
                   <span className="text-[10px] font-medium text-slate-400 uppercase tracking-tight">
                     Joined:{" "}
@@ -367,23 +499,9 @@ const UserManager: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                          user.role === UserRole.SUPERADMIN
-                            ? "bg-purple-100 text-purple-700"
-                            : user.role === UserRole.ADMIN
-                            ? "bg-indigo-100 text-indigo-700"
-                            : user.role === UserRole.MANAGER
-                            ? "bg-emerald-100 text-emerald-700"
-                            : user.role === UserRole.SUPERVISOR
-                            ? "bg-amber-100 text-amber-700"
-                            : user.role === UserRole.ACCOUNTANT
-                            ? "bg-rose-100 text-rose-700"
-                            : "bg-slate-100 text-slate-700"
-                        }`}
-                      >
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${roleBadgeClass(user.role)}`}>
                         <Shield size={12} />
-                        {user.role}
+                        {roleLabel(user.role)}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-500">
@@ -510,26 +628,34 @@ const UserManager: React.FC = () => {
                 <label className="block text-sm font-bold text-slate-700 mb-1.5">
                   System Role
                 </label>
-                <select
-                  disabled={isSubmitting}
+                <RoleSelect
                   value={formData.role}
-                  onChange={(e) =>
-                    setFormData({ ...formData, role: e.target.value })
-                  }
-                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%2364748b%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22m6%208%204%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-size-[1.25rem_1.25rem] bg-position-[right_0.5rem_center] bg-no-repeat disabled:opacity-50"
-                >
-                  <option value="admin">Admin</option>
-                  <option value="manager">Manager</option>
-                  <option value="supervisor">Supervisor</option>
-                  <option value="accountant">Accountant</option>
-                  {editingUser?.role === UserRole.SUPERADMIN && (
-                    <option value="superadmin">Superadmin</option>
-                  )}
-                </select>
+                  onChange={val => setFormData({ ...formData, role: val })}
+                  roles={roles}
+                  onRoleCreated={r => setRoles(prev => [...prev, r])}
+                  disabled={isSubmitting}
+                />
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Superadmin accounts cannot be created or converted via this
-                  interface.
+                  Superadmin accounts cannot be created or converted via this interface.
                 </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1.5">
+                  Mobile Number <span className="text-slate-400 font-normal text-xs">(optional)</span>
+                </label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input
+                    type="tel"
+                    disabled={isSubmitting}
+                    value={(formData as any).phone || ""}
+                    onChange={e => setFormData({ ...formData, phone: e.target.value } as any)}
+                    placeholder="+91 98765 43210"
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all disabled:opacity-50"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">WhatsApp notifications ke liye use hoga</p>
               </div>
 
               <div className="pt-4 flex gap-3">

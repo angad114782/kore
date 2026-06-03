@@ -16,18 +16,11 @@ const userSchema = new mongoose.Schema(
 
     role: {
       type: String,
-      enum: [
-        "superadmin",
-        "admin",
-        "manager",
-        "supervisor",
-        "accountant",
-        "staff",
-        "distributor",
-      ],
       default: "manager",
       index: true,
     },
+
+    phone: { type: String, default: null, trim: true },
 
     // ✅ link distributor business profile
     distributorId: {
@@ -38,6 +31,8 @@ const userSchema = new mongoose.Schema(
     },
 
     isActive: { type: Boolean, default: true, index: true },
+    // Increment this on password reset → invalidates all existing JWTs
+    tokenVersion: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

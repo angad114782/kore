@@ -77,21 +77,38 @@ class DistributorOrderService {
   async updateOrderStatus(
     orderId: string,
     status: OrderStatus,
-    options: { allocatedItems?: any[], blockedItems?: any[], files?: Record<string, File>, receiverName?: string, receiverMobile?: string } = {}
+    options: {
+      allocatedItems?: any[];
+      blockedItems?: any[];
+      files?: Record<string, File>;
+      receiverName?: string;
+      receiverMobile?: string;
+      deliveryAgentName?: string;
+      deliveryAgentMobile?: string;
+      deliveryNote?: string;
+      // Booking commitment
+      expectedDispatchDate?: string;
+      bookingPriority?: 'NORMAL' | 'URGENT';
+      adminNote?: string;
+      stockStatus?: 'DISPATCH_READY' | 'BLOCK_HOLD' | 'NO_STOCK';
+      blockReason?: string;
+    } = {}
   ): Promise<Order | undefined> {
     const formData = new FormData();
     formData.append("status", status);
-    
-    if (options.allocatedItems) {
-      formData.append("allocatedItems", JSON.stringify(options.allocatedItems));
-    }
 
-    if (options.blockedItems) {
-      formData.append("blockedItems", JSON.stringify(options.blockedItems));
-    }
-    
-    if (options.receiverName) formData.append("receiverName", options.receiverName);
-    if (options.receiverMobile) formData.append("receiverMobile", options.receiverMobile);
+    if (options.allocatedItems)    formData.append("allocatedItems", JSON.stringify(options.allocatedItems));
+    if (options.blockedItems)      formData.append("blockedItems",   JSON.stringify(options.blockedItems));
+    if (options.receiverName)      formData.append("receiverName",      options.receiverName);
+    if (options.receiverMobile)    formData.append("receiverMobile",    options.receiverMobile);
+    if (options.deliveryAgentName)   formData.append("deliveryAgentName",   options.deliveryAgentName);
+    if (options.deliveryAgentMobile) formData.append("deliveryAgentMobile", options.deliveryAgentMobile);
+    if (options.deliveryNote)        formData.append("deliveryNote",        options.deliveryNote);
+    if (options.expectedDispatchDate) formData.append("expectedDispatchDate", options.expectedDispatchDate);
+    if (options.bookingPriority)      formData.append("bookingPriority",      options.bookingPriority);
+    if (options.adminNote !== undefined) formData.append("adminNote", options.adminNote ?? "");
+    if (options.stockStatus)          formData.append("stockStatus",          options.stockStatus);
+    if (options.blockReason !== undefined) formData.append("blockReason", options.blockReason ?? "");
 
     if (options.files) {
       Object.entries(options.files).forEach(([key, file]) => {
@@ -142,6 +159,35 @@ class DistributorOrderService {
       { headers: getAuthHeaders() }
     );
     return res.data.data;
+  }
+
+  async deleteOrder(orderId: string): Promise<void> {
+    await axios.delete(`${API_URL}/${orderId}`, { headers: getAuthHeaders() });
+  }
+
+  async editOrder(orderId: string, items: any[]): Promise<Order | undefined> {
+    const res = await axios.patch(`${API_URL}/${orderId}/edit`, { items }, { headers: getAuthHeaders() });
+    return this.mapOrder(res.data.data);
+  }
+
+  async getPreOrders(params: { page?: number; limit?: number; q?: string; status?: string } = {}): Promise<{ items: Order[]; meta: any }> {
+    const query = new URLSearchParams();
+    if (params.page)   query.append("page",   params.page.toString());
+    if (params.limit)  query.append("limit",  params.limit.toString());
+    if (params.q)      query.append("q",      params.q);
+    if (params.status) query.append("status", params.status);
+    const res = await axios.get(`${API_URL}/pre-orders?${query}`, { headers: getAuthHeaders() });
+    return { items: (res.data.data || []).map((o: any) => this.mapOrder(o)), meta: res.data.meta };
+  }
+
+  async releasePreOrder(orderId: string): Promise<Order | undefined> {
+    const res = await axios.patch(`${API_URL}/${orderId}/release`, {}, { headers: getAuthHeaders() });
+    return this.mapOrder(res.data.data);
+  }
+
+  async getOrderStats(): Promise<Record<string, number>> {
+    const res = await axios.get(`${API_URL}/stats`, { headers: getAuthHeaders() });
+    return res.data.data || {};
   }
 
   async getReturnHistory(params: { page?: number; limit?: number; q?: string } = {}): Promise<{ items: any[]; meta: any }> {

@@ -3,21 +3,33 @@ const User = require("../models/User");
 const MasterCatalog = require("../models/MasterCatalog");
 const Return = require("../models/Return");
 const activityLog = require("./activityLog.service");
+const notification = require("./notification.service");
 
-const generateNextOrderNumber = async () => {
-  const lastOrder = await Order.findOne()
+// Extract 2-letter prefix from company name (e.g. "Coding Wala" → "CW", "Aura" → "AU")
+const getCompanyPrefix = (companyName) => {
+  if (!companyName) return "OR";
+  const words = companyName.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  const letters = companyName.replace(/[^A-Za-z]/g, "");
+  return letters.slice(0, 2).toUpperCase() || "OR";
+};
+
+const generateNextOrderNumber = async (prefix = "OR") => {
+  // Find last order with any prefix to keep global sequence
+  const lastOrder = await Order.findOne({ orderNumber: { $exists: true, $ne: null } })
     .sort({ createdAt: -1 })
     .select("orderNumber")
     .lean();
 
-  if (!lastOrder || !lastOrder.orderNumber) {
-    return "OR-00001";
+  let next = 1;
+  if (lastOrder?.orderNumber) {
+    const match = lastOrder.orderNumber.match(/\d+$/);
+    next = (match ? parseInt(match[0], 10) : 0) + 1;
   }
 
-  const lastNum = lastOrder.orderNumber.match(/OR-(\d+)/)?.[1];
-  const next = (lastNum ? parseInt(lastNum, 10) : 0) + 1;
-
-  return `OR-${String(next).padStart(5, "0")}`;
+  return `${prefix}-${String(next).padStart(5, "0")}`;
 };
 
 const generateNextReturnNumber = async () => {
@@ -84,14 +96,18 @@ const createOrder = async (distributorId, orderData) => {
     const orderDate =
       date || new Date().toISOString().split("T")[0];
 
-    const orderNumber = await generateNextOrderNumber();
+    const orderType = orderData.orderType || "REGULAR";
+    const initialStatus = orderType === "PREORDER" ? "PRE_BOOKED" : "PENDING";
 
+    // orderNumber is generated only when admin BOOKs the order
+    // (prevents sequence gaps from cancelled/rejected pre-orders)
     const order = new Order({
-      orderNumber,
+      orderNumber: null,
+      orderType,
       distributorId,
       distributorName: distrName,
       date: orderDate,
-      status: "BOOKED",
+      status: initialStatus,
       items,
       totalAmount,
       totalCartons,
@@ -102,6 +118,16 @@ const createOrder = async (distributorId, orderData) => {
     });
 
     const savedOrder = await order.save();
+
+    // Notify: new order placed
+    const distUser = await User.findById(savedOrder.distributorId).select("email phone").lean();
+    notification.dispatch("ORDER_PLACED", {
+      data: { "Order": `#${savedOrder.orderNumber || savedOrder._id}`, "Distributor": savedOrder.distributorName, "Total CTN": savedOrder.totalCartons, "Amount": `₹${savedOrder.finalAmount || savedOrder.totalAmount}` },
+      distributorEmail: distUser?.email,
+      distributorPhone: distUser?.phone,
+      subject: `[Kore] New Order from ${savedOrder.distributorName}`,
+    });
+
     return savedOrder;
   } catch (error) {
     throw new Error(`Failed to create order: ${error.message}`);
@@ -111,6 +137,8 @@ const createOrder = async (distributorId, orderData) => {
 const normalizePage = (page) => Math.max(parseInt(page, 10) || 1, 1);
 const normalizeLimit = (limit) => Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100);
 
+const PREORDER_STATUSES = ["PRE_BOOKED", "CONFIRMED"];
+
 const getOrdersByDistributor = async (distributorId, { page = 1, limit = 10, search = "", status = "", startDate, endDate, sortBy = "createdAt", sortDesc = "true" } = {}) => {
   try {
     const p = normalizePage(page);
@@ -119,6 +147,7 @@ const getOrdersByDistributor = async (distributorId, { page = 1, limit = 10, sea
 
     const q = { distributorId };
     if (status) q.status = status;
+    else q.status = { $nin: PREORDER_STATUSES };
     if (startDate || endDate) {
       q.createdAt = {};
       if (startDate) q.createdAt.$gte = new Date(startDate);
@@ -191,6 +220,7 @@ const getAllOrders = async ({ page = 1, limit = 10, search = "", status = "", st
 
     const q = {};
     if (status) q.status = status;
+    else q.status = { $nin: PREORDER_STATUSES };
     if (startDate || endDate) {
       q.createdAt = {};
       if (startDate) q.createdAt.$gte = new Date(startDate);
@@ -255,25 +285,30 @@ const getAllOrders = async ({ page = 1, limit = 10, search = "", status = "", st
   }
 };
 
-const updateOrderStatus = async (orderId, status, { 
-  billUrl = null, 
+const updateOrderStatus = async (orderId, status, {
+  billUrl = null,
   invoiceUrl = null,
   ewayBillUrl = null,
   transportBillUrl = null,
   receivingNoteUrl = null,
   receiverName = null,
   receiverMobile = null,
+  deliveryAgentName = null,
+  deliveryAgentMobile = null,
+  deliveryNote = null,
   allocatedItems = null,
-  blockedItems = null
+  blockedItems = null,
+  // Booking commitment fields
+  expectedDispatchDate = null,
+  bookingPriority = null,
+  adminNote = null,
+  stockStatus = null,
+  blockReason = null,
 } = {}) => {
   try {
     const validStatuses = [
-      "BOOKED",
-      "PFD",
-      "RFD",
-      "OFD",
-      "RECEIVED",
-      "PARTIAL"
+      "PRE_BOOKED", "CONFIRMED",
+      "PENDING", "BOOKED", "PFD", "RFD", "OFD", "RECEIVED", "PARTIAL", "CANCELLED"
     ];
 
     if (!validStatuses.includes(status)) {
@@ -293,6 +328,35 @@ const updateOrderStatus = async (orderId, status, {
     if (receivingNoteUrl) updateData.receivingNoteUrl = receivingNoteUrl;
     if (receiverName) updateData.receiverName = receiverName;
     if (receiverMobile) updateData.receiverMobile = receiverMobile;
+    // Delivery agent — filled at OFD step
+    if (deliveryAgentName)   updateData.deliveryAgentName   = deliveryAgentName;
+    if (deliveryAgentMobile) updateData.deliveryAgentMobile = deliveryAgentMobile;
+    if (deliveryNote)        updateData.deliveryNote        = deliveryNote;
+
+    // Booking commitment fields — saved when admin confirms (PENDING → BOOKED)
+    if (status === "BOOKED") {
+      if (expectedDispatchDate) updateData.expectedDispatchDate = new Date(expectedDispatchDate);
+      if (bookingPriority)      updateData.bookingPriority      = bookingPriority;
+      if (adminNote !== null)   updateData.adminNote            = adminNote;
+      if (stockStatus)          updateData.stockStatus          = stockStatus;
+      if (blockReason !== null) updateData.blockReason          = blockReason;
+    }
+
+    // Generate orderNumber when admin confirms (BOOKED) — keeps sequence clean
+    if (status === "BOOKED" && !order.orderNumber) {
+      try {
+        const distUser = await User.findById(order.distributorId).select("distributorId").lean();
+        let prefix = "OR";
+        if (distUser?.distributorId) {
+          const Distributor = require("../models/Distributor");
+          const dist = await Distributor.findById(distUser.distributorId).select("companyName").lean();
+          if (dist?.companyName) prefix = getCompanyPrefix(dist.companyName);
+        }
+        updateData.orderNumber = await generateNextOrderNumber(prefix);
+      } catch (e) {
+        updateData.orderNumber = await generateNextOrderNumber("OR");
+      }
+    }
 
     // Handle Blocking Update (New Stage)
     const isBlockingUpdate = blockedItems && Array.isArray(blockedItems);
@@ -520,15 +584,45 @@ const updateOrderStatus = async (orderId, status, {
 
     // Apply updates to the order object
     Object.assign(order, updateData);
-    
+
     // Save the document (this persists items array changes as well)
     await order.save();
-    
+
     // Re-populate for consistency
     const updatedOrder = await Order.findById(orderId).populate({
       path: 'distributorId',
       populate: { path: 'distributorId' }
     });
+
+    // ── Fire notification based on new status ──────────────────────────
+    const distUser = await User.findById(order.distributorId).select("email phone").lean();
+    const notifData = {
+      "Order #": updatedOrder.orderNumber || String(orderId),
+      "Distributor": updatedOrder.distributorName,
+      "Total CTN": updatedOrder.totalCartons,
+      "Amount": `₹${updatedOrder.finalAmount || updatedOrder.totalAmount}`,
+    };
+    const notifOpts = {
+      data: notifData,
+      distributorEmail: distUser?.email,
+      distributorPhone: distUser?.phone,
+    };
+
+    const statusEventMap = {
+      BOOKED:    "ORDER_BOOKED",
+      PFD:       "ORDER_DISPATCHED",
+      RFD:       "ORDER_IN_TRANSIT",
+      OFD:       "ORDER_OUT_FOR_DELIVERY",
+      RECEIVED:  "ORDER_DELIVERED",
+    };
+    const notifEvent = statusEventMap[status];
+    if (notifEvent) {
+      if (status === "OFD" && deliveryAgentName) {
+        notifData["Delivery Agent"] = deliveryAgentName;
+        if (deliveryAgentMobile) notifData["Agent Mobile"] = deliveryAgentMobile;
+      }
+      notification.dispatch(notifEvent, notifOpts);
+    }
 
     return updatedOrder;
   } catch (error) {
@@ -700,6 +794,131 @@ const getReturnHistory = async ({ page = 1, limit = 10, search = "" } = {}) => {
   }
 };
 
+// ── Delete order (only PENDING / PRE_BOOKED) ─────────────────────────────
+const deleteOrder = async (orderId, requesterId, requesterRole) => {
+  const order = await Order.findById(orderId);
+  if (!order) throw new Error("Order not found");
+
+  const canDelete = ["PENDING", "PRE_BOOKED"].includes(order.status);
+  if (!canDelete) throw new Error("Only PENDING or PRE_BOOKED orders can be deleted");
+
+  // Distributors can only delete their own orders
+  if (requesterRole === "distributor" && String(order.distributorId) !== String(requesterId)) {
+    throw new Error("Not authorized to delete this order");
+  }
+
+  await Order.findByIdAndDelete(orderId);
+  return order;
+};
+
+// ── Edit order items (only PENDING / PRE_BOOKED) ─────────────────────────
+const editOrder = async (orderId, requesterId, requesterRole, { items }) => {
+  const order = await Order.findById(orderId);
+  if (!order) throw new Error("Order not found");
+
+  const canEdit = ["PENDING", "PRE_BOOKED"].includes(order.status);
+  if (!canEdit) throw new Error("Only PENDING or PRE_BOOKED orders can be edited");
+
+  if (requesterRole === "distributor" && String(order.distributorId) !== String(requesterId)) {
+    throw new Error("Not authorized to edit this order");
+  }
+
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    throw new Error("At least one item required");
+  }
+
+  const totalCartons = items.reduce((s, i) => s + (i.cartonCount || 0), 0);
+  const totalPairs   = items.reduce((s, i) => s + (i.pairCount   || 0), 0);
+  const totalAmount  = items.reduce((s, i) => s + (i.price       || 0), 0);
+
+  order.items        = items;
+  order.totalCartons = totalCartons;
+  order.totalPairs   = totalPairs;
+  order.totalAmount  = totalAmount;
+  order.finalAmount  = totalAmount - (order.discountAmount || 0);
+  await order.save();
+  return order;
+};
+
+// ── Pre-order: get all PRE_BOOKED / CONFIRMED ─────────────────────────────
+const getPreOrders = async ({ page = 1, limit = 20, search = "", status = "" } = {}) => {
+  const q = { orderType: "PREORDER" };
+  if (status) q.status = status;
+  else q.status = { $in: ["PRE_BOOKED", "CONFIRMED"] };
+  if (search) q.$or = [
+    { orderNumber: { $regex: search, $options: "i" } },
+    { distributorName: { $regex: search, $options: "i" } },
+  ];
+
+  const total = await Order.countDocuments(q);
+  const items = await Order.find(q)
+    .sort({ createdAt: -1 })
+    .skip((page - 1) * limit)
+    .limit(limit)
+    .lean();
+
+  return { items, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+};
+
+// ── MRP / price propagation to PENDING + PRE_BOOKED orders ───────────────
+// Called when admin updates an article's selling price
+const propagatePriceUpdate = async (articleId, newPricePerPair) => {
+  if (!newPricePerPair || newPricePerPair <= 0) return;
+
+  const orders = await Order.find({
+    status: { $in: ["PENDING", "PRE_BOOKED"] },
+    "items.articleId": articleId,
+  });
+
+  for (const order of orders) {
+    let changed = false;
+    order.items.forEach(item => {
+      if (String(item.articleId) === String(articleId)) {
+        const newPrice = newPricePerPair * item.pairCount;
+        item.price = newPrice;
+        changed = true;
+      }
+    });
+    if (changed) {
+      order.totalAmount  = order.items.reduce((s, i) => s + i.price, 0);
+      const disc = order.discountPercentage ? (order.totalAmount * order.discountPercentage) / 100 : 0;
+      order.discountAmount = disc;
+      order.finalAmount    = order.totalAmount - disc;
+      order.markModified("items");
+      await order.save();
+    }
+  }
+};
+
+const getOrderStats = async () => {
+  const result = await Order.aggregate([
+    { $match: { status: { $nin: PREORDER_STATUSES } } },
+    {
+      $facet: {
+        byStatus: [
+          { $group: { _id: "$status", count: { $sum: 1 } } }
+        ],
+        byType: [
+          { $group: { _id: "$orderType", count: { $sum: 1 } } }
+        ],
+        urgent: [
+          { $match: { bookingPriority: "URGENT", status: { $nin: ["RECEIVED", "CANCELLED"] } } },
+          { $count: "count" }
+        ]
+      }
+    }
+  ]);
+
+  const stats = { total: 0, urgent: 0 };
+  const statusCounts = result[0]?.byStatus || [];
+  for (const s of statusCounts) {
+    stats[s._id] = s.count;
+    if (!["CANCELLED"].includes(s._id)) stats.total += s.count;
+  }
+  stats.urgent = result[0]?.urgent?.[0]?.count || 0;
+  return stats;
+};
+
 module.exports = {
   createOrder,
   getOrdersByDistributor,
@@ -707,4 +926,9 @@ module.exports = {
   updateOrderStatus,
   processReturn,
   getReturnHistory,
+  deleteOrder,
+  editOrder,
+  getPreOrders,
+  propagatePriceUpdate,
+  getOrderStats,
 };

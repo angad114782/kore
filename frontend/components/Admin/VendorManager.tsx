@@ -735,9 +735,7 @@ const VendorManager: React.FC = () => {
                     type="text"
                     className={inputClass}
                     value={formData.gstNumber}
-                    onChange={(e) =>
-                      updateField("gstNumber", e.target.value.toUpperCase())
-                    }
+                    onChange={(e) => updateField("gstNumber", e.target.value.toUpperCase())}
                   />
                 </div>
                 <div>

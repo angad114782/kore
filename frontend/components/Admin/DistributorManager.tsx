@@ -882,15 +882,9 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                   <Field label="GST Number" icon={<FileText size={14} />}>
                     <input
                       type="text"
-                      required
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none uppercase"
-                      value={formData.gstNumber}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          gstNumber: e.target.value.toUpperCase(),
-                        })
-                      }
+                      value={formData.gstNumber || ""}
+                      onChange={(e) => setFormData({ ...formData, gstNumber: e.target.value.toUpperCase() })}
                     />
                   </Field>
                 </div>

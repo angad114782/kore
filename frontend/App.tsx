@@ -44,6 +44,10 @@ import ActivityLogPage from "./components/Admin/ActivityLogPage";
 import StockReport from "./components/Admin/StockReport";
 import DispatchReport from "./components/Admin/DispatchReport";
 import ReturnReport from "./components/Admin/ReturnReport";
+import AccountantPage from "./components/Admin/AccountantPage";
+import PreOrderManager from "./components/Admin/PreOrderManager";
+import TermsPage from "./components/Admin/TermsPage";
+import NotificationSettings from "./components/Admin/NotificationSettings";
 import { masterCatalogService } from "./services/masterCatalogService";
 import OverduePayments from "./components/shared/OverduePayments";
 
@@ -640,7 +644,7 @@ const App: React.FC = () => {
     );
   };
 
-  const placeOrder = async () => {
+  const placeOrder = async (gstPercent: number = 5) => {
     if (!user || cart.length === 0) return;
 
     const availableItems = cart.filter(i => {
@@ -653,82 +657,80 @@ const App: React.FC = () => {
       return art?.status !== "AVAILABLE";
     });
 
-    if (availableItems.length === 0) {
-      toast.error("No items ready for booking. Wishlist items will be available on their expected dates.");
-      return;
-    }
-
-    const payload: Partial<Order> = {
-      distributorId: user.id,
-      distributorName: user.name,
-      date: new Date().toISOString().split("T")[0],
-      status: OrderStatus.BOOKED,
-      items: availableItems.map((item) => ({
-        articleId: item.articleId,
-        variantId: item.variantId,
-        sizeQuantities: item.sizeQuantities,
-        cartonCount: item.cartonCount,
-        pairCount: item.pairCount,
-        price: item.price,
-      })),
-      totalAmount: availableItems.reduce((sum, i) => sum + i.price, 0),
-      totalCartons: availableItems.reduce((sum, i) => sum + i.cartonCount, 0),
-      totalPairs: availableItems.reduce((sum, i) => sum + i.pairCount, 0),
-    };
-
     const placePromise = async () => {
-      // Pre-checkout: refresh credit data from server to ensure we have the latest
       await checkAuth(true);
-      
-      // Re-read the latest user from store after the refresh
       const freshUser = store.currentUser;
-      if (freshUser?.role === UserRole.DISTRIBUTOR) {
+
+      // ── Credit check (only for AVAILABLE items) ──
+      if (freshUser?.role === UserRole.DISTRIBUTOR && availableItems.length > 0) {
         const availCredit = freshUser.availableCredit ?? 0;
         const discPct = freshUser.discountPercentage || 0;
         const orderTotal = availableItems.reduce((sum, i) => sum + i.price, 0);
-        const discAmt = (orderTotal * discPct) / 100;
-        const finalAmt = orderTotal - discAmt;
+        const finalAmt = orderTotal - (orderTotal * discPct) / 100;
 
-        if (availCredit === 0) {
-          throw new Error("You have no credit limit available. Please contact administrator.");
-        }
-        if (finalAmt > availCredit) {
-          throw new Error(`Credit limit exceeded. Available: ₹${availCredit.toLocaleString()}, Required: ₹${finalAmt.toLocaleString()}`);
-        }
+        if (availCredit === 0) throw new Error("No credit limit available. Contact administrator.");
+        if (finalAmt > availCredit) throw new Error(`Credit limit exceeded. Available: ₹${availCredit.toLocaleString()}, Required: ₹${finalAmt.toLocaleString()}`);
       }
 
-      const response = await distributorOrderService.placeOrder(payload);
-      // Map _id to id if necessary
-      const newOrder = { ...response, id: (response as any)._id || response.id };
-      setOrders((prev) => [newOrder, ...prev]);
+      const placed: Order[] = [];
 
-      // reserve stock
-      setInventory((prev) =>
-        prev.map((inv) => {
-          const cartItem = availableItems.find((ci) => ci.articleId === inv.articleId);
-          if (cartItem) {
-            const newReserved = inv.reservedStock + cartItem.cartonCount;
-            return {
-              ...inv,
-              reservedStock: newReserved,
-              availableStock: inv.actualStock - newReserved,
-            };
-          }
-          return inv;
-        })
-      );
+      // ── Place REGULAR order for AVAILABLE items ──
+      if (availableItems.length > 0) {
+        const payload: Partial<Order> = {
+          distributorId: user.id,
+          distributorName: user.name,
+          date: new Date().toISOString().split("T")[0],
+          status: OrderStatus.PENDING,
+          orderType: "REGULAR",
+          items: availableItems.map(item => ({
+            articleId: item.articleId, variantId: item.variantId,
+            sizeQuantities: item.sizeQuantities,
+            cartonCount: item.cartonCount, pairCount: item.pairCount, price: item.price,
+          })),
+          totalAmount: availableItems.reduce((s, i) => s + i.price, 0),
+          totalCartons: availableItems.reduce((s, i) => s + i.cartonCount, 0),
+          totalPairs: availableItems.reduce((s, i) => s + i.pairCount, 0),
+        };
+        const res = await distributorOrderService.placeOrder(payload);
+        placed.push({ ...res, id: (res as any)._id || res.id });
+      }
 
-      setCart(wishlistItems);
+      // ── Place PRE-ORDER for PRE-ORDER (WISHLIST) items ──
+      if (wishlistItems.length > 0) {
+        const prePayload: Partial<Order> = {
+          distributorId: user.id,
+          distributorName: user.name,
+          date: new Date().toISOString().split("T")[0],
+          status: OrderStatus.PRE_BOOKED,
+          orderType: "PREORDER",
+          items: wishlistItems.map(item => ({
+            articleId: item.articleId, variantId: item.variantId,
+            sizeQuantities: item.sizeQuantities,
+            cartonCount: item.cartonCount, pairCount: item.pairCount, price: item.price,
+          })),
+          totalAmount: wishlistItems.reduce((s, i) => s + i.price, 0),
+          totalCartons: wishlistItems.reduce((s, i) => s + i.cartonCount, 0),
+          totalPairs: wishlistItems.reduce((s, i) => s + i.pairCount, 0),
+        };
+        const res2 = await distributorOrderService.placeOrder(prePayload);
+        placed.push({ ...res2, id: (res2 as any)._id || res2.id });
+      }
+
+      setOrders(prev => [...placed, ...prev]);
+      setCart([]);
       setActiveTab("orders");
-
-      // Auto-sync the newly utilized credit limit
       await checkAuth(true);
+
+      const parts = [];
+      if (availableItems.length > 0) parts.push("Order placed");
+      if (wishlistItems.length > 0) parts.push("Pre-order placed");
+      return parts.join(" & ");
     };
 
     toast.promise(placePromise(), {
-      loading: "Placing your order...",
-      success: "Order placed successfully!",
-      error: (err: any) => err?.response?.data?.message || err?.message || "Failed to place order. Please check your credit limit.",
+      loading: "Placing order...",
+      success: (msg) => msg as string,
+      error: (err: any) => err?.response?.data?.message || err?.message || "Failed to place order",
     });
   };
 
@@ -832,19 +834,16 @@ const App: React.FC = () => {
                 updateStatus={updateOrderStatus}
                 loadingOrders={loadingOrders}
                 lastUpdated={lastUpdated}
+                onSeeAllOverdue={() => handleTabChange("accounts")}
               />
-              <OverduePayments isAdmin={true} />
             </div>
           ) : (
-            <div className="space-y-6">
-              <DistributorDashboard
-                user={user}
-                orders={orders}
-                cartCount={cartItemsCount}
-                goToCart={() => setActiveTab("cart")}
-              />
-              <OverduePayments isAdmin={false} />
-            </div>
+            <DistributorDashboard
+              user={user}
+              orders={orders}
+              cartCount={cartItemsCount}
+              goToCart={() => setActiveTab("cart")}
+            />
           ))}
 
         {activeTab === "catalogue" && user.role !== UserRole.DISTRIBUTOR && (
@@ -915,8 +914,13 @@ const App: React.FC = () => {
           <POPage articles={articles} onSyncSuccess={fetchArticles} />
         )}
         {activeTab === "grn" && user.role !== UserRole.DISTRIBUTOR && <GRN />}
+        {activeTab === "accounts" && user.role !== UserRole.DISTRIBUTOR && (
+          <AccountantPage />
+        )}
+
+        {/* Legacy redirect — bills tab still works */}
         {activeTab === "bills" && user.role !== UserRole.DISTRIBUTOR && (
-          <Bill />
+          <AccountantPage />
         )}
         {activeTab === "vendors" && user.role !== UserRole.DISTRIBUTOR && (
           <VendorManager />
@@ -963,6 +967,10 @@ const App: React.FC = () => {
             />
           ))}
 
+        {activeTab === "pre_orders" && user.role !== UserRole.DISTRIBUTOR && (
+          <PreOrderManager articles={articles} />
+        )}
+
         {activeTab === "returns" && user.role !== UserRole.DISTRIBUTOR && (
           <Returns orders={orders} articles={articles} onSuccess={handleReturnSuccess} onInward={handleInwardStock} />
         )}
@@ -979,7 +987,7 @@ const App: React.FC = () => {
           />
         )}
 
-        {activeTab === "wishlist" && user.role === UserRole.DISTRIBUTOR && (
+        {activeTab === "preorder" && user.role === UserRole.DISTRIBUTOR && (
           <Wishlist articles={articles} addToCart={addToCart} />
         )}
 
@@ -988,7 +996,7 @@ const App: React.FC = () => {
             articles={articles}
             cart={cart}
             clearCartItem={clearCartItem}
-            onCheckout={placeOrder}
+            onCheckout={(gst) => placeOrder(gst)}
             total={cartTotal}
             assortments={ASSORTMENTS as Assortment[]}
             user={user}
@@ -1015,6 +1023,18 @@ const App: React.FC = () => {
         {activeTab === "report_stock"    && user.role !== UserRole.DISTRIBUTOR && <StockReport />}
         {activeTab === "report_dispatch" && user.role !== UserRole.DISTRIBUTOR && <DispatchReport />}
         {activeTab === "report_return"   && user.role !== UserRole.DISTRIBUTOR && <ReturnReport />}
+
+        {activeTab === "overdue_payments" && user.role !== UserRole.DISTRIBUTOR && (
+          <AccountantPage />
+        )}
+
+        {activeTab === "terms_page" && user.role !== UserRole.DISTRIBUTOR && (
+          <TermsPage />
+        )}
+
+        {activeTab === "notification_settings" && user.role === UserRole.SUPERADMIN && (
+          <NotificationSettings />
+        )}
       </main>
       <Toaster position="top-right" richColors />
     </div>
@@ -1072,22 +1092,16 @@ const DistributorDashboard: React.FC<{
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Shipments */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold text-slate-900">
-              Recent Shipments
-            </h3>
-            <button className="text-indigo-600 font-bold text-sm">
-              View All
-            </button>
+            <h3 className="text-lg font-bold text-slate-900">Recent Shipments</h3>
           </div>
 
           {userOrders.length === 0 ? (
             <div className="py-12 text-center flex flex-col items-center">
               <Package className="text-slate-200 mb-2" size={40} />
-              <p className="text-slate-400 text-sm">
-                No recent bookings found.
-              </p>
+              <p className="text-slate-400 text-sm">No recent bookings found.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -1097,38 +1111,26 @@ const DistributorDashboard: React.FC<{
                   className="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-indigo-50/20 transition-colors border border-transparent hover:border-indigo-100"
                 >
                   <div className="flex items-center gap-4">
-                    <div
-                      className={`p-2.5 rounded-xl ${
-                        order.status === OrderStatus.OFD || order.status === OrderStatus.RECEIVED
-                          ? "bg-emerald-100 text-emerald-600"
-                          : "bg-indigo-100 text-indigo-600"
-                      }`}
-                    >
-                      {order.status === OrderStatus.OFD || order.status === OrderStatus.RECEIVED ? (
-                        <Truck size={20} />
-                      ) : (
-                        <Clock size={20} />
-                      )}
+                    <div className={`p-2.5 rounded-xl ${
+                      order.status === OrderStatus.OFD || order.status === OrderStatus.RECEIVED
+                        ? "bg-emerald-100 text-emerald-600"
+                        : "bg-indigo-100 text-indigo-600"
+                    }`}>
+                      {order.status === OrderStatus.OFD || order.status === OrderStatus.RECEIVED
+                        ? <Truck size={20} />
+                        : <Clock size={20} />}
                     </div>
                     <div>
-                      <p className="font-bold text-slate-900">{order.id}</p>
-                      <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">
-                        {order.date}
-                      </p>
+                      <p className="font-bold text-slate-900">{order.orderNumber || order.id}</p>
+                      <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{order.date}</p>
                     </div>
                   </div>
-
                   <div className="text-right">
-                    <p className="font-bold text-slate-900">
-                      ₹{order.totalAmount.toLocaleString()}
-                    </p>
-                    <p
-                      className={`text-[10px] font-bold uppercase tracking-widest ${
-                        order.status === OrderStatus.OFD || order.status === OrderStatus.RECEIVED
-                          ? "text-emerald-600"
-                          : "text-indigo-600"
-                      }`}
-                    >
+                    <p className="font-bold text-slate-900">₹{order.totalAmount.toLocaleString()}</p>
+                    <p className={`text-[10px] font-bold uppercase tracking-widest ${
+                      order.status === OrderStatus.OFD || order.status === OrderStatus.RECEIVED
+                        ? "text-emerald-600" : "text-indigo-600"
+                    }`}>
                       {order.status.replace(/_/g, " ")}
                     </p>
                   </div>
@@ -1138,32 +1140,8 @@ const DistributorDashboard: React.FC<{
           )}
         </div>
 
-        <div className="bg-indigo-600 text-white p-8 rounded-3xl shadow-xl shadow-indigo-100 flex flex-col justify-between relative overflow-hidden">
-          <div className="relative z-10">
-            <h3 className="text-2xl font-bold mb-2">Grow Your Distribution</h3>
-            <p className="text-indigo-100 text-sm max-w-xs leading-relaxed">
-              Book more than 50 cartons this month and unlock a 5% early-bird
-              discount on your next purchase.
-            </p>
-          </div>
-
-          <div className="mt-8 relative z-10">
-            <div className="flex justify-between items-end mb-2">
-              <p className="text-xs font-bold text-indigo-200 uppercase tracking-widest">
-                Monthly Target
-              </p>
-              <p className="text-lg font-bold">
-                14 / 50 <span className="text-sm font-normal">Cartons</span>
-              </p>
-            </div>
-            <div className="w-full bg-indigo-500 h-2.5 rounded-full overflow-hidden">
-              <div className="bg-white h-full rounded-full w-[28%]" />
-            </div>
-          </div>
-
-          <div className="absolute top-0 right-0 -mr-16 -mt-16 w-48 h-48 bg-white/10 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 -ml-8 -mb-8 w-32 h-32 bg-indigo-400/20 rounded-full blur-2xl" />
-        </div>
+        {/* Overdue Payments */}
+        <OverduePayments isAdmin={false} />
       </div>
 
     </div>

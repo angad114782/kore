@@ -1,17 +1,20 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { 
-  Package, 
-  Truck, 
-  Clock, 
-  CheckCircle, 
-  ChevronRight, 
-  Search, 
-  Filter, 
+import {
+  Package,
+  Truck,
+  Clock,
+  CheckCircle,
+  ChevronRight,
+  Search,
+  Filter,
   TrendingUp,
   CreditCard,
   X,
   FileText,
-  Loader2
+  Loader2,
+  Trash2,
+  Calendar,
+  Phone,
 } from 'lucide-react';
 import { Order, OrderStatus, Article, Inventory } from '../../types';
 import OrderDetail from './OrderDetail';
@@ -195,11 +198,11 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, inventory, isLoad
 
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 w-full md:w-auto scrollbar-hide">
           <Filter className="text-slate-300 mr-1 shrink-0" size={14} />
-          {(['ALL', ...Object.values(OrderStatus)] as const).map((status) => (
+          {(['ALL', 'PENDING', 'BOOKED', 'PFD', 'RFD', 'OFD', 'PARTIAL', 'RECEIVED', 'CANCELLED'] as const).map((status) => (
             <button
               key={status}
               onClick={() => {
-                setStatusFilter(status);
+                setStatusFilter(status as OrderStatus | 'ALL');
                 setCurrentPage(1);
               }}
               className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all border ${
@@ -265,11 +268,33 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, inventory, isLoad
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-3">
                     <div className="text-right">
                       <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Total</p>
                       <p className="text-sm font-bold text-slate-900">₹{(order.finalAmount || order.totalAmount).toLocaleString()}</p>
                     </div>
+
+                    {/* Delete — only PENDING */}
+                    {order.status === OrderStatus.PENDING && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!window.confirm(`Delete order #${order.orderNumber}? This cannot be undone.`)) return;
+                          try {
+                            await distributorOrderService.deleteOrder(order.id);
+                            setOrders(prev => prev.filter(o => o.id !== order.id));
+                            toast.success(`Order #${order.orderNumber} deleted`);
+                          } catch (err: any) {
+                            toast.error(err?.response?.data?.message || "Failed to delete");
+                          }
+                        }}
+                        className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                        title="Delete order"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+
                     <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
                   </div>
                 </div>
@@ -295,6 +320,47 @@ const MyOrders: React.FC<MyOrdersProps> = ({ userId, articles, inventory, isLoad
                     </span>
                   )}
                 </div>
+
+                {/* Expected dispatch date — BOOKED with a date set */}
+                {order.status === OrderStatus.BOOKED && order.expectedDispatchDate && (
+                  <div className="px-5 pb-3">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-lg">
+                      <Calendar size={11} className="text-indigo-500 shrink-0" />
+                      <p className="text-[10px] font-bold text-indigo-600">
+                        Expected dispatch:{' '}
+                        <span className="font-black">
+                          {new Date(order.expectedDispatchDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* OFD: delivery agent info */}
+                {order.status === OrderStatus.OFD && (order.deliveryAgentName || order.deliveryNote) && (
+                  <div className="px-5 pb-3">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <Truck size={11} className="text-emerald-600 shrink-0" />
+                      <div className="flex-1 min-w-0 flex items-center flex-wrap gap-x-3 gap-y-0.5">
+                        {order.deliveryAgentName && (
+                          <p className="text-[10px] font-bold text-emerald-700">
+                            Agent: <span className="font-black">{order.deliveryAgentName}</span>
+                          </p>
+                        )}
+                        {order.deliveryAgentMobile && (
+                          <a href={`tel:${order.deliveryAgentMobile}`}
+                            onClick={e => e.stopPropagation()}
+                            className="text-[10px] font-black text-emerald-700 flex items-center gap-1 hover:underline">
+                            <Phone size={9} /> {order.deliveryAgentMobile}
+                          </a>
+                        )}
+                        {order.deliveryNote && (
+                          <p className="text-[10px] text-emerald-600 font-medium w-full truncate">{order.deliveryNote}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Progress Bar for Partial/Delivery */}
                 {(order.status === OrderStatus.PARTIAL || (order.status === OrderStatus.OFD && order.items.some(i => i.fulfilledCartonCount! > 0))) && (
@@ -337,24 +403,27 @@ const StatCard: React.FC<{ label: string; value: string | number; icon: React.Re
   </div>
 );
 
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  [OrderStatus.BOOKED]: 'Booked',
-  [OrderStatus.PFD]: 'Prepare for Delivery',
-  [OrderStatus.RFD]: 'Ready for Delivery',
-  [OrderStatus.OFD]: 'Out for Delivery',
-  [OrderStatus.RECEIVED]: 'Received',
-  [OrderStatus.PARTIAL]: 'Partially Delivered',
-  [OrderStatus.PENDING]: 'Pending',
+const STATUS_LABELS: Record<string, string> = {
+  [OrderStatus.PENDING]:   'Pending Confirmation',
+  [OrderStatus.BOOKED]:    'Booked',
+  [OrderStatus.PFD]:       'Dispatched',
+  [OrderStatus.RFD]:       'In Transit',
+  [OrderStatus.OFD]:       'Out for Delivery',
+  [OrderStatus.RECEIVED]:  'Delivered',
+  [OrderStatus.PARTIAL]:   'Partially Delivered',
+  [OrderStatus.CANCELLED]: 'Cancelled',
 };
 
 const StatusBadge: React.FC<{ status: OrderStatus }> = ({ status }) => {
-  const config = {
-    [OrderStatus.BOOKED]: { color: 'bg-indigo-50 text-indigo-500 border-indigo-100' },
-    [OrderStatus.PFD]: { color: 'bg-amber-50 text-amber-500 border-amber-100' },
-    [OrderStatus.RFD]: { color: 'bg-blue-50 text-blue-500 border-blue-100' },
-    [OrderStatus.OFD]: { color: 'bg-emerald-50 text-emerald-500 border-emerald-100' },
-    [OrderStatus.RECEIVED]: { color: 'bg-slate-50 text-slate-500 border-slate-100' },
-    [OrderStatus.PARTIAL]: { color: 'bg-amber-100 text-amber-700 border-amber-200' },
+  const config: Record<string, { color: string }> = {
+    [OrderStatus.PENDING]:   { color: 'bg-slate-100 text-slate-600 border-slate-200' },
+    [OrderStatus.BOOKED]:    { color: 'bg-indigo-50 text-indigo-500 border-indigo-100' },
+    [OrderStatus.PFD]:       { color: 'bg-amber-50 text-amber-500 border-amber-100' },
+    [OrderStatus.RFD]:       { color: 'bg-blue-50 text-blue-500 border-blue-100' },
+    [OrderStatus.OFD]:       { color: 'bg-emerald-50 text-emerald-500 border-emerald-100' },
+    [OrderStatus.RECEIVED]:  { color: 'bg-green-100 text-green-700 border-green-200' },
+    [OrderStatus.PARTIAL]:   { color: 'bg-orange-100 text-orange-700 border-orange-200' },
+    [OrderStatus.CANCELLED]: { color: 'bg-rose-50 text-rose-600 border-rose-200' },
   };
 
   const { color } = config[status] || { color: 'bg-gray-50 text-gray-500 border-gray-100' };

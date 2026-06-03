@@ -46,14 +46,15 @@ import { distributorOrderService } from '../../services/distributorOrderService'
 import { toast } from 'sonner';
 import { COMPANY_CONFIG } from '../../constants';
 
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  [OrderStatus.BOOKED]: 'Booked',
-  [OrderStatus.PFD]: 'Prepare for Delivery',
-  [OrderStatus.RFD]: 'Ready for Delivery',
-  [OrderStatus.OFD]: 'Out for Delivery',
-  [OrderStatus.RECEIVED]: 'Received',
-  [OrderStatus.PARTIAL]: 'Partially Delivered',
-  [OrderStatus.PENDING]: 'Pending',
+const STATUS_LABELS: Record<string, string> = {
+  [OrderStatus.PENDING]:   'Pending Confirmation',
+  [OrderStatus.BOOKED]:    'Booked',
+  [OrderStatus.PFD]:       'Dispatched',
+  [OrderStatus.RFD]:       'In Transit',
+  [OrderStatus.OFD]:       'Out for Delivery',
+  [OrderStatus.RECEIVED]:  'Delivered',
+  [OrderStatus.PARTIAL]:   'Partially Delivered',
+  [OrderStatus.CANCELLED]: 'Cancelled',
 };
 
 interface OrderDetailProps {
@@ -369,15 +370,31 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
         ? OrderStatus.PFD 
         : currentOrder.status;
 
+      const options: any = { allocatedItems };
+
+      // Moving to PFD (Dispatched) — attach all 3 shipping docs
+      if (targetStatus === OrderStatus.PFD) {
+        if (!shippingFiles.invoice || !shippingFiles.ewayBill || !shippingFiles.transportBill) {
+          toast.error("Please upload all 3 shipping documents before dispatching");
+          setUploading(false);
+          return;
+        }
+        options.files = {
+          invoice: shippingFiles.invoice,
+          ewayBill: shippingFiles.ewayBill,
+          transportBill: shippingFiles.transportBill,
+        };
+      }
+
       const updated = await distributorOrderService.updateOrderStatus(
-        currentOrder.id, 
-        targetStatus, 
-        { allocatedItems }
+        currentOrder.id,
+        targetStatus,
+        options
       );
       if (updated) {
         setCurrentOrder(updated);
-        fetchAllVariantStock(); // Refresh live counts after allocation update
-        toast.success("Allocation saved and Order marked as Preparing for Delivery!");
+        fetchAllVariantStock();
+        toast.success("Allocation saved and Order marked as Dispatched!");
       }
     } catch (err: any) {
       console.error("Failed to allocate order", err);
@@ -387,24 +404,36 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
     }
   };
 
+  // Delivery agent state for OFD step
+  const [deliveryAgentName, setDeliveryAgentName]     = React.useState("");
+  const [deliveryAgentMobile, setDeliveryAgentMobile] = React.useState("");
+  const [deliveryNote, setDeliveryNote]               = React.useState("");
+
   const handleUpdateStatus = async (newStatus: OrderStatus) => {
     try {
       setUploading(true);
-      
+
       let options: any = {};
-      
-      // If moving to OFD, include shipping files
-      if (newStatus === OrderStatus.OFD) {
+
+      // DISPATCHED (PFD): must upload all 3 docs
+      if (newStatus === OrderStatus.PFD) {
         if (!shippingFiles.invoice || !shippingFiles.ewayBill || !shippingFiles.transportBill) {
-          toast.error("Please upload all 3 shipping documents (Invoice, E-Way Bill, Transport Bill)");
+          toast.error("Please upload all 3 shipping documents before marking as Dispatched");
           setUploading(false);
           return;
         }
         options.files = {
           invoice: shippingFiles.invoice,
           ewayBill: shippingFiles.ewayBill,
-          transportBill: shippingFiles.transportBill
+          transportBill: shippingFiles.transportBill,
         };
+      }
+
+      // OUT FOR DELIVERY (OFD): optional delivery agent details
+      if (newStatus === OrderStatus.OFD) {
+        if (deliveryAgentName)   options.deliveryAgentName   = deliveryAgentName;
+        if (deliveryAgentMobile) options.deliveryAgentMobile = deliveryAgentMobile;
+        if (deliveryNote)        options.deliveryNote        = deliveryNote;
       }
 
       const updated = await distributorOrderService.updateOrderStatus(currentOrder.id, newStatus, options);
@@ -823,12 +852,12 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
   };
 
   const statusSteps = [
-    { status: OrderStatus.BOOKED, label: 'Booked', icon: <Clock size={16} /> },
-    { status: OrderStatus.PARTIAL, label: 'Partial', icon: <Package size={16} /> },
-    { status: OrderStatus.PFD, label: 'Prepare for Delivery', icon: <Package size={16} /> },
-    { status: OrderStatus.RFD, label: 'Ready for Delivery', icon: <Package size={16} /> },
-    { status: OrderStatus.OFD, label: 'Out for Delivery', icon: <Truck size={16} /> },
-    { status: OrderStatus.RECEIVED, label: 'Received', icon: <CheckCircle size={16} /> },
+    { status: OrderStatus.PENDING,  label: 'Pending',          icon: <Clock size={16} /> },
+    { status: OrderStatus.BOOKED,   label: 'Booked',           icon: <Package size={16} /> },
+    { status: OrderStatus.PFD,      label: 'Dispatched',       icon: <Truck size={16} /> },
+    { status: OrderStatus.RFD,      label: 'In Transit',       icon: <Truck size={16} /> },
+    { status: OrderStatus.OFD,      label: 'Out for Delivery', icon: <Truck size={16} /> },
+    { status: OrderStatus.RECEIVED, label: 'Delivered',        icon: <CheckCircle size={16} /> },
   ];
 
   const currentStatusIndex = statusSteps.findIndex(s => s.status === currentOrder.status);
@@ -931,7 +960,56 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
               })}
             </div>
 
-            {/* Documentation Stage - Moved to Table Footer for Admin */}
+            {/* ── BOOKED: expected dispatch date (distributor only) ── */}
+            {isDistributor && currentOrder.status === OrderStatus.BOOKED && currentOrder.expectedDispatchDate && (
+              <div className="mt-5 flex items-start gap-3 p-3.5 bg-indigo-50 border border-indigo-100 rounded-xl animate-in fade-in duration-300">
+                <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                  <Calendar size={15} className="text-indigo-600" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Expected Dispatch</p>
+                  <p className="text-sm font-bold text-indigo-900 mt-0.5">
+                    {new Date(currentOrder.expectedDispatchDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                  <p className="text-[10px] text-indigo-400 font-medium mt-0.5">Approximate date — we'll notify you when dispatched</p>
+                </div>
+              </div>
+            )}
+
+            {/* ── OFD: delivery agent info (distributor only) ── */}
+            {isDistributor && currentOrder.status === OrderStatus.OFD && (currentOrder.deliveryAgentName || currentOrder.deliveryNote) && (
+              <div className="mt-5 flex items-start gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl animate-in fade-in duration-300">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center shrink-0">
+                  <Truck size={16} className="text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Your Order is Out for Delivery!</p>
+                  {currentOrder.deliveryAgentName && (
+                    <div className="mt-1.5 flex flex-wrap gap-3">
+                      <div>
+                        <p className="text-[9px] font-black text-emerald-500 uppercase tracking-wider">Delivery Agent</p>
+                        <p className="text-sm font-bold text-slate-900">{currentOrder.deliveryAgentName}</p>
+                      </div>
+                      {currentOrder.deliveryAgentMobile && (
+                        <div>
+                          <p className="text-[9px] font-black text-emerald-500 uppercase tracking-wider">Mobile</p>
+                          <a href={`tel:${currentOrder.deliveryAgentMobile}`}
+                            className="text-sm font-bold text-emerald-700 hover:underline"
+                            onClick={e => e.stopPropagation()}>
+                            {currentOrder.deliveryAgentMobile}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {currentOrder.deliveryNote && (
+                    <p className="text-xs text-slate-600 font-medium mt-1.5 bg-white/60 px-2.5 py-1.5 rounded-lg border border-emerald-100">
+                      {currentOrder.deliveryNote}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Mark as Received — only for distributors when status is OFD */}
             {isDistributor && currentOrder.status === OrderStatus.OFD && (
@@ -1367,10 +1445,10 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                     if (isDistributor || ![OrderStatus.BOOKED, OrderStatus.PARTIAL, OrderStatus.PFD, OrderStatus.RFD].includes(currentOrder.status)) return null;
 
                     const stepConfig = {
-                      [OrderStatus.BOOKED]:  { num: 1, color: 'bg-indigo-600',  title: 'Allocate Stock',         hint: isPartialBatch ? `Partial batch — ${itemsInBatch} item(s) in this dispatch, ${itemsPending} item(s) will go in a later batch.` : 'Set carton quantities above. Blocking is optional.' },
-                      [OrderStatus.PARTIAL]: { num: 1, color: 'bg-indigo-600',  title: 'Allocate Next Batch',    hint: isPartialBatch ? `Partial batch — ${itemsInBatch} item(s) in this dispatch, ${itemsPending} item(s) pending.` : 'Set quantities for the next delivery batch.' },
-                      [OrderStatus.PFD]:     { num: 2, color: 'bg-amber-500',   title: 'Prepare for Delivery',   hint: isPartialBatch ? `${itemsInBatch} item(s) in this batch, ${itemsPending} item(s) set to 0 — will be dispatched later.` : 'Update allocation if needed, download PI, then mark as Ready for Delivery.' },
-                      [OrderStatus.RFD]:     { num: 3, color: 'bg-blue-500',    title: 'Dispatch Order',         hint: 'Upload 3 shipping documents, scan cartons to verify, then confirm dispatch.' },
+                      [OrderStatus.BOOKED]:  { num: 1, color: 'bg-indigo-600', title: 'Allocate & Dispatch',    hint: isPartialBatch ? `Partial dispatch — ${itemsInBatch} item(s) now, ${itemsPending} item(s) later.` : 'Set carton quantities above, upload 3 shipping docs, then confirm dispatch.' },
+                      [OrderStatus.PARTIAL]: { num: 1, color: 'bg-indigo-600', title: 'Dispatch Next Batch',    hint: isPartialBatch ? `${itemsInBatch} item(s) in this batch, ${itemsPending} item(s) pending.` : 'Allocate next delivery batch.' },
+                      [OrderStatus.PFD]:     { num: 2, color: 'bg-teal-500',   title: 'Mark as In Transit',    hint: 'Goods are dispatched — click to mark as In Transit when shipment is picked up by carrier.' },
+                      [OrderStatus.RFD]:     { num: 3, color: 'bg-orange-500', title: 'Out for Delivery',      hint: 'Optionally enter delivery agent details, then mark as Out for Delivery.' },
                     } as const;
                     const step = stepConfig[currentOrder.status as keyof typeof stepConfig];
 
@@ -1406,8 +1484,8 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                           )}
                         </div>
 
-                        {/* Shipping Documents — RFD only */}
-                        {currentOrder.status === OrderStatus.RFD && (
+                        {/* Shipping Documents — BOOKED / PARTIAL step (Dispatch) */}
+                        {[OrderStatus.BOOKED, OrderStatus.PARTIAL].includes(currentOrder.status) && (
                           <div className="animate-in fade-in slide-in-from-top-2 duration-300">
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
                               Shipping Documents <span className="text-rose-400 normal-case font-bold">* All 3 required</span>
@@ -1461,74 +1539,82 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                             </button>
                           )}
 
-                          {/* Main actions — right aligned */}
-                          <div className="ml-auto flex items-center gap-3 flex-wrap">
-                            {/* BOOKED / PARTIAL / PFD: Allocate button */}
-                            {[OrderStatus.BOOKED, OrderStatus.PARTIAL, OrderStatus.PFD].includes(currentOrder.status) && (
-                              <>
-                                {totalAllocated > 0 && (
-                                  <div className="hidden sm:flex flex-col items-end">
-                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Batch</span>
-                                    <span className="text-[10px] font-bold text-indigo-600">{totalAllocated} cartons</span>
-                                  </div>
-                                )}
-                                <button
-                                  disabled={uploading || !hasAnyAllocation}
-                                  title={!hasAnyAllocation ? "Set allocation for at least one item" : undefined}
-                                  onClick={handleAllocateAndProceed}
-                                  className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 text-white rounded-xl font-bold text-xs hover:bg-slate-900 transition-all shadow-md active:scale-95 disabled:opacity-50"
-                                >
-                                  {uploading ? <Loader2 size={14} className="animate-spin" /> : <Package size={14} />}
-                                  {[OrderStatus.BOOKED, OrderStatus.PARTIAL].includes(currentOrder.status)
-                                    ? (isPartialBatch ? `Dispatch ${itemsInBatch} Item(s) Now` : 'Allocate & Proceed')
-                                    : 'Update Allocation'}
-                                </button>
-                              </>
-                            )}
+                          {/* Main actions */}
+                          <div className="ml-auto flex items-center gap-3 flex-wrap w-full sm:w-auto">
 
-                            {/* PFD: Mark RFD */}
-                            {currentOrder.status === OrderStatus.PFD && (
+                            {/* BOOKED / PARTIAL: Allocate + Dispatch (includes doc upload) */}
+                            {[OrderStatus.BOOKED, OrderStatus.PARTIAL].includes(currentOrder.status) && (
                               <button
-                                disabled={uploading || !hasAnyAllocation}
-                                title={!hasAnyAllocation ? "Allocate at least one item before marking Ready for Delivery" : undefined}
-                                onClick={() => handleUpdateStatus(OrderStatus.RFD)}
-                                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
+                                disabled={uploading || !hasAnyAllocation || !allDocsUploaded}
+                                title={!allDocsUploaded ? "Upload all 3 shipping documents above" : !hasAnyAllocation ? "Set allocation for at least one item" : undefined}
+                                onClick={handleAllocateAndProceed}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-md active:scale-95 disabled:opacity-50 w-full sm:w-auto justify-center"
                               >
-                                {uploading ? <Loader2 size={14} className="animate-spin" /> : <ChevronRight size={14} />}
-                                Mark Ready for Delivery
+                                {uploading ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+                                {isPartialBatch ? `Dispatch ${itemsInBatch} Item(s)` : 'Confirm Dispatch'}
                               </button>
                             )}
 
-                            {/* RFD: Scan + Dispatch */}
+                            {/* PFD (Dispatched): simple In Transit button */}
+                            {currentOrder.status === OrderStatus.PFD && (
+                              <button
+                                disabled={uploading}
+                                onClick={() => handleUpdateStatus(OrderStatus.RFD)}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white rounded-xl font-bold text-xs hover:bg-teal-700 transition-all shadow-md active:scale-95 w-full sm:w-auto justify-center"
+                              >
+                                {uploading ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+                                Mark as In Transit
+                              </button>
+                            )}
+
+                            {/* RFD (In Transit): delivery agent form + Out for Delivery button */}
                             {currentOrder.status === OrderStatus.RFD && (
-                              <div className="flex items-center gap-3 flex-wrap">
-                                <div className="relative">
-                                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                                    <Barcode size={14} className="text-slate-400" />
+                              <div className="w-full space-y-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1">
+                                      Delivery Agent Name <span className="font-normal normal-case text-slate-300">(optional)</span>
+                                    </label>
+                                    <input
+                                      type="text"
+                                      placeholder="e.g. Ramesh Kumar"
+                                      value={deliveryAgentName}
+                                      onChange={e => setDeliveryAgentName(e.target.value)}
+                                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 text-xs font-medium"
+                                    />
                                   </div>
+                                  <div>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1">
+                                      Mobile Number <span className="font-normal normal-case text-slate-300">(optional)</span>
+                                    </label>
+                                    <input
+                                      type="tel"
+                                      placeholder="e.g. 9876543210"
+                                      value={deliveryAgentMobile}
+                                      onChange={e => setDeliveryAgentMobile(e.target.value)}
+                                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 text-xs font-medium"
+                                    />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-1">
+                                    Delivery Note <span className="font-normal normal-case text-slate-300">(optional)</span>
+                                  </label>
                                   <input
                                     type="text"
-                                    placeholder="Scan carton SKU..."
-                                    value={scanInput}
-                                    onChange={(e) => setScanInput(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleScanSKU(scanInput)}
-                                    className="w-48 pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 text-xs font-bold shadow-sm"
-                                    autoFocus
+                                    placeholder="e.g. Delivery expected by 5 PM"
+                                    value={deliveryNote}
+                                    onChange={e => setDeliveryNote(e.target.value)}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400 text-xs font-medium"
                                   />
                                 </div>
-                                {isScanningFinished() && (
-                                  <div className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-wider animate-in fade-in zoom-in shadow-md">
-                                    <ShieldCheck size={12} /> All Scanned
-                                  </div>
-                                )}
                                 <button
                                   onClick={() => handleUpdateStatus(OrderStatus.OFD)}
-                                  disabled={uploading || !isScanningFinished() || !allDocsUploaded}
-                                  title={!allDocsUploaded ? "Upload all 3 shipping documents first" : (!isScanningFinished() ? "Scan all allocated cartons first" : undefined)}
-                                  className="flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  disabled={uploading}
+                                  className="flex items-center justify-center gap-2 px-6 py-2.5 bg-orange-500 text-white rounded-xl font-bold text-xs hover:bg-orange-600 transition-all shadow-lg active:scale-95 w-full sm:w-auto"
                                 >
                                   {uploading ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
-                                  Confirm Dispatch
+                                  Mark as Out for Delivery
                                 </button>
                               </div>
                             )}

@@ -39,4 +39,12 @@ router.delete(
   usersController.deleteUser
 );
 
+// Admin/Superadmin reset password → auto-logout target user
+router.patch(
+  "/:id/reset-password",
+  auth,
+  role(["superadmin", "admin"]),
+  usersController.adminResetPassword
+);
+
 module.exports = router;

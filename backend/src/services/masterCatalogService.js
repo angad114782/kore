@@ -449,6 +449,23 @@ exports.update = async (req, id) => {
   }
 
   await doc.save();
+
+  // ── Price propagation ─────────────────────────────────────────────────────
+  // When sellingPrice changes in any variant, update PENDING + PRE_BOOKED orders
+  if (body.variants !== undefined) {
+    try {
+      const { propagatePriceUpdate } = require("./order.service");
+      const articleId = doc._id;
+      // Use the first active variant's selling price as the per-pair price
+      const activeVariant = (doc.variants || []).find(v => v.isActive !== false);
+      if (activeVariant && activeVariant.sellingPrice > 0) {
+        await propagatePriceUpdate(articleId, activeVariant.sellingPrice);
+      }
+    } catch (e) {
+      console.error("Price propagation failed:", e.message);
+    }
+  }
+
   return doc;
 };
 

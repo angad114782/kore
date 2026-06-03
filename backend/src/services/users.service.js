@@ -1,8 +1,15 @@
 const User = require("../models/User");
+const CustomRole = require("../models/CustomRole");
 const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
 
-const ALLOWED_ROLES = ["admin", "manager", "supervisor", "accountant", "staff", "distributor"]; // 👈 superadmin API se create nahi hoga
+const BASE_ALLOWED_ROLES = ["admin", "manager", "supervisor", "accountant", "staff", "investor", "distributor"];
+
+const isRoleAllowed = async (role) => {
+  if (BASE_ALLOWED_ROLES.includes(role)) return true;
+  const custom = await CustomRole.findOne({ name: role }).lean();
+  return !!custom;
+};
 const SALT_ROUNDS = 10;
 
 const normalizeEmail = (email) =>
@@ -17,7 +24,7 @@ const sanitizeUser = (userDoc) => {
   return obj;
 };
 
-exports.createUser = async ({ name, email, password, role }) => {
+exports.createUser = async ({ name, email, password, role, phone }) => {
   // ✅ Basic validation (service level safety)
   if (!name || String(name).trim().length < 2) {
     const err = new Error("Name is required (min 2 characters)");
@@ -38,10 +45,10 @@ exports.createUser = async ({ name, email, password, role }) => {
     throw err;
   }
 
-  // ✅ Role safety: superadmin create disabled
+  // ✅ Role safety: superadmin create disabled, custom roles allowed
   const cleanRole = role ? String(role).toLowerCase().trim() : "staff";
-  if (!ALLOWED_ROLES.includes(cleanRole)) {
-    const err = new Error(`Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}`);
+  if (!(await isRoleAllowed(cleanRole))) {
+    const err = new Error(`Invalid role: "${cleanRole}"`);
     err.status = 400;
     throw err;
   }
@@ -63,6 +70,7 @@ exports.createUser = async ({ name, email, password, role }) => {
     email: cleanEmail,
     password: hashed,
     role: cleanRole,
+    phone: phone ? String(phone).trim() : null,
   });
 
   return sanitizeUser(user);
@@ -122,7 +130,7 @@ exports.getUserById = async (id) => {
   return user;
 };
 
-exports.updateUser = async (actorUserId, targetUserId, { name, email, role, isActive }) => {
+exports.updateUser = async (actorUserId, targetUserId, { name, email, role, isActive, phone }) => {
   if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
     console.error(`[UserService] updateUser: Invalid targetUserId: "${targetUserId}"`);
     const err = new Error("Invalid user ID");
@@ -132,6 +140,7 @@ exports.updateUser = async (actorUserId, targetUserId, { name, email, role, isAc
 
   const update = {};
   if (name) update.name = String(name).trim();
+  if (phone !== undefined) update.phone = phone ? String(phone).trim() : null;
   if (email) {
     const cleanEmail = normalizeEmail(email);
     if (!cleanEmail.includes("@")) {
@@ -151,7 +160,7 @@ exports.updateUser = async (actorUserId, targetUserId, { name, email, role, isAc
 
   if (role) {
     const cleanRole = String(role).toLowerCase().trim();
-    if (!ALLOWED_ROLES.includes(cleanRole) && cleanRole !== "superadmin") {
+    if (!(await isRoleAllowed(cleanRole)) && cleanRole !== "superadmin") {
       const err = new Error("Invalid role");
       err.status = 400;
       throw err;
@@ -302,6 +311,27 @@ exports.changePassword = async (userId, { oldPassword, newPassword }) => {
   }
 
   user.password = await bcrypt.hash(String(newPassword), SALT_ROUNDS);
+  await user.save();
+  return true;
+};
+
+// Admin resets password WITHOUT requiring old password → increments tokenVersion (auto-logout all sessions)
+exports.adminResetPassword = async (targetUserId, newPassword) => {
+  if (!newPassword || String(newPassword).length < 6) {
+    const err = new Error("New password must be at least 6 characters");
+    err.status = 400;
+    throw err;
+  }
+
+  const user = await User.findById(targetUserId).select("+password +tokenVersion");
+  if (!user) {
+    const err = new Error("User not found");
+    err.status = 404;
+    throw err;
+  }
+
+  user.password     = await bcrypt.hash(String(newPassword), SALT_ROUNDS);
+  user.tokenVersion = (user.tokenVersion || 0) + 1; // invalidates all existing JWTs
   await user.save();
   return true;
 };

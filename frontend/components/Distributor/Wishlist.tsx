@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { Article, Inventory, Variant } from "../../types";
 import { getImageUrl } from "../../utils/imageUtils";
 
-// Grouping unit for the wishlist
+// Grouping unit for the pre-order
 interface ColorGroup {
   article: Article;
   color: string;
@@ -46,7 +46,7 @@ const colorToHex = (color: string): string => {
   return map[color.toLowerCase()] || "#cbd5e1";
 };
 
-const WishlistCard: React.FC<{ 
+const PreOrderCard: React.FC<{ 
   group: ColorGroup;
   addToCart: (
     articleId: string,
@@ -246,7 +246,7 @@ const WishlistCard: React.FC<{
         <div className="absolute top-4 left-4 flex flex-col gap-2">
           <div className="bg-white/95 backdrop-blur shadow-sm px-3 py-1.5 rounded-full text-[10px] font-black text-amber-600 uppercase tracking-widest border border-amber-50 flex items-center gap-1.5">
             <Star size={10} fill="currentColor" />
-            Wishlist
+            Pre-Order
           </div>
           <div className="bg-white/95 backdrop-blur shadow-sm px-3 py-1.5 rounded-full text-[10px] font-black text-slate-600 uppercase tracking-widest border border-slate-100 italic">
             {article.category}
@@ -367,7 +367,7 @@ const WishlistCard: React.FC<{
   );
 };
 
-interface WishlistProps {
+interface PreOrderProps {
   articles: Article[];
   addToCart: (
     articleId: string,
@@ -376,13 +376,13 @@ interface WishlistProps {
   ) => void;
 }
 
-const Wishlist: React.FC<WishlistProps> = ({ articles, addToCart }) => {
+const PreOrder: React.FC<PreOrderProps> = ({ articles, addToCart }) => {
   const [searchQuery, setSearchQuery] = useState("");
 
   const colorGroups = useMemo(() => {
-    const wishlistArticles = articles.filter(a => a.status === "WISHLIST");
-    
-    return wishlistArticles.flatMap((article) => {
+    const preOrderArticles = articles.filter(a => a.status === "WISHLIST");
+
+    return preOrderArticles.flatMap((article) => {
       const variants = article.variants || [];
       const groups: Record<string, Variant[]> = {};
       variants.forEach((v) => {
@@ -409,7 +409,7 @@ const Wishlist: React.FC<WishlistProps> = ({ articles, addToCart }) => {
           <Star size={40} className="text-slate-200" />
         </div>
         <h3 className="text-xl font-bold text-slate-900 mb-2">
-          Your wishlist is empty
+          Your pre-order is empty
         </h3>
         <p className="text-slate-500 max-w-xs text-center text-sm">
           Upcoming articles will appear here. Stay tuned for new launches!
@@ -426,7 +426,7 @@ const Wishlist: React.FC<WishlistProps> = ({ articles, addToCart }) => {
             <Star className="text-amber-600" size={20} />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-slate-900 leading-tight">Wishlist</h2>
+            <h2 className="text-lg font-bold text-slate-900 leading-tight">Pre-Order</h2>
             <p className="text-slate-500 text-xs">Upcoming articles & pre-launch preview.</p>
           </div>
         </div>
@@ -435,7 +435,7 @@ const Wishlist: React.FC<WishlistProps> = ({ articles, addToCart }) => {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
-            placeholder="Search wishlist..."
+            placeholder="Search pre-order..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all text-sm font-medium"
@@ -445,7 +445,7 @@ const Wishlist: React.FC<WishlistProps> = ({ articles, addToCart }) => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
         {colorGroups.map((group) => (
-          <WishlistCard 
+          <PreOrderCard 
             key={`${group.article.id}-${group.color}`} 
             group={group} 
             addToCart={addToCart}
@@ -456,4 +456,4 @@ const Wishlist: React.FC<WishlistProps> = ({ articles, addToCart }) => {
   );
 };
 
-export default Wishlist;
+export default PreOrder;

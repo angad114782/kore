@@ -1,7 +1,8 @@
 import axios from "axios";
 import { Order, OrderStatus } from "../types"; // Using types from the main file
 
-const API_URL = "http://localhost:5000/api/orders";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5005/api";
+const API_URL = `${API_BASE_URL}/orders`;
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem("kore_token");

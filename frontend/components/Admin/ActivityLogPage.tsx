@@ -10,6 +10,8 @@ import {
   ScanLine,
   RefreshCw,
   Search,
+  Calendar,
+  X,
 } from "lucide-react";
 import { activityLogService, ActivityLogEntry } from "../../services/activityLogService";
 import Pagination from "../ui/Pagination";
@@ -64,6 +66,27 @@ function formatTime(iso: string) {
   });
 }
 
+type DatePreset = "all" | "today" | "yesterday" | "this_week" | "this_month" | "custom";
+
+function getPresetDates(preset: DatePreset): { start?: string; end?: string } {
+  const now = new Date();
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
+  if (preset === "today") { const t = fmt(now); return { start: t, end: t }; }
+  if (preset === "yesterday") {
+    const y = new Date(now); y.setDate(y.getDate() - 1);
+    const ys = fmt(y); return { start: ys, end: ys };
+  }
+  if (preset === "this_week") {
+    const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + 1);
+    return { start: fmt(mon), end: fmt(now) };
+  }
+  if (preset === "this_month") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { start: fmt(start), end: fmt(now) };
+  }
+  return {};
+}
+
 const ActivityLogPage: React.FC = () => {
   const [logs, setLogs] = useState<ActivityLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -73,14 +96,26 @@ const ActivityLogPage: React.FC = () => {
   const [entityFilter, setEntityFilter] = useState("ALL");
   const [search, setSearch] = useState("");
   const [pageSize, setPageSize] = usePageSize("activityLog", 30);
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+
+  const getDateRange = () => {
+    if (datePreset === "custom") return { startDate: customStart || undefined, endDate: customEnd || undefined };
+    const { start, end } = getPresetDates(datePreset);
+    return { startDate: start, endDate: end };
+  };
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
+      const { startDate, endDate } = getDateRange();
       const res = await activityLogService.list({
         page,
         limit: pageSize,
         entityType: entityFilter === "ALL" ? undefined : entityFilter,
+        startDate,
+        endDate,
       });
       const data = res?.data ?? res;
       setLogs(Array.isArray(data) ? data : []);
@@ -90,7 +125,7 @@ const ActivityLogPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, entityFilter]);
+  }, [page, pageSize, entityFilter, datePreset, customStart, customEnd]);
 
   useEffect(() => {
     fetchLogs();
@@ -126,34 +161,65 @@ const ActivityLogPage: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Entity filter pills */}
-        <div className="flex flex-wrap gap-2">
-          {ENTITY_FILTERS.map((f) => (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+        {/* Row 1: Date presets */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Calendar size={14} className="text-slate-400" />
+          {(["all","today","yesterday","this_week","this_month","custom"] as DatePreset[]).map(p => (
             <button
-              key={f}
-              onClick={() => { setEntityFilter(f); setPage(1); }}
+              key={p}
+              onClick={() => { setDatePreset(p); setPage(1); }}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
-                entityFilter === f
-                  ? "bg-indigo-600 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                datePreset === p ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
-              {f}
+              {p === "all" ? "All Time" : p === "this_week" ? "This Week" : p === "this_month" ? "This Month" : p.charAt(0).toUpperCase() + p.slice(1)}
             </button>
           ))}
+
+          {/* Custom date range */}
+          {datePreset === "custom" && (
+            <div className="flex items-center gap-2 ml-2">
+              <input type="date" value={customStart} onChange={e => { setCustomStart(e.target.value); setPage(1); }}
+                className="px-2 py-1 text-xs border border-slate-200 rounded-lg outline-none focus:ring-1 focus:ring-indigo-400" />
+              <span className="text-slate-300 text-xs">→</span>
+              <input type="date" value={customEnd} onChange={e => { setCustomEnd(e.target.value); setPage(1); }}
+                className="px-2 py-1 text-xs border border-slate-200 rounded-lg outline-none focus:ring-1 focus:ring-indigo-400" />
+              {(customStart || customEnd) && (
+                <button onClick={() => { setCustomStart(""); setCustomEnd(""); }} className="text-slate-400 hover:text-rose-500">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Search */}
-        <div className="flex-1 min-w-[200px]">
-          <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search description or user..."
-              className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200"
-            />
+        {/* Row 2: Entity filter + Search */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap gap-1.5">
+            {ENTITY_FILTERS.map((f) => (
+              <button
+                key={f}
+                onClick={() => { setEntityFilter(f); setPage(1); }}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition border ${
+                  entityFilter === f ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 min-w-[200px]">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search description or user..."
+                className="w-full pl-9 pr-4 py-1.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              />
+            </div>
           </div>
         </div>
       </div>

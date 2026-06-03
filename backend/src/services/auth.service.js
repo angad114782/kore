@@ -30,6 +30,7 @@ exports.login = async ({ email, password }) => {
       id: user._id.toString(),
       role: user.role,
       distributorId: user.distributorId ? user.distributorId.toString() : null,
+      tokenVersion: user.tokenVersion || 0,
     },
     process.env.JWT_SECRET,
     { expiresIn: "7d" }

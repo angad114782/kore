@@ -4,6 +4,7 @@ export enum UserRole {
   MANAGER = "manager",
   SUPERVISOR = "supervisor",
   ACCOUNTANT = "accountant",
+  INVESTOR = "investor",
   DISTRIBUTOR = "distributor",
 }
 
@@ -118,14 +119,21 @@ export interface Inventory {
 }
 
 export enum OrderStatus {
-  BOOKED = "BOOKED",
-  PFD = "PFD",       // Processing for Delivery
-  RFD = "RFD",       // Ready for Delivery
-  OFD = "OFD",       // Out for Delivery
-  RECEIVED = "RECEIVED",
-  PARTIAL = "PARTIAL", // Added for partial fulfillment
-  PENDING = "PENDING",
+  // Pre-Order flow
+  PRE_BOOKED = "PRE_BOOKED",   // Distributor placed pre-order (WISHLIST items)
+  CONFIRMED  = "CONFIRMED",    // Admin confirmed the pre-order
+  // Regular order flow
+  PENDING   = "PENDING",       // Placed by distributor, awaiting admin booking
+  BOOKED    = "BOOKED",        // Admin booked / confirmed
+  PFD       = "PFD",           // Processing for Delivery
+  RFD       = "RFD",           // Ready for Delivery
+  OFD       = "OFD",           // Out for Delivery
+  RECEIVED  = "RECEIVED",      // Delivered
+  PARTIAL   = "PARTIAL",       // Partially Delivered
+  CANCELLED = "CANCELLED",     // Cancelled
 }
+
+export type OrderType = "REGULAR" | "PREORDER";
 
 export interface OrderItem {
   articleId: string;
@@ -177,6 +185,7 @@ export interface FulfillmentBatch {
 export interface Order {
   id: string;
   orderNumber?: string;
+  orderType?: OrderType;
   distributorId: string | {
     id: string;
     name: string;
@@ -207,6 +216,16 @@ export interface Order {
   receivingNoteUrl?: string;
   receiverName?: string;
   receiverMobile?: string;
+  // Delivery agent — filled at OFD step
+  deliveryAgentName?: string;
+  deliveryAgentMobile?: string;
+  deliveryNote?: string;
+  // Booking commitment
+  expectedDispatchDate?: string;
+  bookingPriority?: 'NORMAL' | 'URGENT';
+  adminNote?: string;
+  stockStatus?: 'DISPATCH_READY' | 'BLOCK_HOLD' | 'NO_STOCK';
+  blockReason?: string;
 }
 
 export interface MovementRecord {

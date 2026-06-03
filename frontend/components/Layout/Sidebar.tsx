@@ -29,6 +29,10 @@ import {
   User,
   Star,
   Activity,
+  AlertTriangle,
+  IndianRupee,
+  ScrollText,
+  Bell,
 } from "lucide-react";
 
 import { type User as Usertype, UserRole } from "../../types";
@@ -226,14 +230,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                         compact
                         isCollapsed={isCollapsed}
                       />
-                      <NavItem
-                        icon={<Receipt size={18} />}
-                        label="Bills"
-                        active={activeTab === "bills"}
-                        onClick={() => go("bills")}
-                        compact
-                        isCollapsed={isCollapsed}
-                      />
                     </div>
                   )}
                 </div>
@@ -284,6 +280,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                   />
                   {!isCollapsed && openGroups.sales && (
                     <div className="mt-1 ml-2 space-y-1 border-l border-slate-100 pl-3">
+                      <NavItem
+                        icon={<Clock size={18} />}
+                        label="Pre-Orders"
+                        active={activeTab === "pre_orders"}
+                        onClick={() => go("pre_orders")}
+                        compact
+                        isCollapsed={isCollapsed}
+                      />
                       <NavItem
                         icon={<PackageCheck size={18} />}
                         label="Orders"
@@ -389,15 +393,50 @@ const Sidebar: React.FC<SidebarProps> = ({
                     />
                   </div>
                 )}
+
+                {/* Accounts & Finance */}
+                <div className="pt-2">
+                  <NavItem
+                    icon={<IndianRupee size={20} />}
+                    label="Accounts"
+                    active={activeTab === "accounts"}
+                    onClick={() => go("accounts")}
+                    isCollapsed={isCollapsed}
+                  />
+                </div>
+
+                {/* Terms & Conditions — admin editable */}
+                {(user.role === UserRole.SUPERADMIN || user.role === UserRole.ADMIN) && (
+                  <div className="pt-2">
+                    <NavItem
+                      icon={<ScrollText size={20} />}
+                      label="Terms & Policies"
+                      active={activeTab === "terms_page"}
+                      onClick={() => go("terms_page")}
+                      isCollapsed={isCollapsed}
+                    />
+                  </div>
+                )}
+                {user.role === UserRole.SUPERADMIN && (
+                  <div className="pt-2">
+                    <NavItem
+                      icon={<Bell size={20} />}
+                      label="Notifications"
+                      active={activeTab === "notification_settings"}
+                      onClick={() => go("notification_settings")}
+                      isCollapsed={isCollapsed}
+                    />
+                  </div>
+                )}
               </>
             ) : (
               /* Distributor menus */
               <>
                 <NavItem
                   icon={<Star size={20} />}
-                  label="Wishlist"
-                  active={activeTab === "wishlist"}
-                  onClick={() => go("wishlist")}
+                  label="Pre-Order"
+                  active={activeTab === "preorder"}
+                  onClick={() => go("preorder")}
                   isCollapsed={isCollapsed}
                 />
                 <NavItem
@@ -439,16 +478,17 @@ const Sidebar: React.FC<SidebarProps> = ({
             title={isCollapsed ? "My Profile" : undefined}
           >
             <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center font-bold text-indigo-600 border border-indigo-100 shrink-0">
-              {user?.name ? user.name.charAt(0) : ""}
+              {(user.companyName || user.name || "").charAt(0).toUpperCase()}
             </div>
 
             {!isCollapsed && (
               <div className="overflow-hidden">
+                {/* Distributor: show company name as main, person name as sub */}
                 <p className="text-sm font-semibold truncate text-slate-900">
-                  {user.name || ""}
+                  {user.companyName || user.name || ""}
                 </p>
                 <p className="text-xs text-slate-500 truncate capitalize">
-                  {user.role ? user.role.toLowerCase() : ""}
+                  {user.companyName ? user.name : (user.role || "").toLowerCase()}
                 </p>
               </div>
             )}

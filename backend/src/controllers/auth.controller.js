@@ -51,7 +51,9 @@ exports.login = async (req, res, next) => {
         creditInfo = {
           creditLimit: dist.creditLimit || 0,
           discountPercentage: dist.discountPercentage || 0,
-          availableCredit: (dist.creditLimit || 0) - pendingValue
+          availableCredit: (dist.creditLimit || 0) - pendingValue,
+          companyName: dist.companyName || "",
+          phone: dist.phone || "",
         };
       }
     }
@@ -126,7 +128,9 @@ exports.me = async (req, res, next) => {
         creditInfo = {
           creditLimit: dist.creditLimit || 0,
           discountPercentage: dist.discountPercentage || 0,
-          availableCredit: (dist.creditLimit || 0) - pendingValue
+          availableCredit: (dist.creditLimit || 0) - pendingValue,
+          companyName: dist.companyName || "",   // ← show in sidebar
+          phone: dist.phone || "",
         };
       }
     }

@@ -3,14 +3,14 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import {
-  TrendingUp, Users, Package, ArrowUpRight, Sparkles, ChevronLeft,
+  TrendingUp, Users, Package, ArrowUpRight, ChevronLeft,
   Calendar, FileText, Building2, Star, Search, ArrowUpDown, ChevronDown, X,
 } from 'lucide-react';
 import InteractiveIndiaMap from './InteractiveIndiaMap';
 import { Order, Inventory, Article, OrderStatus, PurchaseOrder } from '../../types';
-import { getInventoryInsights } from '../../services/geminiService';
 import { poService } from '../../services/poService';
 import { getImageUrl } from '../../utils/imageUtils';
+import OverduePayments from '../shared/OverduePayments';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type DateFilter = 'all' | 'this_month' | 'last_month' | 'this_year' | 'custom';
@@ -24,6 +24,7 @@ interface AdminDashboardProps {
   updateStatus?: (id: string, status: OrderStatus) => void;
   loadingOrders?: boolean;
   lastUpdated?: Date;
+  onSeeAllOverdue?: () => void;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
@@ -462,6 +463,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   updateStatus,
   loadingOrders,
   lastUpdated,
+  onSeeAllOverdue,
 }) => {
   const [dateFilter, setDateFilter]   = useState<DateFilter>('all');
   const [customStart, setCustomStart] = useState('');
@@ -472,9 +474,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [productSort, setProductSort] = useState<SortOption>('top');
   const [poSort, setPoSort]           = useState<SortOption>('newest');
 
-  const [pos, setPOs]                 = useState<PurchaseOrder[]>([]);
-  const [aiInsights, setAiInsights]   = useState<any[]>([]);
-  const [loadingInsights, setLoadingInsights] = useState(false);
+  const [pos, setPOs] = useState<PurchaseOrder[]>([]);
 
   // Fetch POs for pending section
   useEffect(() => {
@@ -483,19 +483,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setPOs(list);
     }).catch(() => {});
   }, []);
-
-  // AI insights
-  useEffect(() => {
-    let cancelled = false;
-    setLoadingInsights(true);
-    getInventoryInsights(inventory.map(i => ({
-      sku: articles.find(a => a.id === i.articleId)?.sku,
-      stock: i.actualStock,
-      reserved: i.reservedStock,
-    }))).then(res => { if (!cancelled) { setAiInsights(res); setLoadingInsights(false); } })
-      .catch(() => { if (!cancelled) setLoadingInsights(false); });
-    return () => { cancelled = true; };
-  }, [inventory, articles]);
 
   // Filtered orders
   const filteredOrders = useMemo(() => filterByDate(orders, dateFilter, customStart, customEnd), [orders, dateFilter, customStart, customEnd]);
@@ -589,21 +576,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         />
       </div>
 
-      {/* Chart + AI */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+      {/* Chart + Overdue — 50/50 side by side, stacked on mobile */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Stock Chart */}
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <h3 className="text-lg font-bold mb-5 flex items-center gap-2">
             <Package size={20} className="text-slate-400" />
             Stock Inventory by Segment
           </h3>
-          <div className="h-[300px]">
+          <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={categoryData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
                 <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={40}>
+                <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={36}>
                   {categoryData.map((_entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
@@ -613,36 +602,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
 
-        <div className="bg-indigo-900 text-white p-6 rounded-xl shadow-xl shadow-indigo-100 flex flex-col h-full">
-          <div className="flex items-center gap-2 mb-6">
-            <Sparkles className="text-indigo-300" />
-            <h3 className="font-bold text-lg">Gemini AI Insights</h3>
-          </div>
-          {loadingInsights ? (
-            <div className="flex-1 flex flex-col items-center justify-center opacity-50 space-y-4">
-              <div className="w-8 h-8 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm">Analyzing inventory patterns...</p>
-            </div>
-          ) : (
-            <div className="space-y-4 flex-1">
-              {aiInsights.map((insight, idx) => (
-                <div key={idx} className="bg-white/10 p-4 rounded-lg backdrop-blur-sm border border-white/10">
-                  <div className="flex justify-between items-start mb-2">
-                    <p className="font-semibold text-sm">{insight.insight}</p>
-                    <span className={`text-[10px] px-2 py-0.5 rounded uppercase font-bold ${insight.priority === 'High' ? 'bg-red-500 text-white' : 'bg-indigo-400 text-white'}`}>
-                      {insight.priority}
-                    </span>
-                  </div>
-                  <p className="text-xs text-indigo-100 italic">Action: {insight.action}</p>
-                </div>
-              ))}
-              {aiInsights.length === 0 && <p className="text-sm text-indigo-200">System ready for analysis.</p>}
-            </div>
-          )}
-          <button className="mt-6 w-full py-2.5 bg-indigo-500 hover:bg-indigo-400 transition-colors rounded-lg font-medium text-sm">
-            Generate Full Report
-          </button>
-        </div>
+        {/* Overdue Payments */}
+        <OverduePayments
+          isAdmin={true}
+          onSeeAll={onSeeAllOverdue}
+          showAll={false}
+        />
+
       </div>
 
       {/* Top Distributors + Top Products */}

@@ -21,6 +21,7 @@ import {
   Upload,
   FileSpreadsheet,
   Download,
+  Clock,
 } from "lucide-react";
 import { Article, AssortmentType } from "../../types";
 import Switch from "../ui/Switch";
@@ -101,6 +102,20 @@ function groupCsvByName(rows: CsvRow[]): Record<string, CsvRow[]> {
   return g;
 }
 
+// Group by (name + stage) so same article name with different stages is handled separately
+// Key format: "ArticleName|||AVAILABLE" or "ArticleName|||WISHLIST"
+function groupCsvByNameAndStage(rows: CsvRow[]): Record<string, CsvRow[]> {
+  const g: Record<string, CsvRow[]> = {};
+  rows.forEach(r => {
+    const stage = (r.listing_status || "available").trim().toUpperCase() === "WISHLIST"
+      ? "WISHLIST"
+      : "AVAILABLE";
+    const key = `${r.name}|||${stage}`;
+    (g[key] = g[key] || []).push(r);
+  });
+  return g;
+}
+
 // BASE_URL removed in favor of getImageUrl utility
 
 const CatalogueManager: React.FC<CatalogueManagerProps> = ({
@@ -169,8 +184,10 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   };
 
   const handleCsvImport = async () => {
-    const groups = groupCsvByName(csvRows);
-    const names = Object.keys(groups);
+    // Group by (name + stage) — same article name with AVAILABLE and PRE-ORDER
+    // colors in CSV will be processed as two separate groups
+    const groups = groupCsvByNameAndStage(csvRows);
+    const keys = Object.keys(groups);
     setCsvLoading(true);
 
     const importPromise = async () => {
@@ -204,8 +221,13 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
       };
 
       let created = 0;
-      for (const name of names) {
-        const rows = groups[name];
+      let skipped = 0;
+      const warnings: string[] = [];
+
+      for (const groupKey of keys) {
+        // groupKey = "ArticleName|||AVAILABLE" or "ArticleName|||WISHLIST"
+        const [name, groupStage] = groupKey.split("|||");
+        const rows = groups[groupKey];
         const firstRow = rows[0];
 
         const gender = (firstRow.gender || "MEN").toUpperCase();
@@ -276,13 +298,16 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
           });
 
         const soleColor = firstRow.sole_color?.trim() || "";
-        const rawStatus = (firstRow.listing_status || "available").trim().toUpperCase();
-        const stage = rawStatus === "WISHLIST" ? "WISHLIST" : "AVAILABLE";
+        // Stage comes from groupKey — all rows in this group share same stage
+        const stage = groupStage as "AVAILABLE" | "WISHLIST";
         const expectedDate = firstRow.expected_date?.trim() || "";
 
-        // Check if a master with this name already exists → addon (update) instead of create
+        // Match existing master by BOTH name AND stage — so "Nike Air" AVAILABLE
+        // and "Nike Air" WISHLIST are treated as separate articles
         const existingMaster = articles.find(
-          a => a.name.trim().toLowerCase() === name.trim().toLowerCase()
+          a =>
+            a.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+            (a.status || "AVAILABLE") === stage
         );
 
         const fd = new FormData();
@@ -301,7 +326,60 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
         }
 
         if (existingMaster) {
-          // Merge existing variants (preserve stock) + new ones from CSV
+          // ── Color-level duplicate check ──────────────────────────────
+          const existingColorSet = new Set(
+            (existingMaster.variants || [])
+              .map(v => (v.color || "").toLowerCase().trim())
+          );
+
+          const duplicateColors = Array.from(new Set(
+            rows
+              .filter(r => r.color && existingColorSet.has(r.color.toLowerCase().trim()))
+              .map(r => r.color)
+          ));
+
+          const newColorRows = rows.filter(
+            r => r.color && !existingColorSet.has(r.color.toLowerCase().trim())
+          );
+          const newColors = Array.from(new Set(newColorRows.map(r => r.color)));
+
+          // All colors from CSV already exist → skip entirely
+          if (newColors.length === 0) {
+            skipped++;
+            warnings.push(`"${name}" skipped — colors already exist: ${duplicateColors.join(", ")}`);
+            continue;
+          }
+
+          // Some colors already exist → inform
+          if (duplicateColors.length > 0) {
+            warnings.push(`"${name}" — skipped existing colors: ${duplicateColors.join(", ")}`);
+          }
+
+          // ── Build variants ONLY for new colors ──────────────────────
+          // (No PRE-ORDER conflict possible — grouping already separates by stage)
+          const newVariantsOnly = newColorRows
+            .filter(r => r.color && r.size)
+            .map(r => {
+              const sizeQuantities = extractSizeQty(r);
+              const sizeMap: Record<string, { qty: number; sku: string }> = {};
+              Object.entries(sizeQuantities).forEach(([sz]) => {
+                sizeMap[sz] = { qty: 0, sku: "" };
+              });
+              return {
+                itemName: `${name}-${r.color}-${r.size}`,
+                color: r.color,
+                sizeRange: r.size,
+                costPrice: Number(r.cost_price) || 0,
+                sellingPrice: 0,
+                mrp: Number(r.mrp) || mrp,
+                hsnCode: r.hsn?.trim() || "",
+                sizeQuantities,
+                sizeSkus: {},
+                sizeMap,
+              };
+            });
+
+          // ── Merge and update ─────────────────────────────────────────
           const existingVariants = (existingMaster.variants || []).map(v => ({
             _id: v.id,
             itemName: v.itemName,
@@ -316,19 +394,23 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
             sizeMap: v.sizeMap || {},
             isActive: v.isActive !== false,
           }));
-          const allVariants = [...existingVariants, ...variants];
+
+          const allVariants = [...existingVariants, ...newVariantsOnly];
+          const finalNewColors = Array.from(new Set(newColorRows.map(r => r.color).filter(Boolean)));
           const allColors = Array.from(new Set([
             ...(existingMaster.variants || []).map(v => v.color),
-            ...colors,
+            ...finalNewColors,
           ].filter(Boolean)));
           const allSizes = Array.from(new Set([
             ...(existingMaster.variants || []).map(v => v.sizeRange),
-            ...sizes,
+            ...Array.from(new Set(newColorRows.map(r => r.size).filter(Boolean))),
           ].filter(Boolean)));
+
           fd.append("productColors", JSON.stringify(allColors));
           fd.append("sizeRanges", JSON.stringify(allSizes));
           fd.append("variants", JSON.stringify(allVariants));
           await masterCatalogService.updateMasterItem(existingMaster.id, fd);
+
         } else {
           fd.append("productColors", JSON.stringify(colors));
           fd.append("sizeRanges", JSON.stringify(sizes));
@@ -337,16 +419,27 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
         }
         created++;
       }
-      return created;
+      return { created, skipped, warnings };
     };
 
     toast.promise(importPromise().finally(() => setCsvLoading(false)), {
-      loading: `Importing ${names.length} article(s)...`,
-      success: (count) => {
+      loading: `Importing ${keys.length} group(s)...`,
+      success: (result: any) => {
         closeCsvModal();
         onSuccess?.();
         loadTaxonomy();
-        return `${count} article(s) imported successfully!`;
+        // Show any warnings as separate toasts
+        if (result.warnings?.length) {
+          setTimeout(() => {
+            result.warnings.forEach((w: string) =>
+              toast.warning(w, { duration: 7000 })
+            );
+          }, 500);
+        }
+        const parts = [];
+        if (result.created > 0) parts.push(`${result.created} imported`);
+        if (result.skipped > 0) parts.push(`${result.skipped} skipped (duplicate)`);
+        return parts.join(" · ") || "Done";
       },
       error: (err: any) => err.message || "Import failed",
     });
@@ -698,7 +791,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
             <p className="text-sm text-slate-500">
               {filteredMasters.length} Master
               {filteredMasters.length !== 1 ? "s" : ""} •{" "}
-              <b>{activeTab === "AVAILABLE" ? "Available" : "Wish List"}</b>
+              <b>{activeTab === "AVAILABLE" ? "Available" : "Pre-Order"}</b>
             </p>
           </div>
         </div>
@@ -748,12 +841,12 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
           onClick={() => setActiveTab("WISHLIST")}
           className={`flex-1 px-4 py-2 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 ${
             activeTab === "WISHLIST"
-              ? "bg-rose-600 text-white shadow"
+              ? "bg-amber-500 text-white shadow"
               : "text-slate-600 hover:bg-slate-50"
           }`}
         >
-          <Heart size={16} />
-          Wish List
+          <Clock size={16} />
+          Pre-Order
         </button>
       </div>
 
@@ -912,10 +1005,11 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                   {status === "WISHLIST" && (
                     <button
                       onClick={() => moveWishToAvailable(article)}
-                      className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all"
-                      title="Move Wish → Catalogue"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-all text-[10px] font-bold"
+                      title="Move Pre-Order → Available Catalogue"
                     >
-                      <ArrowRightLeft size={16} />
+                      <ArrowRightLeft size={13} />
+                      Make Available
                     </button>
                   )}
 
