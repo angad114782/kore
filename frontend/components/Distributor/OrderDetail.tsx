@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { io } from 'socket.io-client';
-import { 
-  ArrowLeft, 
-  Package, 
-  Truck, 
-  Clock, 
-  CheckCircle, 
-  MapPin, 
-  CreditCard, 
+import {
+  ArrowLeft,
+  Package,
+  Truck,
+  Clock,
+  CheckCircle,
+  MapPin,
+  CreditCard,
   Calendar,
   Printer,
   Download,
@@ -26,7 +26,13 @@ import {
   History,
   X,
   Barcode,
-  RotateCcw
+  RotateCcw,
+  Pencil,
+  Trash2,
+  Plus,
+  Minus,
+  Save,
+  AlertTriangle,
 } from 'lucide-react';
 import DocPreviewDialog from '../ui/DocPreviewDialog';
 import { Order, OrderStatus, Article, Inventory, OrderItem, FulfillmentBatch } from '../../types';
@@ -69,6 +75,89 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
   const [uploading, setUploading] = useState(false);
   const [currentOrder, setCurrentOrder] = useState<Order>(order);
   const [activeTab, setActiveTab] = useState<'items' | 'history'>('items');
+
+  // ── Edit / Delete state ──────────────────────────────────────────────────
+  const canEditOrDelete = ['PENDING', 'PRE_BOOKED'].includes(currentOrder.status);
+  const [editMode, setEditMode] = useState(false);
+  // editCounts: variantId → carton count override
+  const [editCounts, setEditCounts] = useState<Record<string, number>>({});
+  const [deletedItems, setDeletedItems] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const toggleDeleteItem = (key: string) => {
+    setDeletedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const startEdit = () => {
+    const init: Record<string, number> = {};
+    currentOrder.items.forEach(item => { init[item.variantId || item.articleId] = item.cartonCount; });
+    setEditCounts(init);
+    setDeletedItems(new Set());
+    setEditMode(true);
+  };
+
+  const cancelEdit = () => { setEditMode(false); setDeletedItems(new Set()); };
+
+  const handleSaveEdit = async () => {
+    setSaving(true);
+    try {
+      const updatedItems = currentOrder.items
+        .map(item => {
+          const key = item.variantId || item.articleId;
+          if (deletedItems.has(key)) return null;
+          const newCartons = editCounts[key] ?? item.cartonCount;
+          if (newCartons <= 0) return null;
+          const ratio = newCartons / (item.cartonCount || 1);
+          const newPairs = Math.round((item.pairCount || 0) * ratio);
+          const newSizeQty: Record<string, number> = {};
+          Object.entries(item.sizeQuantities || {}).forEach(([sz, qty]) => {
+            newSizeQty[sz] = Math.round(Number(qty) * ratio);
+          });
+          return {
+            ...item,
+            cartonCount: newCartons,
+            pairCount: newPairs,
+            price: Math.round((item.price / (item.cartonCount || 1)) * newCartons * 100) / 100,
+            sizeQuantities: newSizeQty,
+          };
+        })
+        .filter(Boolean);
+
+      if (updatedItems.length === 0) {
+        toast.error('At least one item is required');
+        return;
+      }
+
+      const updated = await distributorOrderService.editOrder(currentOrder.id, updatedItems as any);
+      if (updated) setCurrentOrder(updated);
+      setEditMode(false);
+      toast.success('Order updated successfully');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to update order');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await distributorOrderService.deleteOrder(currentOrder.id);
+      toast.success('Order deleted');
+      onBack();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to delete order');
+      setShowDeleteConfirm(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   // Real-time updates via Socket.io
   useEffect(() => {
@@ -917,7 +1006,42 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {canEditOrDelete && !editMode && (
+            <>
+              <button
+                onClick={startEdit}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 font-bold text-xs hover:bg-indigo-100 transition-all"
+              >
+                <Pencil size={13} /> Edit Order
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-600 font-bold text-xs hover:bg-rose-100 transition-all"
+              >
+                <Trash2 size={13} /> Delete
+              </button>
+            </>
+          )}
+          {editMode && (
+            <>
+              <button
+                onClick={handleSaveEdit}
+                disabled={saving}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 disabled:opacity-60 transition-all"
+              >
+                {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                Save
+              </button>
+              <button
+                onClick={cancelEdit}
+                disabled={saving}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition-all"
+              >
+                <X size={13} /> Cancel
+              </button>
+            </>
+          )}
           <button className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition-all">
             <Printer size={14} /> Print
           </button>
@@ -926,6 +1050,43 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
           </button>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-80 max-w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center">
+                <AlertTriangle size={20} className="text-rose-500" />
+              </div>
+              <div>
+                <p className="font-black text-slate-900 text-sm">Delete Order?</p>
+                <p className="text-xs text-slate-500">Yeh action undo nahi hogi</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 mb-5">
+              Order <span className="font-bold">#{currentOrder.orderNumber || currentOrder.id.slice(-6).toUpperCase()}</span> permanently delete ho jaega.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 rounded-xl bg-rose-500 text-white font-bold text-xs hover:bg-rose-600 disabled:opacity-60 flex items-center justify-center gap-1.5"
+              >
+                {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-6">
         {/* Status Timeline - Compact */}
@@ -1148,9 +1309,45 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
             </div>
           )}
 
-          {/* Layout Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-3 space-y-6">
+          {/* Shipping Details — compact horizontal card above table */}
+          {(() => {
+            const d = typeof currentOrder.distributorId === 'object' ? currentOrder.distributorId : null;
+            const profile = d?.distributorId;
+            const addr = profile?.shippingAddress;
+            const email = profile?.email || d?.email || 'N/A';
+            const phone = profile?.phone || 'N/A';
+            return (
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-4">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
+                  <MapPin size={18} className="text-indigo-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none mb-0.5">Destination · Shipping Details</p>
+                  <p className="font-black text-sm text-slate-900 leading-tight truncate">{profile?.companyName || currentOrder.distributorName}</p>
+                  {addr?.address1 ? (
+                    <p className="text-[10px] text-slate-500 font-medium mt-0.5 truncate">
+                      {addr.address1}{addr.address2 ? `, ${addr.address2}` : ''}, {addr.city}, {addr.state} — {addr.pinCode}
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-slate-400 italic mt-0.5">Address not available</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <Phone size={11} className="text-indigo-500" />
+                    <p className="text-[11px] font-bold text-slate-700">{phone}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-100 max-w-[180px]">
+                    <Mail size={11} className="text-blue-500 shrink-0" />
+                    <p className="text-[11px] font-bold text-slate-700 truncate">{email}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Main Content — full width */}
+          <div className="space-y-6">
               {/* Tabs Navigation */}
               <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-2xl w-fit">
                 <button
@@ -1208,7 +1405,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                         {isDistributor ? (
                           <tr className="border-b border-slate-100 bg-slate-50/30">
                             <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Image</th>
-                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Article / Variant</th>
+                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Article / Variant · MRP/Ctn</th>
                             <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ordered (Ctn)</th>
                             <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Dispatched (Ctn)</th>
                             <th className="px-6 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-center">Returned (Ctn)</th>
@@ -1218,7 +1415,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                         ) : (
                           <tr className="border-b border-slate-100 bg-slate-50/30">
                             <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Image</th>
-                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Article / Variant</th>
+                            <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Article / Variant · MRP/Ctn</th>
                             <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ordered (Ctn)</th>
                             <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Dispatched (Ctn)</th>
                             <th className="px-4 py-3 text-[10px] font-black text-rose-500 uppercase tracking-widest text-center">Returned (Ctn)</th>
@@ -1276,17 +1473,19 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                           const isVerified = scanned >= allocatedCount && allocatedCount > 0;
 
                           if (isDistributor) {
+                            const itemKey = item.variantId || item.articleId;
+                            const isItemDeleted = deletedItems.has(itemKey);
                             return (
-                              <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
+                              <tr key={idx} className={`group hover:bg-slate-50/50 transition-all ${isItemDeleted && editMode ? 'opacity-40 bg-rose-50/50' : ''}`}>
                                 <td className="px-6 py-4">
                                   <div className="w-12 h-12 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 flex items-center justify-center">
                                     {(() => {
                                       const colorMedia = article?.colorMedia || [];
                                       const matched = colorMedia.find(cm => cm.color.toLowerCase() === variant?.color?.toLowerCase());
-                                      const vImg = (matched && matched.images && matched.images.length > 0) 
-                                        ? matched.images[0].url 
+                                      const vImg = (matched && matched.images && matched.images.length > 0)
+                                        ? matched.images[0].url
                                         : (variant?.images && variant?.images.length > 0 ? variant?.images[0] : article?.imageUrl);
-                                      
+
                                       return vImg ? (
                                         <img src={getImageUrl(vImg)} alt={variant?.color || article?.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                                       ) : (
@@ -1297,16 +1496,54 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                                 </td>
                                 <td className="px-6 py-4">
                                   <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-2">
-                                      <p className="font-bold text-sm text-slate-900 leading-tight">{article?.name}</p>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className={`font-bold text-sm leading-tight ${isItemDeleted && editMode ? 'line-through text-slate-400' : 'text-slate-900'}`}>{article?.name}</p>
                                       <span className="px-1.5 py-0.5 rounded bg-slate-100 text-[8px] font-black text-slate-500 uppercase tracking-tighter">{variant?.color || 'N/A'}</span>
+                                      {editMode && (
+                                        <button
+                                          onClick={() => toggleDeleteItem(itemKey)}
+                                          title={isItemDeleted ? 'Undo delete' : 'Delete this item'}
+                                          className={`w-5 h-5 rounded flex items-center justify-center transition-all ${isItemDeleted ? 'bg-rose-500 text-white' : 'text-rose-400 hover:bg-rose-50'}`}
+                                        ><Trash2 size={9} /></button>
+                                      )}
                                     </div>
                                     <p className="text-[10px] text-indigo-500 font-black uppercase tracking-wider">{getAssortment(variant)}</p>
+                                    {article?.mrp ? (
+                                      <p className="text-[10px] font-black text-amber-600">
+                                        MRP ₹{(article.mrp * (item.pairCount / (item.cartonCount || 1))).toLocaleString()}/ctn
+                                      </p>
+                                    ) : null}
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 text-center">
-                                  <p className="text-sm font-black text-slate-900 leading-none">{item.cartonCount}</p>
-                                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">{item.pairCount} Pairs</p>
+                                  {editMode ? (
+                                    isItemDeleted ? (
+                                      <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">Removed</span>
+                                    ) : (
+                                      <div className="flex items-center justify-center gap-1.5">
+                                        <button
+                                          onClick={() => {
+                                            setEditCounts(p => ({ ...p, [itemKey]: Math.max(0, (p[itemKey] ?? item.cartonCount) - 1) }));
+                                          }}
+                                          className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center transition-all"
+                                        ><Minus size={10} /></button>
+                                        <span className="text-sm font-black text-slate-900 w-6 text-center">
+                                          {editCounts[itemKey] ?? item.cartonCount}
+                                        </span>
+                                        <button
+                                          onClick={() => {
+                                            setEditCounts(p => ({ ...p, [itemKey]: (p[itemKey] ?? item.cartonCount) + 1 }));
+                                          }}
+                                          className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-indigo-100 text-slate-500 hover:text-indigo-600 flex items-center justify-center transition-all"
+                                        ><Plus size={10} /></button>
+                                      </div>
+                                    )
+                                  ) : (
+                                    <>
+                                      <p className="text-sm font-black text-slate-900 leading-none">{item.cartonCount}</p>
+                                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">{item.pairCount} Pairs</p>
+                                    </>
+                                  )}
                                 </td>
                                 <td className="px-6 py-4 text-center">
                                   <p className="text-sm font-black text-emerald-600 leading-none">{item.fulfilledCartonCount || 0}</p>
@@ -1326,17 +1563,19 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                           }
 
                           // Admin view (Refined)
+                          const adminItemKey = item.variantId || item.articleId;
+                          const isAdminItemDeleted = deletedItems.has(adminItemKey);
                           return (
-                            <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
+                            <tr key={idx} className={`group hover:bg-slate-50/50 transition-all ${isAdminItemDeleted && editMode ? 'opacity-40 bg-rose-50/50' : ''}`}>
                               <td className="px-6 py-4">
                                 <div className="w-12 h-12 rounded-lg overflow-hidden border border-slate-100 bg-slate-50 flex items-center justify-center">
                                   {(() => {
                                     const colorMedia = article?.colorMedia || [];
                                     const matched = colorMedia.find(cm => cm.color.toLowerCase() === variant?.color?.toLowerCase());
-                                    const vImg = (matched && matched.images && matched.images.length > 0) 
-                                      ? matched.images[0].url 
+                                    const vImg = (matched && matched.images && matched.images.length > 0)
+                                      ? matched.images[0].url
                                       : (variant?.images && variant?.images.length > 0 ? variant?.images[0] : article?.imageUrl);
-                                    
+
                                     return vImg ? (
                                       <img src={getImageUrl(vImg)} alt={variant?.color || article?.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                                     ) : (
@@ -1347,15 +1586,51 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                               </td>
                               <td className="px-6 py-4">
                                 <div className="flex flex-col gap-1">
-                                  <div className="flex items-center gap-2">
-                                    <p className="font-bold text-sm text-slate-900 leading-tight">{article?.name}</p>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className={`font-bold text-sm leading-tight ${isAdminItemDeleted && editMode ? 'line-through text-slate-400' : 'text-slate-900'}`}>{article?.name}</p>
                                     <span className="px-1.5 py-0.5 rounded bg-slate-100 text-[8px] font-black text-slate-500 uppercase tracking-tighter">{variant?.color || 'N/A'}</span>
+                                    {editMode && (
+                                      <button
+                                        onClick={() => toggleDeleteItem(adminItemKey)}
+                                        title={isAdminItemDeleted ? 'Undo delete' : 'Delete this item'}
+                                        className={`w-5 h-5 rounded flex items-center justify-center transition-all ${isAdminItemDeleted ? 'bg-rose-500 text-white' : 'text-rose-400 hover:bg-rose-50'}`}
+                                      ><Trash2 size={9} /></button>
+                                    )}
                                   </div>
                                   <p className="text-[10px] text-indigo-500 font-black uppercase tracking-wider">{getAssortment(variant)}</p>
+                                  {article?.mrp ? (
+                                    <p className="text-[10px] font-black text-amber-600">
+                                      MRP ₹{(article.mrp * (item.pairCount / (item.cartonCount || 1))).toLocaleString()}/ctn
+                                    </p>
+                                  ) : null}
                                 </div>
                               </td>
                               <td className="px-4 py-4 text-center">
-                                <p className="text-sm font-black text-slate-900 leading-none">{item.cartonCount}</p>
+                                {editMode ? (
+                                  isAdminItemDeleted ? (
+                                    <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">Removed</span>
+                                  ) : (
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        onClick={() => {
+                                          setEditCounts(p => ({ ...p, [adminItemKey]: Math.max(0, (p[adminItemKey] ?? item.cartonCount) - 1) }));
+                                        }}
+                                        className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center transition-all"
+                                      ><Minus size={10} /></button>
+                                      <span className="text-sm font-black text-slate-900 w-6 text-center">
+                                        {editCounts[adminItemKey] ?? item.cartonCount}
+                                      </span>
+                                      <button
+                                        onClick={() => {
+                                          setEditCounts(p => ({ ...p, [adminItemKey]: (p[adminItemKey] ?? item.cartonCount) + 1 }));
+                                        }}
+                                        className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-indigo-100 text-slate-500 hover:text-indigo-600 flex items-center justify-center transition-all"
+                                      ><Plus size={10} /></button>
+                                    </div>
+                                  )
+                                ) : (
+                                  <p className="text-sm font-black text-slate-900 leading-none">{item.cartonCount}</p>
+                                )}
                               </td>
                               <td className="px-4 py-4 text-center">
                                 <p className="text-sm font-black text-emerald-600 leading-none">{item.fulfilledCartonCount || 0}</p>
@@ -1794,127 +2069,106 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
               </div>
             </div>
 
-            {/* Sidebar Column */}
-            <div className="lg:col-span-1 space-y-6">
-              {/* Payment Breakdown */}
-              <div className="bg-slate-900 text-white p-7 rounded-3xl shadow-xl shadow-slate-200/20">
-                <h3 className="text-xs font-black uppercase tracking-[0.3em] mb-6 border-b border-white/10 pb-4 text-slate-400">Payment Breakdown</h3>
-                <div className="space-y-4 mb-6">
-                  <div className="flex justify-between text-slate-400 text-xs">
-                    <span>Total Cartons</span>
-                    <span className="font-bold text-white">{currentOrder.totalCartons}</span>
-                  </div>
+          {/* Payment Breakdown — bottom full-width */}
+          {(() => {
+            const subtotal   = currentOrder.totalAmount || 0;
+            const discAmt    = currentOrder.discountAmount || 0;
+            const taxable    = currentOrder.finalAmount ?? (subtotal - discAmt);
+            const gstRate    = currentOrder.gstRate ?? 5;
+            const gstAmt     = currentOrder.gstAmount ?? Math.round(taxable * gstRate / 100 * 100) / 100;
+            const preRound   = taxable + gstAmt;
+            // Round-off: nearest rupee; always within ±₹0.50 (GST rule)
+            const roundOff   = Math.round(preRound) - preRound;
+            const finalPayable = Math.round(preRound);
 
-                  {/* Fulfillment Summary */}
-                  {(() => {
-                    const allocated = currentOrder.items.reduce((acc, item) => acc + (item.allocatedCartonCount ?? 0), 0);
-                    const fulfilled = currentOrder.status === OrderStatus.RECEIVED || currentOrder.status === OrderStatus.PARTIAL 
-                      ? currentOrder.items.reduce((acc, item) => acc + (item.fulfilledCartonCount || 0), 0)
-                      : 0;
-                    const pending = currentOrder.totalCartons - fulfilled;
-                    return (
-                      <div className="pt-4 mt-4 border-t border-white/10">
-                        <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
-                          <div>
-                            <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">Status: Pending Delivery</p>
-                            <p className="text-xl font-black text-white">{pending} <span className="text-xs text-slate-500 font-bold uppercase">Cartons</span></p>
-                          </div>
-                          <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
-                            <Package size={20} className="text-amber-500" />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
+            const fulfilled = (currentOrder.status === OrderStatus.RECEIVED || currentOrder.status === OrderStatus.PARTIAL)
+              ? currentOrder.items.reduce((acc, i) => acc + (i.fulfilledCartonCount || 0), 0)
+              : 0;
+            const pendingCtns = currentOrder.totalCartons - fulfilled;
 
-                  <div className="pt-6 border-t border-white/10 space-y-3">
-                    <div className="flex justify-between items-end">
-                      <span className="text-xs font-bold text-slate-400">Order Subtotal</span>
-                      <span className="text-base font-bold text-slate-300">
-                        ₹{(currentOrder.totalAmount || 0).toLocaleString()}
-                      </span>
-                    </div>
-                    {(currentOrder.discountPercentage || 0) > 0 && (
-                      <div className="flex justify-between items-end">
-                        <span className="text-xs font-bold text-emerald-400">
-                          Special Discount {!isDistributor && `(${currentOrder.discountPercentage}%)`}
-                        </span>
-                        <span className="text-base font-bold text-emerald-400">-₹{(currentOrder.discountAmount || 0).toLocaleString()}</span>
-                      </div>
+            return (
+              <div className="bg-slate-900 text-white rounded-3xl shadow-xl shadow-slate-200/20 overflow-hidden">
+                <div className="px-7 py-4 border-b border-white/10 flex items-center gap-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Payment Breakdown</p>
+                  <div className="flex items-center gap-1.5 ml-auto bg-white/5 px-3 py-1 rounded-xl">
+                    <Package size={12} className="text-amber-400" />
+                    <span className="text-xs font-black text-white">{currentOrder.totalCartons}</span>
+                    <span className="text-[9px] text-slate-500 font-bold uppercase">Total Ctns</span>
+                    {pendingCtns > 0 && (
+                      <span className="ml-2 text-[9px] font-black text-amber-400 uppercase">{pendingCtns} Pending</span>
                     )}
-                    <div className="flex justify-between items-end pt-4 border-t border-white/10">
-                      <span className="text-sm font-black text-white uppercase tracking-widest">Final Payable</span>
-                      <span className="text-3xl font-black text-indigo-400 tracking-tighter">
-                        ₹{(currentOrder.finalAmount || currentOrder.totalAmount || 0).toLocaleString()}
-                      </span>
-                    </div>
                   </div>
                 </div>
 
-                {/* Admin Status Transitions - Consolidated to Table Footer */}
+                <div className="px-7 py-5 flex flex-wrap items-end gap-6 lg:gap-10">
+                  {/* Subtotal */}
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Order Subtotal</span>
+                    <span className="text-lg font-bold text-slate-300">₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+
+                  {/* Discount */}
+                  {discAmt > 0 && (
+                    <>
+                      <div className="text-slate-600 text-lg font-light">−</div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">
+                          Discount{!isDistributor && currentOrder.discountPercentage ? ` (${currentOrder.discountPercentage}%)` : ''}
+                        </span>
+                        <span className="text-lg font-bold text-emerald-400">₹{discAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="text-slate-600 text-lg font-light">=</div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Taxable Amount</span>
+                        <span className="text-lg font-bold text-slate-300">₹{taxable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* GST */}
+                  <div className="text-slate-600 text-lg font-light">+</div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">GST @ {gstRate}%</span>
+                    <span className="text-lg font-bold text-blue-400">₹{gstAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+
+                  {/* Round Off — only show if non-zero */}
+                  {Math.abs(roundOff) >= 0.01 && (
+                    <>
+                      <div className="text-slate-600 text-lg font-light">{roundOff > 0 ? '+' : '−'}</div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                          Round Off
+                          <span className="ml-1 text-slate-600 normal-case font-medium">(±₹0.50 max)</span>
+                        </span>
+                        <span className="text-lg font-bold text-slate-400">
+                          ₹{Math.abs(roundOff).toFixed(2)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Divider */}
+                  <div className="hidden lg:block w-px h-12 bg-white/10 mx-2" />
+
+                  {/* Final Payable */}
+                  <div className="flex flex-col gap-0.5 ml-auto">
+                    <span className="text-[9px] font-black text-indigo-300 uppercase tracking-widest">Final Payable</span>
+                    <span className="text-4xl font-black text-indigo-400 tracking-tighter">
+                      ₹{finalPayable.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                </div>
+
                 {!isDistributor && (
-                  <div className="mt-8 pt-8 border-t border-white/10 space-y-4 opacity-50">
-                    <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 rounded-xl">
-                      <Clock size={12} className="text-slate-500" />
-                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em]">
-                        View actions at bottom of table
-                      </p>
-                    </div>
+                  <div className="px-7 pb-4 flex items-center gap-2 opacity-50">
+                    <Clock size={11} className="text-slate-500" />
+                    <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em]">Order actions available at bottom of table</p>
                   </div>
                 )}
               </div>
-
-              {/* Delivery Location Sidebar */}
-              <div className="bg-white p-7 rounded-3xl border border-slate-200 shadow-xl shadow-slate-200/20">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center">
-                    <MapPin size={20} className="text-indigo-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest leading-none mb-1">Destination</h3>
-                    <p className="text-[10px] font-bold text-slate-400">Shipping Details</p>
-                  </div>
-                </div>
-
-                {(() => {
-                  const d = typeof currentOrder.distributorId === 'object' ? currentOrder.distributorId : null;
-                  const profile = d?.distributorId;
-                  const addr = profile?.shippingAddress;
-                  const email = profile?.email || d?.email || 'N/A';
-                  const phone = profile?.phone || 'N/A';
-
-                  return (
-                    <div className="space-y-6">
-                      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                        <p className="font-black text-sm text-slate-900 tracking-tight mb-2">
-                          {profile?.companyName || currentOrder.distributorName}
-                        </p>
-                        {addr && addr.address1 ? (
-                          <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-                            {addr.address1}{addr.address2 ? `, ${addr.address2}` : ''}<br />
-                            {addr.city}, {addr.state} - {addr.pinCode}
-                          </p>
-                        ) : (
-                          <p className="text-xs text-slate-400 italic font-medium">Shipping address not available</p>
-                        )}
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                          <Phone size={14} className="text-indigo-500" />
-                          <p className="text-[11px] font-bold text-slate-700">{phone}</p>
-                        </div>
-                        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 min-w-0">
-                          <Mail size={14} className="text-blue-500" />
-                          <p className="text-[11px] font-bold text-slate-700 truncate">{email}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            </div>
-          </div>
+            );
+          })()}
         </div>
       {/* Document Preview Dialog */}
       {previewDoc && (

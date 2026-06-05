@@ -102,8 +102,19 @@ const emitCatalogUpdated = (action, articleId) => {
   }
 };
 
+// ──────────────────────────────────────────────
+// SESSION events  (Admin → specific user)
+// Force-logout a user instantly when admin resets their password
+// ──────────────────────────────────────────────
+const emitSessionInvalidated = (userId) => {
+  if (io) {
+    io.emit("sessionInvalidated", { userId: String(userId) });
+  }
+};
+
 module.exports = {
   init, getIO,
   emitOrderUpdate, emitDistributorUpdate, emitReturnCreated,
   emitGRNSubmitted, emitPOEvent, emitCatalogUpdated,
+  emitSessionInvalidated,
 };

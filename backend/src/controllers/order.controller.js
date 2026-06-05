@@ -40,8 +40,8 @@ const createOrder = async (req, res) => {
 const getDistributorOrders = async (req, res) => {
   try {
     const distributorId = req.user.id; // Extracted from JWT
-    const { page, limit, q, status, startDate, endDate, sortBy, sortDesc } = req.query;
-    const result = await OrderService.getOrdersByDistributor(distributorId, { page, limit, search: q, status, startDate, endDate, sortBy, sortDesc });
+    const { page, limit, q, status, startDate, endDate, sortBy, sortDesc, orderType } = req.query;
+    const result = await OrderService.getOrdersByDistributor(distributorId, { page, limit, search: q, status, startDate, endDate, sortBy, sortDesc, orderType });
 
     res.status(200).json({
       success: true,
@@ -292,6 +292,26 @@ const markOrderPaid = async (req, res) => {
   }
 };
 
+const getOrderByIdCtrl = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const order = await Order.findById(id).populate("distributorId").lean();
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+
+    // Distributors can only fetch their own orders
+    if (req.user.role === "distributor") {
+      const ownerId = String(order.distributorId?._id || order.distributorId);
+      if (ownerId !== String(req.user.id)) {
+        return res.status(403).json({ success: false, message: "Access denied" });
+      }
+    }
+
+    res.json({ success: true, data: order });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 const deleteOrderCtrl = async (req, res) => {
   try {
     const { id } = req.params;
@@ -317,6 +337,8 @@ const editOrderCtrl = async (req, res) => {
     const { id } = req.params;
     const { items } = req.body;
     const updated = await editOrder(id, req.user.id, req.user.role, { items });
+
+    emitOrderUpdate(updated);
 
     activityLog.createLog({
       action: "ORDER_EDITED",
@@ -391,6 +413,7 @@ module.exports = {
   createOrder,
   getDistributorOrders,
   getAllOrders,
+  getOrderByIdCtrl,
   updateOrderStatus,
   processReturn,
   getReturnHistory,

@@ -116,8 +116,7 @@ const OrderSchema = new mongoose.Schema(
   {
     orderNumber: {
       type: String,
-      default: null,
-      sparse: true, // allows multiple null values with unique index
+      sparse: true,
     },
     distributorId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -200,6 +199,14 @@ const OrderSchema = new mongoose.Schema(
       default: 0,
     },
     finalAmount: {
+      type: Number,
+      default: 0,
+    },
+    gstRate: {
+      type: Number,
+      default: 0,
+    },
+    gstAmount: {
       type: Number,
       default: 0,
     },

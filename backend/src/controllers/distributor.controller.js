@@ -4,6 +4,7 @@ const { emitDistributorUpdate } = require("../socket");
 const activityLog = require("../services/activityLog.service");
 const Order = require("../models/Order");
 const Return = require("../models/Return");
+const Distributor = require("../models/Distributor");
 
 exports.createDistributor = async (req, res, next) => {
   try {
@@ -100,9 +101,14 @@ exports.getDistributorSummary = async (req, res, next) => {
   try {
     const { id } = req.params;
 
+    // Orders store distributorId as User._id, but `id` here is Distributor._id.
+    // Resolve the linked userId so the query matches actual orders.
+    const distProfile = await Distributor.findById(id).select("userId").lean();
+    const orderUserId = distProfile?.userId || id;
+
     const [orders, returns] = await Promise.all([
-      Order.find({ distributorId: id }).sort({ createdAt: -1 }).lean(),
-      Return.find({ distributorId: id }).sort({ createdAt: -1 }).lean(),
+      Order.find({ distributorId: orderUserId }).sort({ createdAt: -1 }).lean(),
+      Return.find({ distributorId: orderUserId }).sort({ createdAt: -1 }).lean(),
     ]);
 
     const statusCounts = {};

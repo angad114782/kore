@@ -371,11 +371,16 @@ exports.updateDistributor = async (id, body) => {
       userPatch.email = normalizeEmail(body.email);
     }
 
+    let passwordChanged = false;
     if (body.loginPassword !== undefined && String(body.loginPassword).trim().length > 0) {
       userPatch.password = await bcrypt.hash(
         String(body.loginPassword),
         SALT_ROUNDS
       );
+      // Invalidate all existing sessions when password is changed
+      const linkedUser = await User.findById(distributor.userId).select('tokenVersion').lean();
+      userPatch.tokenVersion = (linkedUser?.tokenVersion || 0) + 1;
+      passwordChanged = true;
     }
 
     if (typeof payload.isActive === "boolean")
@@ -406,6 +411,12 @@ exports.updateDistributor = async (id, body) => {
       await User.findByIdAndUpdate(distributor.userId, userPatch, {
         returnDocument: 'after',
       });
+    }
+
+    // Push instant logout via socket if password was reset
+    if (passwordChanged) {
+      const { emitSessionInvalidated } = require("../socket");
+      emitSessionInvalidated(distributor.userId);
     }
   }
 

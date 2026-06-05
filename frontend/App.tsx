@@ -7,6 +7,10 @@ import {
   ShoppingCart,
   Clock,
   Loader2,
+  IndianRupee,
+  TrendingUp,
+  Star,
+  CheckCircle,
 } from "lucide-react";
 
 import {
@@ -30,6 +34,7 @@ import Shop from "./components/Distributor/Shop";
 import Wishlist from "./components/Distributor/Wishlist";
 import MyOrders from "./components/Distributor/MyOrders";
 import Cart from "./components/Distributor/Cart";
+import DistributorPreOrders from "./components/Distributor/DistributorPreOrders";
 import Auth from "./components/Auth";
 import POPage from "./components/Admin/POPage";
 import GRN from "./components/Admin/GRN";
@@ -290,11 +295,23 @@ const App: React.FC = () => {
 
       // Distributors only care about their own orders
       if (isDistributor && !isMyOrder) return;
-      
-      toast.success(`Order Update: ${orderId.slice(-6).toUpperCase()}`, {
-        description: `Status changed to ${data.status?.replace(/_/g, ' ') || 'updated'}`,
-        duration: 3000
-      });
+
+      // Suppress toast for price-only updates (PENDING stays PENDING)
+      // But show toast for admin when a new PRE_BOOKED order arrives
+      const isPriceOnly = data.status === "PENDING" && !isDistributor;
+      if (!isPriceOnly) {
+        if (data.status === "PRE_BOOKED" && !isDistributor) {
+          toast.info(`New Pre-Order received`, {
+            description: `Order #${orderId.slice(-6).toUpperCase()} — check Pre-Orders tab`,
+            duration: 4000,
+          });
+        } else if (data.status !== "PRE_BOOKED") {
+          toast.success(`Order Update: ${orderId.slice(-6).toUpperCase()}`, {
+            description: `Status changed to ${data.status?.replace(/_/g, ' ') || 'updated'}`,
+            duration: 3000,
+          });
+        }
+      }
 
       // Re-fetch orders for data consistency
       if (fetchOrdersRef.current) {
@@ -371,6 +388,8 @@ const App: React.FC = () => {
 
     socket.on("catalogUpdated", () => {
       if (fetchArticlesRef.current) fetchArticlesRef.current();
+      // Refresh orders & pre-orders so embedded catalog data (MRP etc.) stays current
+      if (fetchOrdersRef.current) fetchOrdersRef.current(true);
     });
 
     socket.on("returnCreated", (data) => {
@@ -394,6 +413,17 @@ const App: React.FC = () => {
         });
         if (fetchOrdersRef.current) fetchOrdersRef.current(true);
       }
+    });
+
+    socket.on("sessionInvalidated", (data) => {
+      const u = userRef.current;
+      if (!u) return;
+      if (String(data.userId) !== String(u.id)) return;
+      store.logout();
+      toast.error("Session expired", {
+        description: "Admin ne aapka password change kar diya. Please login karein.",
+        duration: 6000,
+      });
     });
 
     return () => {
@@ -644,17 +674,41 @@ const App: React.FC = () => {
     );
   };
 
+  const handlePlacePreOrder = async (
+    articleId: string,
+    variantId: string,
+    sizeQuantities: Record<string, number>,
+    cartonCount: number,
+    pairCount: number,
+    price: number
+  ) => {
+    if (!user) return;
+    const payload = {
+      distributorId: user.id,
+      distributorName: user.name,
+      date: new Date().toISOString().split("T")[0],
+      orderType: "PREORDER",
+      items: [{ articleId, variantId, sizeQuantities, cartonCount, pairCount: pairCount, price }],
+      totalAmount: price,
+      totalCartons: cartonCount,
+      totalPairs: pairCount,
+      gstRate: 5,
+    };
+    const res = await distributorOrderService.placeOrder(payload as any);
+    setOrders(prev => [{ ...res, id: (res as any)._id || res.id }, ...prev]);
+    setLastUpdated(new Date());
+    toast.success("Pre-Order placed!", {
+      description: "Check 'My Pre-Orders' tab to track it.",
+      duration: 4000,
+    });
+  };
+
   const placeOrder = async (gstPercent: number = 5) => {
     if (!user || cart.length === 0) return;
 
     const availableItems = cart.filter(i => {
       const art = articles.find(a => a.id === i.articleId);
       return art?.status === "AVAILABLE";
-    });
-
-    const wishlistItems = cart.filter(i => {
-      const art = articles.find(a => a.id === i.articleId);
-      return art?.status !== "AVAILABLE";
     });
 
     const placePromise = async () => {
@@ -690,30 +744,10 @@ const App: React.FC = () => {
           totalAmount: availableItems.reduce((s, i) => s + i.price, 0),
           totalCartons: availableItems.reduce((s, i) => s + i.cartonCount, 0),
           totalPairs: availableItems.reduce((s, i) => s + i.pairCount, 0),
+          gstRate: gstPercent,
         };
         const res = await distributorOrderService.placeOrder(payload);
         placed.push({ ...res, id: (res as any)._id || res.id });
-      }
-
-      // ── Place PRE-ORDER for PRE-ORDER (WISHLIST) items ──
-      if (wishlistItems.length > 0) {
-        const prePayload: Partial<Order> = {
-          distributorId: user.id,
-          distributorName: user.name,
-          date: new Date().toISOString().split("T")[0],
-          status: OrderStatus.PRE_BOOKED,
-          orderType: "PREORDER",
-          items: wishlistItems.map(item => ({
-            articleId: item.articleId, variantId: item.variantId,
-            sizeQuantities: item.sizeQuantities,
-            cartonCount: item.cartonCount, pairCount: item.pairCount, price: item.price,
-          })),
-          totalAmount: wishlistItems.reduce((s, i) => s + i.price, 0),
-          totalCartons: wishlistItems.reduce((s, i) => s + i.cartonCount, 0),
-          totalPairs: wishlistItems.reduce((s, i) => s + i.pairCount, 0),
-        };
-        const res2 = await distributorOrderService.placeOrder(prePayload);
-        placed.push({ ...res2, id: (res2 as any)._id || res2.id });
       }
 
       setOrders(prev => [...placed, ...prev]);
@@ -721,10 +755,7 @@ const App: React.FC = () => {
       setActiveTab("orders");
       await checkAuth(true);
 
-      const parts = [];
-      if (availableItems.length > 0) parts.push("Order placed");
-      if (wishlistItems.length > 0) parts.push("Pre-order placed");
-      return parts.join(" & ");
+      return "Order placed";
     };
 
     toast.promise(placePromise(), {
@@ -968,7 +999,7 @@ const App: React.FC = () => {
           ))}
 
         {activeTab === "pre_orders" && user.role !== UserRole.DISTRIBUTOR && (
-          <PreOrderManager articles={articles} />
+          <PreOrderManager articles={articles} lastUpdated={lastUpdated} />
         )}
 
         {activeTab === "returns" && user.role !== UserRole.DISTRIBUTOR && (
@@ -988,18 +1019,29 @@ const App: React.FC = () => {
         )}
 
         {activeTab === "preorder" && user.role === UserRole.DISTRIBUTOR && (
-          <Wishlist articles={articles} addToCart={addToCart} />
+          <Wishlist articles={articles} onPlacePreOrder={handlePlacePreOrder} />
+        )}
+
+        {activeTab === "my_preorders" && user.role === UserRole.DISTRIBUTOR && (
+          <DistributorPreOrders
+            userId={user.id}
+            articles={articles}
+            inventory={inventory}
+            lastUpdated={lastUpdated}
+          />
         )}
 
         {activeTab === "cart" && user.role === UserRole.DISTRIBUTOR && (
           <Cart
             articles={articles}
+            inventory={inventory}
             cart={cart}
             clearCartItem={clearCartItem}
             onCheckout={(gst) => placeOrder(gst)}
             total={cartTotal}
             assortments={ASSORTMENTS as Assortment[]}
             user={user}
+            lastUpdated={lastUpdated}
           />
         )}
 
@@ -1043,6 +1085,19 @@ const App: React.FC = () => {
 
 /* ---------------- DistributorDashboard + StatCard (same file) ---------------- */
 
+const STATUS_CHIP: Record<string, { label: string; color: string }> = {
+  PRE_BOOKED: { label: "Pre-Booked", color: "bg-violet-100 text-violet-700" },
+  CONFIRMED:  { label: "Confirmed",  color: "bg-blue-100 text-blue-700" },
+  PENDING:    { label: "Pending",    color: "bg-slate-100 text-slate-600" },
+  BOOKED:     { label: "Booked",     color: "bg-indigo-100 text-indigo-700" },
+  PFD:        { label: "PFD",        color: "bg-purple-100 text-purple-700" },
+  RFD:        { label: "RFD",        color: "bg-sky-100 text-sky-700" },
+  OFD:        { label: "In Transit", color: "bg-amber-100 text-amber-700" },
+  RECEIVED:   { label: "Received",   color: "bg-emerald-100 text-emerald-700" },
+  PARTIAL:    { label: "Partial",    color: "bg-orange-100 text-orange-700" },
+  CANCELLED:  { label: "Cancelled",  color: "bg-rose-100 text-rose-700" },
+};
+
 const DistributorDashboard: React.FC<{
   user: User;
   orders: Order[];
@@ -1050,100 +1105,151 @@ const DistributorDashboard: React.FC<{
   goToCart: () => void;
 }> = ({ user, orders, cartCount, goToCart }) => {
   const userOrders = orders.filter((o) => o.distributorId === user.id);
-  const pending = userOrders.filter(
-    (o) => o.status === OrderStatus.BOOKED || o.status === OrderStatus.PFD || o.status === OrderStatus.RFD
-  ).length;
-  const dispatched = userOrders.filter(
-    (o) => o.status === OrderStatus.OFD || o.status === OrderStatus.RECEIVED
-  ).length;
+
+  // Computed stats
+  const totalValue = userOrders.reduce((s, o) => s + (o.finalAmount || o.totalAmount || 0), 0);
+  const totalPairs = userOrders.reduce((s, o) => s + (o.totalPairs || 0), 0);
+  const paidAmount = userOrders.filter(o => (o as any).paymentStatus === "PAID").reduce((s, o) => s + (o.finalAmount || o.totalAmount || 0), 0);
+  const pendingPayment = totalValue - paidAmount;
+  const preOrders = userOrders.filter(o => o.status === OrderStatus.PRE_BOOKED || (o as any).orderType === "PREORDER");
+  const activeOrders = userOrders.filter(o =>
+    o.status === OrderStatus.BOOKED || o.status === OrderStatus.PFD ||
+    o.status === OrderStatus.RFD || o.status === OrderStatus.OFD
+  );
+
+  const statusCounts: Record<string, number> = {};
+  userOrders.forEach(o => { statusCounts[o.status] = (statusCounts[o.status] || 0) + 1; });
+
+  const recentOrders = [...userOrders].sort((a, b) =>
+    new Date(b.date).getTime() - new Date(a.date).getTime()
+  ).slice(0, 5);
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          label="My Orders"
-          value={userOrders.length}
-          icon={<ShoppingBag className="text-indigo-600" />}
-        />
-        <StatCard
-          label="Pending"
-          value={pending}
-          icon={<Clock className="text-amber-600" />}
-        />
-        <StatCard
-          label="In Transit"
-          value={dispatched}
-          icon={<Truck className="text-emerald-600" />}
-        />
-        <div
-          onClick={goToCart}
-          className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-all group"
-        >
-          <div>
-            <p className="text-slate-500 text-sm font-medium">Cart Balance</p>
-            <p className="text-3xl font-bold mt-1 text-slate-900 group-hover:text-indigo-600 transition-colors">
-              {cartCount}
-            </p>
+    <div className="space-y-5">
+      {/* Top stat cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          { label: "Total Orders",  value: userOrders.length.toLocaleString(),      icon: <ShoppingBag size={16} />, color: "text-indigo-600",  bg: "bg-indigo-50" },
+          { label: "Total Value",   value: `₹${totalValue.toLocaleString()}`,        icon: <IndianRupee size={16} />, color: "text-emerald-600", bg: "bg-emerald-50" },
+          { label: "Total Pairs",   value: totalPairs.toLocaleString(),              icon: <Package size={16} />,     color: "text-blue-600",    bg: "bg-blue-50" },
+          { label: "Pre-Orders",    value: preOrders.length.toLocaleString(),        icon: <Star size={16} />,        color: "text-amber-600",   bg: "bg-amber-50" },
+        ].map(s => (
+          <div key={s.label} className={`${s.bg} rounded-2xl p-4`}>
+            <div className={`${s.color} mb-1.5`}>{s.icon}</div>
+            <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5">{s.label}</p>
           </div>
-          <div className="p-3 bg-slate-50 rounded-xl group-hover:bg-indigo-100">
-            <ShoppingCart className="text-indigo-600" />
-          </div>
-        </div>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Shipments */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold text-slate-900">Recent Shipments</h3>
-          </div>
+      {/* Activity Overview card */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
+        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+          <TrendingUp size={15} className="text-indigo-500" /> Activity Overview
+        </h3>
 
-          {userOrders.length === 0 ? (
-            <div className="py-12 text-center flex flex-col items-center">
-              <Package className="text-slate-200 mb-2" size={40} />
-              <p className="text-slate-400 text-sm">No recent bookings found.</p>
+        {/* Payment split */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-emerald-50 rounded-xl p-3 flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+            <div>
+              <p className="text-xs text-slate-500 font-medium">Paid</p>
+              <p className="text-sm font-black text-emerald-700">₹{paidAmount.toLocaleString()}</p>
+            </div>
+          </div>
+          <div className="bg-rose-50 rounded-xl p-3 flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+            <div>
+              <p className="text-xs text-slate-500 font-medium">Pending Payment</p>
+              <p className="text-sm font-black text-rose-700">₹{pendingPayment.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick stats row */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-slate-50 rounded-xl p-3 flex items-center gap-3">
+            <div className="p-1.5 bg-indigo-100 rounded-lg">
+              <Clock size={13} className="text-indigo-600" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 font-medium">Active Orders</p>
+              <p className="text-sm font-black text-slate-800">{activeOrders.length}</p>
+            </div>
+          </div>
+          <div
+            onClick={goToCart}
+            className="bg-slate-50 rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:bg-indigo-50 transition-colors group"
+          >
+            <div className="p-1.5 bg-indigo-100 rounded-lg group-hover:bg-indigo-200 transition-colors">
+              <ShoppingCart size={13} className="text-indigo-600" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 font-medium">Cart Items</p>
+              <p className="text-sm font-black text-indigo-700">{cartCount}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Status chips */}
+        {Object.keys(statusCounts).length > 0 && (
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+            {Object.entries(statusCounts).map(([status, count]) => {
+              const meta = STATUS_CHIP[status] || { label: status, color: "bg-slate-100 text-slate-600" };
+              return (
+                <span key={status} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${meta.color}`}>
+                  {meta.label} <span className="opacity-70">× {count}</span>
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Recent Orders + Overdue side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
+            <Clock size={13} className="text-slate-400" />
+            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Recent Orders</h4>
+            <span className="ml-auto text-[10px] text-slate-400">Last 5</span>
+          </div>
+          {recentOrders.length === 0 ? (
+            <div className="py-10 text-center">
+              <Package className="text-slate-200 mx-auto mb-2" size={32} />
+              <p className="text-slate-400 text-sm">No orders yet.</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {userOrders.slice(0, 5).map((order) => (
-                <div
-                  key={order.id}
-                  className="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-indigo-50/20 transition-colors border border-transparent hover:border-indigo-100"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`p-2.5 rounded-xl ${
-                      order.status === OrderStatus.OFD || order.status === OrderStatus.RECEIVED
-                        ? "bg-emerald-100 text-emerald-600"
-                        : "bg-indigo-100 text-indigo-600"
-                    }`}>
-                      {order.status === OrderStatus.OFD || order.status === OrderStatus.RECEIVED
-                        ? <Truck size={20} />
-                        : <Clock size={20} />}
+            <div className="divide-y divide-slate-50">
+              {recentOrders.map((order) => {
+                const isTransit = order.status === OrderStatus.OFD || order.status === OrderStatus.RECEIVED;
+                const chip = STATUS_CHIP[order.status];
+                return (
+                  <div key={order.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-xl ${isTransit ? "bg-emerald-100 text-emerald-600" : "bg-indigo-100 text-indigo-600"}`}>
+                        {isTransit ? <Truck size={14} /> : <Clock size={14} />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">{order.orderNumber || `#${order.id.slice(-6).toUpperCase()}`}</p>
+                        <p className="text-[10px] text-slate-400 font-medium">{order.date}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-slate-900">{order.orderNumber || order.id}</p>
-                      <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{order.date}</p>
+                    <div className="text-right">
+                      <p className="text-sm font-black text-slate-800">₹{(order.finalAmount || order.totalAmount || 0).toLocaleString()}</p>
+                      {chip && (
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${chip.color}`}>{chip.label}</span>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-slate-900">₹{order.totalAmount.toLocaleString()}</p>
-                    <p className={`text-[10px] font-bold uppercase tracking-widest ${
-                      order.status === OrderStatus.OFD || order.status === OrderStatus.RECEIVED
-                        ? "text-emerald-600" : "text-indigo-600"
-                    }`}>
-                      {order.status.replace(/_/g, " ")}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* Overdue Payments */}
         <OverduePayments isAdmin={false} />
       </div>
-
     </div>
   );
 };

@@ -22,9 +22,10 @@ const statusColors: Record<string, string> = {
 
 interface PreOrderManagerProps {
   articles: Article[];
+  lastUpdated?: Date;
 }
 
-const PreOrderManager: React.FC<PreOrderManagerProps> = ({ articles }) => {
+const PreOrderManager: React.FC<PreOrderManagerProps> = ({ articles, lastUpdated }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [meta, setMeta] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -52,6 +53,8 @@ const PreOrderManager: React.FC<PreOrderManagerProps> = ({ articles }) => {
   }, [currentPage, pageSize, searchQuery, statusFilter]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  useEffect(() => { if (lastUpdated) fetchOrders(true); }, [lastUpdated]);
 
   const handleConfirm = async (orderId: string, orderNumber?: string) => {
     setActioning(orderId);

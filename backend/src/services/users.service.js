@@ -333,5 +333,9 @@ exports.adminResetPassword = async (targetUserId, newPassword) => {
   user.password     = await bcrypt.hash(String(newPassword), SALT_ROUNDS);
   user.tokenVersion = (user.tokenVersion || 0) + 1; // invalidates all existing JWTs
   await user.save();
+
+  const { emitSessionInvalidated } = require("../socket");
+  emitSessionInvalidated(targetUserId);
+
   return true;
 };

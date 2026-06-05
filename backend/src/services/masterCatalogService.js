@@ -450,20 +450,28 @@ exports.update = async (req, id) => {
 
   await doc.save();
 
-  // ── Price propagation ─────────────────────────────────────────────────────
-  // When sellingPrice changes in any variant, update PENDING + PRE_BOOKED orders
-  if (body.variants !== undefined) {
-    try {
-      const { propagatePriceUpdate } = require("./order.service");
-      const articleId = doc._id;
-      // Use the first active variant's selling price as the per-pair price
+  // ── Price propagation to PENDING + PRE_BOOKED orders ─────────────────────
+  // Priority: article-level MRP (if changed) → variant sellingPrice (if changed)
+  try {
+    const { propagatePriceUpdate } = require("./order.service");
+    let pricePerPair = null;
+
+    if (body.mrp !== undefined && Number(body.mrp) > 0) {
+      // Article-level MRP changed — use it as the per-pair price for orders
+      pricePerPair = Number(body.mrp);
+    } else if (body.variants !== undefined) {
+      // Variant sellingPrice changed — use first active variant's price
       const activeVariant = (doc.variants || []).find(v => v.isActive !== false);
       if (activeVariant && activeVariant.sellingPrice > 0) {
-        await propagatePriceUpdate(articleId, activeVariant.sellingPrice);
+        pricePerPair = activeVariant.sellingPrice;
       }
-    } catch (e) {
-      console.error("Price propagation failed:", e.message);
     }
+
+    if (pricePerPair) {
+      await propagatePriceUpdate(doc._id, pricePerPair);
+    }
+  } catch (e) {
+    console.error("Price propagation failed:", e.message);
   }
 
   return doc;

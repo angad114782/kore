@@ -50,6 +50,9 @@ router.patch("/:id/mark-paid", role(["admin", "superadmin"]), OrderController.ma
 router.get("/pre-orders", role(["admin", "superadmin", "manager", "supervisor", "accountant"]), OrderController.getPreOrdersCtrl);
 router.patch("/:id/release", role(["admin", "superadmin"]), OrderController.releasePreOrderCtrl);
 
+// Single order fetch (admin sees any, distributor sees own only)
+router.get("/:id", role(["admin", "superadmin", "distributor", "manager", "supervisor", "accountant"]), OrderController.getOrderByIdCtrl);
+
 // Edit / Delete (distributor own orders, or admin)
 router.patch("/:id/edit", role(["distributor", "admin", "superadmin"]), OrderController.editOrderCtrl);
 router.delete("/:id", role(["distributor", "admin", "superadmin"]), OrderController.deleteOrderCtrl);

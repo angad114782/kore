@@ -17,7 +17,7 @@ class DistributorOrderService {
 
   async getOrdersByDistributor(
     distributorId: string,
-    params: { page?: number; limit?: number; q?: string; status?: string; startDate?: string; endDate?: string; sortBy?: string; sortDesc?: boolean } = {}
+    params: { page?: number; limit?: number; q?: string; status?: string; startDate?: string; endDate?: string; sortBy?: string; sortDesc?: boolean; orderType?: string } = {}
   ): Promise<{ items: Order[]; meta: any }> {
     const query = new URLSearchParams();
     if (params.page) query.append("page", params.page.toString());
@@ -28,6 +28,7 @@ class DistributorOrderService {
     if (params.endDate) query.append("endDate", params.endDate);
     if (params.sortBy) query.append("sortBy", params.sortBy);
     if (params.sortDesc !== undefined) query.append("sortDesc", params.sortDesc.toString());
+    if (params.orderType) query.append("orderType", params.orderType);
     query.append("_t", Date.now().toString()); // Cache buster for real-time sync
 
     const res = await axios.get(`${API_URL}/my-orders?${query.toString()}`, {
@@ -70,8 +71,15 @@ class DistributorOrderService {
   }
 
   async getOrderById(orderId: string): Promise<Order | undefined> {
-    const res = await this.getAllOrders({ limit: 1000 }); // Fetch a large batch or implement single fetch
-    return res.items.find((o) => o.id === orderId);
+    try {
+      const res = await axios.get(`${API_URL}/${orderId}`, {
+        headers: getAuthHeaders(),
+        params: { _t: Date.now() },
+      });
+      return this.mapOrder(res.data.data);
+    } catch {
+      return undefined;
+    }
   }
 
   async updateOrderStatus(

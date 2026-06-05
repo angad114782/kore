@@ -1,13 +1,14 @@
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { 
-  Package, 
-  Clock, 
+import {
+  Package,
+  Clock,
   Info,
   Star,
   Search,
   Filter,
-  ShoppingCart,
+  Loader2,
+  CheckCircle2,
   Minus,
   Plus
 } from "lucide-react";
@@ -46,14 +47,17 @@ const colorToHex = (color: string): string => {
   return map[color.toLowerCase()] || "#cbd5e1";
 };
 
-const PreOrderCard: React.FC<{ 
+const PreOrderCard: React.FC<{
   group: ColorGroup;
-  addToCart: (
+  onPlacePreOrder: (
     articleId: string,
-    variantId: string | undefined,
-    sizeQuantities: Record<string, number>
-  ) => void;
-}> = ({ group, addToCart }) => {
+    variantId: string,
+    sizeQuantities: Record<string, number>,
+    cartonCount: number,
+    pairCount: number,
+    price: number
+  ) => Promise<void>;
+}> = ({ group, onPlacePreOrder }) => {
   const { article, color, variants } = group;
 
   // Selected variant ID (single selection)
@@ -70,8 +74,10 @@ const PreOrderCard: React.FC<{
   );
 
   const [cartonCount, setCartonCount] = useState(1);
+  const [placing, setPlacing] = useState(false);
+  const [placed, setPlaced] = useState(false);
 
-  const handleAddToCart = () => {
+  const handlePlacePreOrder = async () => {
     if (!selectedVariantId) {
       toast.error("Please select a variant");
       return;
@@ -82,9 +88,21 @@ const PreOrderCard: React.FC<{
       sizeQuantities[size] = Number(pairs) * cartonCount;
     });
 
-    addToCart(article.id, selectedVariantId, sizeQuantities);
-    toast.success(`${article.name} added to cart!`);
-    setCartonCount(1);
+    const pairCount = totalPairsPerCarton * cartonCount;
+    const price = article.pricePerPair * pairCount;
+
+    setPlacing(true);
+    try {
+      await onPlacePreOrder(article.id, selectedVariantId, sizeQuantities, cartonCount, pairCount, price);
+      setPlaced(true);
+      setCartonCount(1);
+      setTimeout(() => setPlaced(false), 3000);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || "Failed to place pre-order";
+      toast.error(msg);
+    } finally {
+      setPlacing(false);
+    }
   };
 
   // priority for images: colorMedia (match by color) > variant specific images > article primary/secondary images
@@ -337,12 +355,21 @@ const PreOrderCard: React.FC<{
             </div>
 
             <button
-              onClick={handleAddToCart}
-              disabled={cartonCount <= 0}
-              className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-2xl px-6 font-black text-sm transition-all shadow-lg shadow-amber-100 flex items-center justify-center gap-2 group/btn active:scale-95"
+              onClick={handlePlacePreOrder}
+              disabled={cartonCount <= 0 || placing || placed}
+              className={`flex-1 rounded-2xl px-6 font-black text-sm transition-all shadow-lg flex items-center justify-center gap-2 active:scale-95 disabled:cursor-not-allowed
+                ${placed
+                  ? 'bg-emerald-500 shadow-emerald-100 text-white'
+                  : 'bg-amber-600 hover:bg-amber-700 shadow-amber-100 text-white disabled:bg-slate-200 disabled:text-slate-400'
+                }`}
             >
-              <ShoppingCart size={16} className="group-hover/btn:scale-110 transition-transform" />
-              <span>Pre-Order</span>
+              {placing ? (
+                <><Loader2 size={16} className="animate-spin" /><span>Placing...</span></>
+              ) : placed ? (
+                <><CheckCircle2 size={16} /><span>Pre-Order Placed!</span></>
+              ) : (
+                <><Star size={16} fill="currentColor" /><span>Pre-Order Now</span></>
+              )}
             </button>
           </div>
 
@@ -369,14 +396,17 @@ const PreOrderCard: React.FC<{
 
 interface PreOrderProps {
   articles: Article[];
-  addToCart: (
+  onPlacePreOrder: (
     articleId: string,
-    variantId: string | undefined,
-    sizeQuantities: Record<string, number>
-  ) => void;
+    variantId: string,
+    sizeQuantities: Record<string, number>,
+    cartonCount: number,
+    pairCount: number,
+    price: number
+  ) => Promise<void>;
 }
 
-const PreOrder: React.FC<PreOrderProps> = ({ articles, addToCart }) => {
+const PreOrder: React.FC<PreOrderProps> = ({ articles, onPlacePreOrder }) => {
   const [searchQuery, setSearchQuery] = useState("");
 
   const colorGroups = useMemo(() => {
@@ -445,10 +475,10 @@ const PreOrder: React.FC<PreOrderProps> = ({ articles, addToCart }) => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
         {colorGroups.map((group) => (
-          <PreOrderCard 
-            key={`${group.article.id}-${group.color}`} 
-            group={group} 
-            addToCart={addToCart}
+          <PreOrderCard
+            key={`${group.article.id}-${group.color}`}
+            group={group}
+            onPlacePreOrder={onPlacePreOrder}
           />
         ))}
       </div>

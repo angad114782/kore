@@ -433,6 +433,13 @@ const Sidebar: React.FC<SidebarProps> = ({
               /* Distributor menus */
               <>
                 <NavItem
+                  icon={<BookOpen size={20} />}
+                  label="Catalogue"
+                  active={activeTab === "shop"}
+                  onClick={() => go("shop")}
+                  isCollapsed={isCollapsed}
+                />
+                <NavItem
                   icon={<Star size={20} />}
                   label="Pre-Order"
                   active={activeTab === "preorder"}
@@ -440,10 +447,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                   isCollapsed={isCollapsed}
                 />
                 <NavItem
-                  icon={<BookOpen size={20} />}
-                  label="Catalogue"
-                  active={activeTab === "shop"}
-                  onClick={() => go("shop")}
+                  icon={<ClipboardList size={20} />}
+                  label="My Pre-Orders"
+                  active={activeTab === "my_preorders"}
+                  onClick={() => go("my_preorders")}
                   isCollapsed={isCollapsed}
                 />
                 <NavItem

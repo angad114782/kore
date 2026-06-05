@@ -209,6 +209,8 @@ export interface Order {
   discountPercentage?: number;
   discountAmount?: number;
   finalAmount?: number;
+  gstRate?: number;
+  gstAmount?: number;
   billUrl?: string;
   invoiceUrl?: string;
   ewayBillUrl?: string;

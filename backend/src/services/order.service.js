@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Order = require("../models/Order");
 const User = require("../models/User");
 const MasterCatalog = require("../models/MasterCatalog");
@@ -61,6 +62,7 @@ const createOrder = async (distributorId, orderData) => {
     }
 
     const { items, totalAmount, totalCartons, totalPairs, date } = orderData;
+    const gstRate = typeof orderData.gstRate === 'number' ? orderData.gstRate : 5;
 
     let discountPercentage = 0;
     let creditLimit = 0;
@@ -75,21 +77,23 @@ const createOrder = async (distributorId, orderData) => {
 
     const discountAmount = (totalAmount * discountPercentage) / 100;
     const finalAmount = totalAmount - discountAmount;
+    const gstAmount = Math.round((finalAmount * gstRate) / 100 * 100) / 100;
 
-    // Strict credit limit validation
-    if (creditLimit === 0) {
-      throw new Error("You have no credit limit to book an order. Please contact administrator.");
-    }
-    
-    const pendingOrders = await Order.aggregate([
-      { $match: { distributorId: distributor._id, status: { $ne: "RECEIVED" } } },
-      { $group: { _id: null, totalPending: { $sum: { $ifNull: ["$finalAmount", "$totalAmount"] } } } }
-    ]);
-    const pendingValue = pendingOrders[0]?.totalPending || 0;
-    
-    if (pendingValue + finalAmount > creditLimit) {
-      const available = creditLimit - pendingValue;
-      throw new Error(`Credit limit exceeded. Available credit: ₹${available > 0 ? available.toLocaleString() : 0}. Required: ₹${finalAmount.toLocaleString()}`);
+    // Credit limit validation — skip for pre-orders (not confirmed yet)
+    const isPreOrder = orderData.orderType === "PREORDER";
+    if (!isPreOrder) {
+      if (creditLimit === 0) {
+        throw new Error("You have no credit limit to book an order. Please contact administrator.");
+      }
+      const pendingOrders = await Order.aggregate([
+        { $match: { distributorId: distributor._id, status: { $nin: ["RECEIVED", "CANCELLED", "PRE_BOOKED", "CONFIRMED"] } } },
+        { $group: { _id: null, totalPending: { $sum: { $ifNull: ["$finalAmount", "$totalAmount"] } } } }
+      ]);
+      const pendingValue = pendingOrders[0]?.totalPending || 0;
+      if (pendingValue + finalAmount > creditLimit) {
+        const available = creditLimit - pendingValue;
+        throw new Error(`Credit limit exceeded. Available credit: ₹${available > 0 ? available.toLocaleString() : 0}. Required: ₹${finalAmount.toLocaleString()}`);
+      }
     }
 
     // Use provided date or fallback to today
@@ -101,20 +105,35 @@ const createOrder = async (distributorId, orderData) => {
 
     // orderNumber is generated only when admin BOOKs the order
     // (prevents sequence gaps from cancelled/rejected pre-orders)
+    // Sanitize items: ensure articleId/variantId are valid ObjectId strings
+    const sanitizedItems = (items || []).map(item => {
+      const sanitized = { ...item };
+      // If variantId is not a valid 24-char hex ObjectId, strip it
+      if (sanitized.variantId && !mongoose.Types.ObjectId.isValid(sanitized.variantId)) {
+        delete sanitized.variantId;
+      }
+      // Ensure numeric fields are valid numbers
+      sanitized.cartonCount = Number(sanitized.cartonCount) || 0;
+      sanitized.pairCount   = Number(sanitized.pairCount)   || 0;
+      sanitized.price       = Number(sanitized.price)       || 0;
+      return sanitized;
+    });
+
     const order = new Order({
-      orderNumber: null,
       orderType,
       distributorId,
       distributorName: distrName,
       date: orderDate,
       status: initialStatus,
-      items,
-      totalAmount,
-      totalCartons,
-      totalPairs,
+      items: sanitizedItems,
+      totalAmount: Number(totalAmount) || 0,
+      totalCartons: Number(totalCartons) || 0,
+      totalPairs: Number(totalPairs) || 0,
       discountPercentage,
       discountAmount,
-      finalAmount,
+      finalAmount: isNaN(finalAmount) ? 0 : finalAmount,
+      gstRate,
+      gstAmount: isNaN(gstAmount) ? 0 : gstAmount,
     });
 
     const savedOrder = await order.save();
@@ -130,6 +149,8 @@ const createOrder = async (distributorId, orderData) => {
 
     return savedOrder;
   } catch (error) {
+    console.error("[createOrder] Error:", error.name, error.message);
+    if (error.errors) console.error("[createOrder] Validation errors:", JSON.stringify(error.errors, null, 2));
     throw new Error(`Failed to create order: ${error.message}`);
   }
 };
@@ -139,15 +160,22 @@ const normalizeLimit = (limit) => Math.min(Math.max(parseInt(limit, 10) || 10, 1
 
 const PREORDER_STATUSES = ["PRE_BOOKED", "CONFIRMED"];
 
-const getOrdersByDistributor = async (distributorId, { page = 1, limit = 10, search = "", status = "", startDate, endDate, sortBy = "createdAt", sortDesc = "true" } = {}) => {
+const getOrdersByDistributor = async (distributorId, { page = 1, limit = 10, search = "", status = "", startDate, endDate, sortBy = "createdAt", sortDesc = "true", orderType = "" } = {}) => {
   try {
     const p = normalizePage(page);
     const l = normalizeLimit(limit);
     const skip = (p - 1) * l;
 
     const q = { distributorId };
-    if (status) q.status = status;
-    else q.status = { $nin: PREORDER_STATUSES };
+    if (orderType === "PREORDER") {
+      // Pre-order specific query: only PRE_BOOKED and CONFIRMED
+      q.orderType = "PREORDER";
+      q.status = { $in: PREORDER_STATUSES };
+    } else if (status) {
+      q.status = status;
+    } else {
+      q.status = { $nin: PREORDER_STATUSES };
+    }
     if (startDate || endDate) {
       q.createdAt = {};
       if (startDate) q.createdAt.$gte = new Date(startDate);
@@ -167,7 +195,10 @@ const getOrdersByDistributor = async (distributorId, { page = 1, limit = 10, sea
     
     const sortObj = { [sortBy]: (sortDesc === "true" || sortDesc === true) ? -1 : 1 };
 
-    const [items, total, allStats] = await Promise.all([
+    // Base query without search/status for global stats sidebar
+    const baseQ = { distributorId, status: { $nin: PREORDER_STATUSES } };
+
+    const [items, total, allStats, statusAgg] = await Promise.all([
       Order.find(q)
         .sort(sortObj)
         .skip(skip)
@@ -179,7 +210,7 @@ const getOrdersByDistributor = async (distributorId, { page = 1, limit = 10, sea
         .lean(),
       Order.countDocuments(q),
       Order.aggregate([
-        { $match: q },
+        { $match: baseQ },
         {
           $group: {
             _id: null,
@@ -187,12 +218,19 @@ const getOrdersByDistributor = async (distributorId, { page = 1, limit = 10, sea
             activeOrders: {
               $sum: { $cond: [{ $ne: ["$status", "RECEIVED"] }, 1, 0] },
             },
+            total: { $sum: 1 },
           },
         },
       ]),
+      Order.aggregate([
+        { $match: baseQ },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
     ]);
 
-    const stats = allStats[0] || { totalSpent: 0, activeOrders: 0 };
+    const stats = allStats[0] || { totalSpent: 0, activeOrders: 0, total: 0 };
+    const statusCounts = { total: stats.total || 0 };
+    for (const s of statusAgg) statusCounts[s._id] = s.count;
 
     return {
       items,
@@ -204,6 +242,7 @@ const getOrdersByDistributor = async (distributorId, { page = 1, limit = 10, sea
         stats: {
           totalSpent: stats.totalSpent,
           activeOrders: stats.activeOrders,
+          statusCounts,
         },
       },
     };
@@ -827,15 +866,25 @@ const editOrder = async (orderId, requesterId, requesterRole, { items }) => {
     throw new Error("At least one item required");
   }
 
-  const totalCartons = items.reduce((s, i) => s + (i.cartonCount || 0), 0);
-  const totalPairs   = items.reduce((s, i) => s + (i.pairCount   || 0), 0);
-  const totalAmount  = items.reduce((s, i) => s + (i.price       || 0), 0);
+  const totalCartons   = items.reduce((s, i) => s + (i.cartonCount || 0), 0);
+  const totalPairs     = items.reduce((s, i) => s + (i.pairCount   || 0), 0);
+  const totalAmount    = items.reduce((s, i) => s + (i.price       || 0), 0);
+  const discountAmount = order.discountPercentage
+    ? Math.round(totalAmount * order.discountPercentage / 100 * 100) / 100
+    : (order.discountAmount || 0);
+  const finalAmount    = totalAmount - discountAmount;
+  const gstRate        = order.gstRate || 0;
+  const gstAmount      = gstRate > 0
+    ? Math.round(finalAmount * gstRate / 100 * 100) / 100
+    : (order.gstAmount || 0);
 
-  order.items        = items;
-  order.totalCartons = totalCartons;
-  order.totalPairs   = totalPairs;
-  order.totalAmount  = totalAmount;
-  order.finalAmount  = totalAmount - (order.discountAmount || 0);
+  order.items          = items;
+  order.totalCartons   = totalCartons;
+  order.totalPairs     = totalPairs;
+  order.totalAmount    = totalAmount;
+  order.discountAmount = discountAmount;
+  order.finalAmount    = finalAmount;
+  order.gstAmount      = gstAmount;
   await order.save();
   return order;
 };
@@ -861,9 +910,12 @@ const getPreOrders = async ({ page = 1, limit = 20, search = "", status = "" } =
 };
 
 // ── MRP / price propagation to PENDING + PRE_BOOKED orders ───────────────
-// Called when admin updates an article's selling price
+// Called when admin updates an article's selling price — propagates to PENDING + PRE_BOOKED orders
+// BOOKED and beyond are locked (no changes allowed after admin confirms)
 const propagatePriceUpdate = async (articleId, newPricePerPair) => {
   if (!newPricePerPair || newPricePerPair <= 0) return;
+
+  const { emitOrderUpdate } = require("../socket");
 
   const orders = await Order.find({
     status: { $in: ["PENDING", "PRE_BOOKED"] },
@@ -874,18 +926,25 @@ const propagatePriceUpdate = async (articleId, newPricePerPair) => {
     let changed = false;
     order.items.forEach(item => {
       if (String(item.articleId) === String(articleId)) {
-        const newPrice = newPricePerPair * item.pairCount;
-        item.price = newPrice;
+        item.price = newPricePerPair * item.pairCount;
         changed = true;
       }
     });
     if (changed) {
-      order.totalAmount  = order.items.reduce((s, i) => s + i.price, 0);
-      const disc = order.discountPercentage ? (order.totalAmount * order.discountPercentage) / 100 : 0;
+      order.totalAmount    = order.items.reduce((s, i) => s + i.price, 0);
+      const disc           = order.discountPercentage
+        ? Math.round(order.totalAmount * order.discountPercentage / 100 * 100) / 100
+        : (order.discountAmount || 0);
       order.discountAmount = disc;
       order.finalAmount    = order.totalAmount - disc;
+      // Only recalculate gstAmount if this order has a gstRate stored
+      if ((order.gstRate || 0) > 0) {
+        order.gstAmount = Math.round(order.finalAmount * order.gstRate / 100 * 100) / 100;
+      }
       order.markModified("items");
       await order.save();
+      // Push live update to all connected clients
+      emitOrderUpdate(order);
     }
   }
 };
