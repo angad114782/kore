@@ -1,5 +1,5 @@
 const ActivityLog = require("../models/ActivityLog");
-const { getIO } = require("../socket");
+const { getIO, emitActivityLog } = require("../socket");
 
 // Map activity-log actions → notification events
 const ACTION_TO_NOTIF = {
@@ -60,8 +60,7 @@ const createLog = async ({ action, entityType, entityId = null, description, met
     });
 
     try {
-      const io = getIO();
-      io.emit("activityLog", {
+      emitActivityLog({
         _id: log._id,
         action: log.action,
         entityType: log.entityType,

@@ -266,7 +266,19 @@ exports.removeCarton = async (draftId, cartonBarcode) => {
   return draft;
 };
 
-exports.submitDraft = async (draftId, { scannedItemNames } = {}) => {
+exports.submitDraft = async (draftId, {
+  scannedItemNames,
+  grnDate,
+  vendorInvoiceNos,
+  vendorChallanNos,
+  vehicleNo,
+  eWayBillNo,
+  receivedBy,
+  receivedByMobile,
+  warehouse,
+  remarks,
+  poIds,
+} = {}) => {
   const draft = await GRNDraft.findById(draftId);
   if (!draft) throw new Error("Draft not found");
   if (draft.status !== "DRAFT") throw new Error("GRN already submitted");
@@ -309,6 +321,18 @@ exports.submitDraft = async (draftId, { scannedItemNames } = {}) => {
   draft.vendorName = vendorName;
   draft.articleName = articleName;
   draft.totalPairs = totalPairs;
+
+  // Save GRN form fields
+  if (grnDate) draft.grnDate = new Date(grnDate);
+  if (vendorInvoiceNos) draft.vendorInvoiceNos = vendorInvoiceNos;
+  if (vendorChallanNos) draft.vendorChallanNos = vendorChallanNos;
+  if (vehicleNo) draft.vehicleNo = vehicleNo;
+  if (eWayBillNo) draft.eWayBillNo = eWayBillNo;
+  if (receivedBy) draft.receivedBy = receivedBy;
+  if (receivedByMobile) draft.receivedByMobile = receivedByMobile;
+  if (warehouse) draft.warehouse = warehouse;
+  if (remarks) draft.remarks = remarks;
+  if (poIds && poIds.length > 0) draft.poIds = poIds;
 
   // ─── Inventory Update Logic ──────────────────────────────
   // Group cartons by variantId (reliable)
@@ -501,6 +525,7 @@ exports.getHistory = async (params = {}) => {
     grnId: d._id,
     grnNo: d.grnNo,
     refId: d.refId,
+    poIds: d.poIds || [],
     vendorName: d.vendorName,
     articleName: d.articleName,
     totalPairs: d.totalPairs,

@@ -131,6 +131,17 @@ exports.resetVariantStock = async (req, res) => {
   }
 };
 
+exports.updateVariantSku = async (req, res) => {
+  try {
+    const { sku } = req.body;
+    const data = await masterCatalogService.updateVariantSku(req.params.variantId, sku || "");
+    emitCatalogUpdated("updated", req.params.variantId);
+    return res.json({ message: "SKU updated", data });
+  } catch (err) {
+    return sendError(res, err);
+  }
+};
+
 exports.stockMovement = async (req, res) => {
   try {
     const { type, cartons, reason, note } = req.body;

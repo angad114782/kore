@@ -54,6 +54,13 @@ const OverduePayments: React.FC<OverduePaymentsProps> = ({
 
   useEffect(() => { load(); }, [load]);
 
+  // Real-time: refresh when any order is updated (payment marked, status change)
+  useEffect(() => {
+    const handler = () => load();
+    window.addEventListener("orderUpdatedSocket", handler);
+    return () => window.removeEventListener("orderUpdatedSocket", handler);
+  }, [load]);
+
   const handleMarkPaid = async () => {
     if (!confirmId) return;
     setMarking(true);

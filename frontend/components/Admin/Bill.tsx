@@ -29,6 +29,13 @@ const Bill: React.FC = () => {
     fetchBills();
   }, [currentPage, searchTerm]);
 
+  // Real-time: refresh bill list when bill is approved/rejected via socket
+  useEffect(() => {
+    const handler = () => fetchBills();
+    window.addEventListener("billRefetch", handler);
+    return () => window.removeEventListener("billRefetch", handler);
+  }, [currentPage, searchTerm]);
+
   const fetchBills = async () => {
     try {
       setLoading(true);

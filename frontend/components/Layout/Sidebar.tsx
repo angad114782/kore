@@ -280,6 +280,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                   />
                   {!isCollapsed && openGroups.sales && (
                     <div className="mt-1 ml-2 space-y-1 border-l border-slate-100 pl-3">
+                       <NavItem
+                        icon={<Users size={18} />}
+                        label="Distributors"
+                        active={activeTab === "distributors"}
+                        onClick={() => go("distributors")}
+                        compact
+                        isCollapsed={isCollapsed}
+                      />
                       <NavItem
                         icon={<Clock size={18} />}
                         label="Pre-Orders"
@@ -309,7 +317,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
 
                 {/* Partners */}
-                <div className="pt-2">
+                {/* <div className="pt-2">
                   <GroupHeader
                     icon={<Users size={16} />}
                     label="Partners"
@@ -327,7 +335,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       />
                     </div>
                   )}
-                </div>
+                </div> */}
 
                 {/* Reports */}
                 <div className="pt-2">

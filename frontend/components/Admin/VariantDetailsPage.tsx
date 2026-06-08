@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ArrowLeft,
   Edit2,
@@ -11,11 +11,15 @@ import {
   ShoppingBag,
   RotateCcw,
   Loader2,
+  Save,
+  Globe,
+  Store,
 } from "lucide-react";
 import { Article, Variant } from "../../types";
 import { toast } from "sonner";
 import { getImageUrl } from "../../utils/imageUtils";
 import { formatAssortment } from "../../utils/assortmentUtils";
+import { masterCatalogService } from "../../services/masterCatalogService";
 
 interface VariantDetailsPageProps {
   article: Article;
@@ -36,6 +40,8 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
 }) => {
   const [activeImage, setActiveImage] = useState(0);
   const [copiedSku, setCopiedSku] = useState<string | null>(null);
+  const [ctnSkuValue, setCtnSkuValue] = useState(variant.sku || "");
+  const [savingCtnSku, setSavingCtnSku] = useState(false);
   const [stockData, setStockData] = useState<{
     poMap: Record<string, number>;
     liveStockMap: Record<string, number>;
@@ -43,6 +49,31 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
   } | null>(null);
   const [loadingStock, setLoadingStock] = useState(false);
   const [resetting, setResetting] = useState(false);
+
+  // Compute per-size SKUs on the fly from carton SKU
+  const perSizeSkus = useMemo(() => {
+    const ctnSku = (variant.sku || "").trim();
+    const sizeRange = (variant.sizeRange || "").trim();
+    const sizeKeys = Object.keys(variant.sizeQuantities || {});
+    if (!ctnSku || !sizeKeys.length) return variant.sizeSkus || {};
+    const result: Record<string, string> = {};
+    let base: string | null = null;
+    // Strategy 1: exact sizeRange suffix match (e.g. "amr-gry-7-11" ends with "7-11")
+    if (sizeRange && ctnSku.endsWith(sizeRange)) {
+      base = ctnSku.slice(0, ctnSku.length - sizeRange.length);
+    }
+    // Strategy 2: regex — strip trailing -startSize-endSize regardless of stored sizeRange
+    if (base === null) {
+      const m = ctnSku.match(/^(.*)-\d+-\d+$/);
+      if (m) base = m[1] + "-";
+    }
+    if (base !== null) {
+      sizeKeys.forEach(sz => { result[sz] = `${base}${sz}`; });
+    } else {
+      sizeKeys.forEach(sz => { result[sz] = `${ctnSku}-${sz}`; });
+    }
+    return result;
+  }, [variant.sku, variant.sizeRange, variant.sizeQuantities, variant.sizeSkus]);
 
   const fetchStock = async () => {
     if (!variant.id) return;
@@ -89,6 +120,19 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
     }
   };
 
+  const handleSaveCtnSku = async () => {
+    if (!variant.id) return;
+    setSavingCtnSku(true);
+    try {
+      await masterCatalogService.updateVariantSku(variant.id, ctnSkuValue);
+      toast.success("SKU saved — per-size SKUs regenerated");
+    } catch {
+      toast.error("Failed to save SKU");
+    } finally {
+      setSavingCtnSku(false);
+    }
+  };
+
   useEffect(() => {
     if (variant.id) {
       fetchStock();
@@ -129,10 +173,19 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
     const start = Number(m[1]);
     const end = Number(m[2]);
     if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
-    if (end < start) return [];
-    const out: string[] = [];
-    for (let i = start; i <= end; i++) out.push(String(i));
-    return out;
+    if (end >= start) {
+      // Normal adult/regular range: 5-10, 6-9, etc.
+      const out: string[] = [];
+      for (let i = start; i <= end; i++) out.push(String(i));
+      return out;
+    } else {
+      // Kids wrap-around range: 11-03, 12-02, etc.
+      // Sequence: start → 13 (child), then 01 → end (junior, zero-padded)
+      const out: string[] = [];
+      for (let i = start; i <= 13; i++) out.push(String(i));
+      for (let i = 1; i <= end; i++) out.push(String(i).padStart(2, "0"));
+      return out;
+    }
   };
 
   const sizes =
@@ -429,6 +482,102 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
                 value={article.expectedDate || "Required"}
                 badge={!article.expectedDate ? "rose" : undefined}
               />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Channel & SKU Details ─── */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-1.5">
+          <Globe size={12} className="text-indigo-500" />
+          Channel &amp; SKU
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Left: carton SKU (editable) + channel MRPs */}
+          <div className="space-y-4">
+            {/* Carton SKU — editable */}
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Carton SKU</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={ctnSkuValue}
+                  onChange={e => setCtnSkuValue(e.target.value)}
+                  placeholder="e.g. slk-blk-5-9"
+                  className="font-mono text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md px-2.5 py-1.5 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 min-w-0 flex-1"
+                />
+                <button
+                  onClick={handleSaveCtnSku}
+                  disabled={savingCtnSku}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold text-white bg-indigo-500 hover:bg-indigo-600 rounded-md transition-colors disabled:opacity-50"
+                >
+                  {savingCtnSku ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}
+                  Save
+                </button>
+              </div>
+              <p className="text-[9px] text-slate-400 mt-1">Save karne ke baad per-size SKUs auto-regenerate honge</p>
+            </div>
+
+            {/* Tag + MRPs */}
+            {variant.tag && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-medium w-20 shrink-0">Channel</span>
+                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${
+                    variant.tag === "online"
+                      ? "bg-blue-50 text-blue-600 border-blue-100"
+                      : "bg-amber-50 text-amber-600 border-amber-100"
+                  }`}>
+                    {variant.tag}
+                  </span>
+                </div>
+                {(variant.onlineMrp || 0) > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Globe size={11} className="text-blue-400 shrink-0" />
+                    <span className="text-xs text-slate-400 font-medium w-20 shrink-0">Online MRP</span>
+                    <span className="text-sm font-bold text-blue-700">₹{(variant.onlineMrp || 0).toLocaleString()}</span>
+                  </div>
+                )}
+                {(variant.offlineMrp || 0) > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Store size={11} className="text-amber-400 shrink-0" />
+                    <span className="text-xs text-slate-400 font-medium w-20 shrink-0">Offline MRP</span>
+                    <span className="text-sm font-bold text-amber-700">₹{(variant.offlineMrp || 0).toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right: per-size SKUs */}
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">Per-Size SKUs</p>
+            {Object.keys(perSizeSkus).length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(perSizeSkus)
+                  .sort(([a], [b]) => {
+                    const aJ = a.startsWith("0") && a.length === 2;
+                    const bJ = b.startsWith("0") && b.length === 2;
+                    if (aJ && !bJ) return 1;
+                    if (!aJ && bJ) return -1;
+                    return Number(a) - Number(b);
+                  })
+                  .map(([sz, sku]) => (
+                    <button
+                      key={sz}
+                      onClick={() => copySku(sku)}
+                      className="flex items-center gap-1 font-mono text-[10px] font-bold text-slate-600 bg-slate-50 border border-slate-200 px-2 py-1 rounded-md hover:bg-slate-100 hover:border-indigo-300 transition-colors"
+                      title="Click to copy"
+                    >
+                      <span className="text-slate-400 text-[9px]">{sz}</span>
+                      <span>{sku}</span>
+                      {copiedSku === sku ? <Check size={9} className="text-emerald-500" /> : <Copy size={9} className="text-slate-300" />}
+                    </button>
+                  ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-300 italic">No SKUs yet — save a carton SKU to auto-generate</p>
             )}
           </div>
         </div>

@@ -50,8 +50,6 @@ const selectClass =
 const labelClass =
   "block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2";
 
-const getTaxRateFromMRP = (mrp: number): number => mrp <= 500 ? 5 : mrp <= 1000 ? 12 : 18;
-
 // ─── Empty PO Item ─────────────────────────────────────
 const emptyItem = (): PurchaseOrderItem => ({
   id: `poi-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -70,6 +68,7 @@ const emptyItem = (): PurchaseOrderItem => ({
   taxPerItem: 0,
   unitTotal: 0,
   sizeMap: {},
+  gender: "",
 });
 
 // ─── Generate PO Number ────────────────────────────────
@@ -120,11 +119,10 @@ const computeItem = (item: PurchaseOrderItem): PurchaseOrderItem => {
     Object.keys(sizeMapPlain).length > 0 ? derivedQty : item.quantity || 0;
   // cartonCount from the item, or derive from qty (qty is total pairs from sizeMap)
   const cartons = item.cartonCount || Math.floor(qty / 24) || 0;
-  const totalPairs = cartons * 24;
-  // Tax = totalPairs × taxRate
-  const taxPerItem = totalPairs * item.taxRate;
-  // Unit Total = totalPairs × unitPrice
-  const unitTotal = totalPairs * item.basePrice;
+  // basePrice and mrp are per-carton; total ex-GST = cartons × costing per ctn
+  const unitTotal = cartons * item.basePrice;
+  // GST = total_ex_gst × taxRate%
+  const taxPerItem = unitTotal * (item.taxRate / 100);
 
   return {
     ...item,
@@ -905,12 +903,11 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
 
   // ── Quantity Grid Modal state ──
   const [showQtyModal, setShowQtyModal] = useState(false);
-  const [qtyModalArticleId, setQtyModalArticleId] = useState<string | null>(
-    null
-  );
-  const [qtyModalVariantId, setQtyModalVariantId] = useState<string | null>(
-    null
-  );
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [qtyModalArticleId, setQtyModalArticleId] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [qtyModalVariantId, setQtyModalVariantId] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [qtyModalRowId, setQtyModalRowId] = useState<string | null>(null);
 
   // ── Click outside handlers ──
@@ -925,12 +922,10 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
       setShowVendorDropdown(false);
     }
 
-    const clickedInsideTrigger =
-      itemPickerTriggerRef.current?.contains(target) ?? false;
     const clickedInsideDropdown =
       itemPickerDropdownRef.current?.contains(target) ?? false;
 
-    if (!clickedInsideTrigger && !clickedInsideDropdown) {
+    if (!clickedInsideDropdown) {
       setActiveItemPickerIdx(null);
     }
   };
@@ -963,9 +958,10 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
     basePrice: number;
     mrp: number;
     assortment?: string;
+    gender: string;
   }[] = [];
 
-  articles.forEach((article) => {
+  articles.filter(a => !a.status || a.status === "AVAILABLE").forEach((article) => {
     const articleId = article.id || (article as any)._id || "";
 
     if (article.variants && article.variants.length > 0) {
@@ -1002,6 +998,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
             0,
           mrp: variant.mrp || article.mrp || 0,
           assortment: formatAssortment(variant.sizeQuantities),
+          gender: article.category || "",
         });
       });
     } else {
@@ -1016,6 +1013,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
         image: article.imageUrl || "",
         basePrice: article.pricePerPair || 0,
         mrp: article.mrp || 0,
+        gender: article.category || "",
       });
     }
   });
@@ -1023,25 +1021,26 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
   return list;
 }, [articles]);
 
-  // ── Grouped items (Articles) for picker ──
+  // ── Grouped items (Articles) for picker — show all, selected shown with checkmark ──
   const groupedItems = useMemo(() => {
     const q = itemPickerSearch.toLowerCase().trim();
     const filtered = q
-      ? itemOptions.filter(
-          (it) =>
-            it.name.toLowerCase().includes(q) ||
-            it.sku.toLowerCase().includes(q)
-        )
+      ? itemOptions.filter(it => it.name.toLowerCase().includes(q) || it.sku.toLowerCase().includes(q))
       : itemOptions;
-
     const groups: Record<string, typeof itemOptions> = {};
-    filtered.forEach((item) => {
-      const master = item.masterName || "Other Items";
+    filtered.forEach((it) => {
+      const master = it.masterName || "Other Items";
       if (!groups[master]) groups[master] = [];
-      groups[master].push(item);
+      groups[master].push(it);
     });
     return groups;
   }, [itemOptions, itemPickerSearch]);
+
+  // ── Which options are currently in the PO ──
+  const isOptionSelected = (option: (typeof itemOptions)[0]) =>
+    option.variantId
+      ? items.some(it => it.variantId === option.variantId)
+      : items.some(it => it.articleId === option.articleId && !it.variantId);
 
   // subTotal = sum of all row unitTotals (each is cartons × 24 × unitPrice)
   const subTotal = items.reduce(
@@ -1155,6 +1154,33 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
     );
   };
 
+  const handleCartonCountChange = (itemId: string, cartons: number) => {
+    const ctns = Math.max(0, Math.round(cartons));
+    setItems(prev => prev.map(it => {
+      if (it.id !== itemId) return it;
+      const article = articles.find(a => (a.id || (a as any)._id) === it.articleId);
+      const variant = article?.variants?.find(
+        (v: any) => v.id === it.variantId || v._id === it.variantId
+      );
+      const newSizeMap: Record<string, { qty: number; sku: string }> = {};
+      if (variant?.sizeQuantities && Object.keys(variant.sizeQuantities).length > 0) {
+        Object.entries(variant.sizeQuantities).forEach(([sz, baseQty]) => {
+          newSizeMap[sz] = {
+            qty: (Number(baseQty) || 0) * ctns,
+            sku: (variant.sizeSkus?.[sz] as string) || it.sizeMap?.[sz]?.sku || "",
+          };
+        });
+      } else if (it.sizeMap && Object.keys(it.sizeMap).length > 0) {
+        const oldCtns = it.cartonCount || 1;
+        Object.entries(it.sizeMap).forEach(([sz, v]) => {
+          const baseQty = Math.round((v.qty || 0) / oldCtns);
+          newSizeMap[sz] = { qty: baseQty * ctns, sku: v.sku };
+        });
+      }
+      return computeItem({ ...it, cartonCount: ctns, quantity: ctns * 24, sizeMap: newSizeMap });
+    }));
+  };
+
   const toggleItemPicker = (idx: number, e: React.MouseEvent) => {
     if (activeItemPickerIdx === idx) {
       setActiveItemPickerIdx(null);
@@ -1176,56 +1202,66 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
     }
   };
 
-  const selectItemForRow = (rowId: string, option: (typeof itemOptions)[0]) => {
-    // Find matching article and variant to extract default sizing
-  const targetArticle = articles.find(
-  (a) => (a.id || (a as any)._id) === option.articleId
-);
-   const targetVariant = targetArticle?.variants?.find(
-  (v: any) => v.id === option.variantId || v._id === option.variantId
-);
+  // Multi-select toggle: add if not in PO, remove if already in PO. Keeps picker open.
+  const toggleItemSelection = (triggerRowId: string, option: (typeof itemOptions)[0]) => {
+    const existingRow = option.variantId
+      ? items.find(it => it.variantId === option.variantId)
+      : items.find(it => it.articleId === option.articleId && !it.variantId);
 
-    // Construct default sizeMap with 0 quantities for a new PO item
-    const defaultSizeMap: Record<string, { qty: number; sku: string }> = {};
-    if (targetVariant && targetVariant.sizeQuantities) {
-      Object.entries(targetVariant.sizeQuantities).forEach(([sz, qty]) => {
-        defaultSizeMap[sz] = {
-          qty: Number(qty) || 0, // Pre-fill with catalog assortment ratio
-          sku: targetVariant.sizeSkus?.[sz] || "",
-        };
+    if (existingRow) {
+      // Uncheck — remove that row, always keep at least one empty row
+      setItems(prev => {
+        const next = prev.filter(it => it.id !== existingRow.id);
+        return next.length > 0 ? next : [emptyItem()];
       });
+      return;
     }
 
-    const isLastRow = items[items.length - 1]?.id === rowId;
-    setItems((prev) => {
-      const updated = prev.map((it) => {
-        if (it.id !== rowId) return it;
-        return computeItem({
-          ...it,
-          articleId: option.articleId,
-          variantId: option.variantId,
-          itemName: option.name,
-          sku: option.sku,
-          skuCompany: option.brand,
-          itemTaxCode: option.hsnCode,
-          taxRate: getTaxRateFromMRP(option.mrp || 0),
-          image: option.image,
-          basePrice: option.basePrice,
-          mrp: option.mrp || 0,
-          sizeMap: defaultSizeMap,
-          assortment: option.assortment,
-        });
+    // Build filled item
+    const targetArticle = articles.find(a => (a.id || (a as any)._id) === option.articleId);
+    const targetVariant = targetArticle?.variants?.find(
+      (v: any) => v.id === option.variantId || v._id === option.variantId
+    );
+    const defaultSizeMap: Record<string, { qty: number; sku: string }> = {};
+    if (targetVariant?.sizeQuantities) {
+      Object.entries(targetVariant.sizeQuantities).forEach(([sz, qty]) => {
+        defaultSizeMap[sz] = { qty: Number(qty) || 0, sku: targetVariant.sizeSkus?.[sz] || "" };
       });
-      if (isLastRow) {
-        return [...updated, emptyItem()];
-      }
-      return updated;
-    });
-    setActiveItemPickerIdx(null);
-    setItemPickerSearch("");
+    }
+    const vendorGst = selectedVendor?.tds ? parseFloat(selectedVendor.tds) || 5 : 5;
+    const buildFilled = (base: PurchaseOrderItem) =>
+      computeItem({
+        ...base,
+        articleId: option.articleId,
+        variantId: option.variantId,
+        itemName: option.masterName || option.name,
+        sku: option.sku,
+        skuCompany: option.brand,
+        itemTaxCode: option.hsnCode,
+        taxRate: vendorGst,
+        image: option.image,
+        basePrice: option.basePrice * 24,
+        mrp: (option.mrp || 0) * 24,
+        sizeMap: defaultSizeMap,
+        assortment: option.assortment,
+        gender: option.gender,
+      });
 
-    // NOTE: User requested NO auto-open of dialog.
-    // User will click the Qty cell manually.
+    setItems(prev => {
+      const triggerItem = prev.find(it => it.id === triggerRowId);
+      if (triggerItem && !triggerItem.articleId) {
+        // Fill the (empty) trigger row in place
+        const updated = prev.map(it => it.id === triggerRowId ? buildFilled(it) : it);
+        // Append empty row if trigger was the last
+        return prev[prev.length - 1]?.id === triggerRowId ? [...updated, emptyItem()] : updated;
+      }
+      // Insert a new filled row right after the trigger row
+      const newRow = buildFilled(emptyItem());
+      const idx = prev.findIndex(it => it.id === triggerRowId);
+      return idx === -1
+        ? [...prev, newRow]
+        : [...prev.slice(0, idx + 1), newRow, ...prev.slice(idx + 1)];
+    });
   };
 
   const handleSaveQtyGrid = async (
@@ -1246,7 +1282,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
           cartonCount: cartonQty,
           // Total pairs is now 24 * number of cartons
           quantity: 24 * cartonQty,
-          taxRate: it.taxRate || getTaxRateFromMRP(it.mrp || 0),
+          taxRate: it.taxRate || (selectedVendor?.tds ? parseFloat(selectedVendor.tds) || 5 : 5),
           taxType: it.taxType || "GST",
           sizeMap: updatedSizeMap,
         };
@@ -2192,407 +2228,449 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
 
         {/* ── Item Table ── */}
         <div className="p-6 md:p-8 border-b border-slate-100">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-5">
             <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
               <Package size={16} className="text-indigo-500" />
-              Item Table
+              Item Details
+              <span className="ml-1 px-2 py-0.5 bg-indigo-100 text-indigo-600 rounded-full text-[10px] font-black">
+                {items.filter(it => it.articleId).length}
+              </span>
             </h3>
+            {!isApprovedPO && (
+              <button
+                type="button"
+                onClick={addNewRow}
+                className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-all border border-indigo-200"
+              >
+                <Plus size={13} />
+                Add Row
+              </button>
+            )}
           </div>
 
-          <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-left min-w-[1100px]">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-3 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider w-[200px]">
-                    Item Details
-                  </th>
-                  <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider w-[50px]">
-                    Image
-                  </th>
-                  {/* <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
-                    SKU
-                  </th> */}
-                  {/* <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
-                    SKU Company
-                  </th> */}
-                  {/* <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
-                    Item Name
-                  </th> */}
-                  <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
-                    Tax Code
-                  </th>
-                  <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider w-[100px]">
-                    Qty (Ctn)
-                  </th>
-                  <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider w-[70px]">
-                    Tax Rate %
-                  </th>
-                  {/* <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider w-[80px]">
-                    Tax Type
-                  </th> */}
-                  <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider text-right">
-                    MRP (₹)
-                  </th>
-                  <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider text-right">
-                    Unit Price (₹)
-                  </th>
-                  <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider text-right">
-                    Tax
-                  </th>
-                  <th className="px-2 py-3 text-[10px] font-bold text-indigo-600 uppercase tracking-wider text-right">
-                    Unit Total
-                  </th>
-                  <th className="px-2 py-3 w-[40px]" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {items.map((item, idx) => (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-slate-50/50 transition-colors group"
-                  >
-                    {/* Item Details (Picker) */}
-                    <td className="px-3 py-3 relative">
-                      <div
-  ref={
-    activeItemPickerIdx === idx
-      ? itemPickerTriggerRef
-      : undefined
-  }
->
-                        <button
-                          type="button"
-                          className={`w-full text-left px-3 py-2 border rounded-lg text-sm transition-all flex items-center justify-between ${
-                            item.articleId
-                              ? "border-slate-200 bg-white text-slate-800 font-medium"
-                              : "border-dashed border-slate-300 bg-slate-50 text-slate-400"
-                          } ${isApprovedPO ? 'cursor-not-allowed opacity-75' : ''}`}
-                          onClick={(e) => !isApprovedPO && toggleItemPicker(idx, e)}
-                        >
-                          <div className="flex flex-col truncate">
-                            <span className="truncate">
-                              {item.itemName || "Click to select item..."}
-                            </span>
-                            {item.assortment && (
-                              <span className="text-[10px] text-indigo-500 font-bold">
-                                {item.assortment}
-                              </span>
+          {/* ── Desktop Table ── */}
+          <div className="hidden md:block border border-slate-200 rounded-2xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left" style={{ minWidth: "1080px" }}>
+                <thead>
+                  {/* Section group row */}
+                  <tr className="border-b border-slate-200">
+                    <th className="px-4 py-2 bg-slate-100 text-[9px] font-black text-slate-500 uppercase tracking-widest" colSpan={2}>
+                      #&nbsp;&nbsp;Item
+                    </th>
+                    <th className="px-3 py-2 bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest border-l border-slate-200" colSpan={2}>
+                      Details
+                    </th>
+                    <th className="px-3 py-2 bg-violet-50 text-[9px] font-black text-violet-400 uppercase tracking-widest border-l border-violet-100 text-right" colSpan={2}>
+                      Pricing
+                    </th>
+                    <th className="px-3 py-2 bg-amber-50 text-[9px] font-black text-amber-500 uppercase tracking-widest border-l border-amber-100 text-right" colSpan={3}>
+                      Tax &amp; Totals
+                    </th>
+                    <th className="px-2 py-2 bg-slate-100" />
+                  </tr>
+                  {/* Column labels */}
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="w-8 px-3 py-2.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">#</th>
+                    <th className="px-4 py-2.5 text-[10px] font-bold text-slate-600 uppercase tracking-wider">Item</th>
+                    <th className="px-3 py-2.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-l border-slate-200 whitespace-nowrap">HSN</th>
+                    <th className="px-3 py-2.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Qty (Ctn)</th>
+                    <th className="px-3 py-2.5 text-[10px] font-bold text-violet-500 uppercase tracking-wider border-l border-violet-100 text-right whitespace-nowrap">MRP / Ctn (₹)</th>
+                    <th className="px-3 py-2.5 text-[10px] font-bold text-violet-500 uppercase tracking-wider text-right whitespace-nowrap">Costing / Ctn (₹)</th>
+                    <th className="px-3 py-2.5 text-[10px] font-bold text-amber-500 uppercase tracking-wider border-l border-amber-100 text-right whitespace-nowrap">GST&nbsp;%</th>
+                    <th className="px-3 py-2.5 text-[10px] font-bold text-amber-500 uppercase tracking-wider text-right whitespace-nowrap">Total (ex.GST)</th>
+                    <th className="px-3 py-2.5 text-[10px] font-bold text-amber-600 uppercase tracking-wider text-right whitespace-nowrap">Total (incl.GST)</th>
+                    <th className="w-10 px-2 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {items.map((item, idx) => (
+                    <tr key={item.id} className={`group transition-colors ${item.articleId ? "hover:bg-indigo-50/30" : "bg-slate-50/60 hover:bg-slate-50"}`}>
+
+                      {/* Row # */}
+                      <td className="px-3 py-3 text-center">
+                        <span className="text-[11px] font-bold text-slate-300">{idx + 1}</span>
+                      </td>
+
+                      {/* Item (image + name + gender + assortment) */}
+                      <td className="px-4 py-3 min-w-[240px]">
+                        <div className="flex items-center gap-3">
+                          {/* Thumbnail */}
+                          <div className="shrink-0">
+                            {item.image ? (
+                              <img src={getImageUrl(item.image)} className="w-10 h-10 rounded-xl object-cover border border-slate-200 shadow-sm" alt="" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center">
+                                <Package size={14} className="text-slate-300" />
+                              </div>
                             )}
                           </div>
-                          <ChevronDown size={14} className="shrink-0 ml-1" />
-                        </button>
-
-                        {activeItemPickerIdx === idx &&
-                          createPortal(
-                           <div
-  ref={itemPickerDropdownRef}
-  style={{
-    position: "absolute",
-    top: pickerPos.openUp
-      ? pickerPos.top - 10
-      : pickerPos.top + 42,
-    left: pickerPos.left,
-    width: pickerPos.width * 2,
-    transform: pickerPos.openUp
-      ? "translateY(-100%)"
-      : "none",
-    zIndex: 9999,
-  }}
-  className="bg-white border border-slate-200 rounded-xl shadow-2xl max-h-80 overflow-hidden"
->
-                              <div className="p-2 border-b border-slate-100">
-                                <div className="relative">
-                                  <Search
-                                    size={14}
-                                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                  />
-                                  <input
-                                    type="text"
-                                    placeholder="Search items…"
-                                    className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm"
-                                    value={itemPickerSearch}
-                                    onChange={(e) =>
-                                      setItemPickerSearch(e.target.value)
-                                    }
-                                    autoFocus
-                                    onClick={(e) => e.stopPropagation()}
-                                  />
-                                </div>
-                              </div>
-                              <div className="overflow-y-auto max-h-60">
-                                {Object.keys(groupedItems).length === 0 ? (
-                                  <div className="p-4 text-center text-sm text-slate-400">
-                                    No items found.
+                          {/* Picker button */}
+                          <div className="flex-1 min-w-0">
+                            <button
+                              type="button"
+                              className={`w-full text-left transition-all group/btn ${isApprovedPO ? "cursor-not-allowed opacity-70" : ""}`}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => !isApprovedPO && toggleItemPicker(idx, e)}
+                            >
+                              {item.articleId ? (
+                                <>
+                                  <p className="text-xs font-semibold text-slate-800 truncate leading-tight">{item.itemName}</p>
+                                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                    {item.gender && (
+                                      <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] font-bold uppercase tracking-wide">{item.gender}</span>
+                                    )}
+                                    {item.assortment && (
+                                      <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[9px] font-bold border border-indigo-100">{item.assortment}</span>
+                                    )}
+                                    {item.sku && (
+                                      <span className="text-[9px] text-slate-400 font-mono">{item.sku}</span>
+                                    )}
                                   </div>
-                                ) : (
-                                  Object.entries(groupedItems).map(
-                                    ([masterName, variants]) => (
-                                      <div key={masterName}>
-                                        <div className="px-3 py-2 bg-slate-50 border-b border-slate-100">
-                                          <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider">
-                                            {masterName}
-                                          </span>
-                                        </div>
-                                        {variants.map((option) => (
-                                          <button
-                                            key={`${option.articleId}-${option.variantId}-${option.name}`}
-                                            type="button"
-                                            className="w-full text-left px-4 py-2.5 text-sm hover:bg-indigo-50 transition-colors flex items-center gap-3 border-b border-slate-50"
-                                            onClick={() =>
-                                              selectItemForRow(item.id, option)
-                                            }
-                                          >
-                                            {option.image ? (
-                                              <img
-                                                src={getImageUrl(option.image)}
-                                                className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
-                                                alt=""
-                                              />
-                                            ) : (
-                                              <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
-                                                <Package
-                                                  size={14}
-                                                  className="text-slate-400"
-                                                />
-                                              </div>
-                                            )}
-                                            <div className="min-w-0">
-                                              <p className="font-semibold text-slate-800 truncate">
-                                                {option.name}
-                                              </p>
-                                              <div className="flex items-center gap-2 mt-0.5">
-                                                <p className="text-[10px] text-slate-400 font-mono">
-                                                  {option.sku}
-                                                  {option.brand ? ` · ${option.brand}` : ""}
-                                                </p>
-                                                {option.assortment && (
-                                                  <span className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded-md font-bold border border-indigo-100">
-                                                    {option.assortment}
-                                                  </span>
-                                                )}
-                                              </div>
-                                            </div>
-                                            <span className="ml-auto text-xs font-bold text-slate-600 shrink-0">
-                                              ₹{option.basePrice}
-                                            </span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    )
-                                  )
-                                )}
-                              </div>
-                            </div>,
-                            document.body
-                          )}
-                      </div>
-                    </td>
+                                </>
+                              ) : (
+                                <span className="text-xs text-slate-400 flex items-center gap-1 group-hover/btn:text-indigo-500 transition-colors">
+                                  <Plus size={11} />
+                                  Select item…
+                                </span>
+                              )}
+                            </button>
 
-                    {/* Image */}
-                    <td className="px-2 py-3">
-                      {item.image ? (
-                        <img
-                          src={getImageUrl(item.image)}
-                          className="w-9 h-9 rounded-lg object-cover border border-slate-200"
-                          alt=""
-                        />
-                      ) : (
-                        <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center">
-                          <Package size={14} className="text-slate-300" />
+                          </div>
                         </div>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* SKU */}
-                    {/* <td className="px-2 py-3">
-                      <span className="text-xs font-mono text-slate-600">
-                        {item.sku || "—"}
-                      </span>
-                    </td> */}
+                      {/* HSN */}
+                      <td className="px-3 py-3 border-l border-slate-100">
+                        <input
+                          type="text"
+                          className="w-20 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 text-[11px] font-mono text-center"
+                          value={item.itemTaxCode}
+                          disabled={isApprovedPO}
+                          onChange={(e) => updateItem(item.id, "itemTaxCode", e.target.value)}
+                          placeholder="HSN"
+                        />
+                      </td>
 
-                    {/* SKU Company */}
-                    {/* <td className="px-2 py-3">
-                      <span className="text-xs text-slate-600">
-                        {item.skuCompany || "—"}
-                      </span>
-                    </td> */}
+                      {/* Qty (Ctn) */}
+                      <td className="px-3 py-3">
+                        {item.articleId ? (
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            disabled={isApprovedPO}
+                            value={item.cartonCount || 0}
+                            onChange={e => handleCartonCountChange(item.id, parseInt(e.target.value) || 0)}
+                            className={`w-16 h-9 px-2 bg-indigo-50 border border-indigo-200 rounded-lg text-sm font-black text-indigo-700 text-center outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all ${isApprovedPO ? "cursor-not-allowed opacity-70" : ""}`}
+                          />
+                        ) : (
+                          <div className="w-16 h-9 bg-slate-100 rounded-lg flex items-center justify-center text-slate-300 text-xs">—</div>
+                        )}
+                      </td>
 
-                    {/* Item Name */}
-                    {/* <td className="px-2 py-3">
-                      <span className="text-xs font-medium text-slate-800">
-                        {item.itemName || "—"}
-                      </span>
-                    </td> */}
-
-                    {/* Tax Code (HSN) */}
-                    <td className="px-2 py-3">
-                      <input
-                        type="text"
-                        className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-mono"
-                        value={item.itemTaxCode}
-                        disabled={isApprovedPO}
-                        onChange={(e) =>
-                          updateItem(item.id, "itemTaxCode", e.target.value)
-                        }
-                        placeholder="HSN"
-                      />
-                    </td>
-
-                    {/* Quantity */}
-                    <td className="px-2 py-3">
-                      {item.articleId ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (isApprovedPO) return;
-                            setQtyModalArticleId(item.articleId);
-                            setQtyModalVariantId(item.variantId || null);
-                            setQtyModalRowId(item.id);
-                            setShowQtyModal(true);
-                          }}
-                          className={`w-full px-2 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-sm font-bold text-indigo-700 hover:bg-indigo-100 transition-all flex items-center justify-center min-h-[40px] ${isApprovedPO ? 'cursor-not-allowed opacity-75' : ''}`}
-                        >
-                          {item.cartonCount || Math.floor((item.quantity || 0) / 24) || 0}
-                        </button>
-                      ) : (
+                      {/* MRP / Ctn */}
+                      <td className="px-3 py-3 border-l border-violet-100">
                         <input
                           type="number"
-                          disabled
-                          className="w-full px-2 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold text-center text-slate-400"
-                          placeholder="—"
+                          min={0}
+                          className="w-20 px-2 py-1.5 bg-violet-50 border border-violet-200 rounded-lg outline-none focus:ring-2 focus:ring-violet-500/20 text-[11px] font-bold text-right"
+                          value={item.mrp || ""}
+                          disabled={isApprovedPO}
+                          onChange={(e) => updateItem(item.id, "mrp", parseFloat(e.target.value) || 0)}
                         />
-                      )}
-                    </td>
+                        {item.mrp > 0 && (
+                          <p className="text-[9px] text-violet-400 text-right mt-0.5">₹{(item.mrp / 24).toFixed(1)}/pair</p>
+                        )}
+                      </td>
 
-                    {/* Tax Rate */}
-                    <td className="px-2 py-3">
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.5}
-                        className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs text-center"
-                        value={item.taxRate || ""}
-                        disabled={isApprovedPO}
-                        onChange={(e) =>
-                          updateItem(
-                            item.id,
-                            "taxRate",
-                            parseFloat(e.target.value) || 0
-                          )
-                        }
-                      />
-                    </td>
+                      {/* Costing / Ctn */}
+                      <td className="px-3 py-3">
+                        <input
+                          type="number"
+                          min={0}
+                          className="w-24 px-2 py-1.5 bg-violet-50 border border-violet-200 rounded-lg outline-none focus:ring-2 focus:ring-violet-500/20 text-[11px] font-bold text-right text-violet-700"
+                          value={item.basePrice || ""}
+                          disabled={isApprovedPO}
+                          onChange={(e) => updateItem(item.id, "basePrice", parseFloat(e.target.value) || 0)}
+                        />
+                        {item.basePrice > 0 && (
+                          <p className="text-[9px] text-violet-400 text-right mt-0.5">₹{(item.basePrice / 24).toFixed(1)}/pair</p>
+                        )}
+                      </td>
 
-                    {/* Tax Type */}
-                    {/* <td className="px-2 py-3">
-                      <div className="flex bg-slate-50 border border-slate-200 rounded-lg overflow-hidden">
-                        <button
-                          type="button"
-                          className={`flex-1 px-1.5 py-1.5 text-[10px] font-bold transition-all ${
-                            item.taxType === "GST"
-                              ? "bg-indigo-600 text-white"
-                              : "text-slate-500 hover:bg-slate-100"
-                          }`}
-                          onClick={() =>
-                            updateItem(item.id, "taxType", "GST")
-                          }
-                        >
-                          GST
-                        </button>
-                        <button
-                          type="button"
-                          className={`flex-1 px-1.5 py-1.5 text-[10px] font-bold transition-all ${
-                            item.taxType === "IGST"
-                              ? "bg-indigo-600 text-white"
-                              : "text-slate-500 hover:bg-slate-100"
-                          }`}
-                          onClick={() =>
-                            updateItem(item.id, "taxType", "IGST")
-                          }
-                        >
-                          IGST
-                        </button>
-                      </div>
-                    </td> */}
+                      {/* GST % */}
+                      <td className="px-3 py-3 border-l border-amber-100">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          className="w-16 px-2 py-1.5 bg-amber-50 border border-amber-200 rounded-lg outline-none focus:ring-2 focus:ring-amber-500/20 text-[11px] font-bold text-center text-amber-700"
+                          value={item.taxRate || ""}
+                          disabled={isApprovedPO}
+                          onChange={(e) => updateItem(item.id, "taxRate", parseFloat(e.target.value) || 0)}
+                        />
+                      </td>
 
-                    {/* MRP */}
-                    <td className="px-2 py-3 text-right">
-                      <input
-                        type="number"
-                        min={0}
-                        className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-bold text-right"
-                        value={item.mrp || ""}
-                        disabled={isApprovedPO}
-                        onChange={(e) =>
-                          updateItem(
-                            item.id,
-                            "mrp",
-                            parseFloat(e.target.value) || 0
-                          )
-                        }
-                      />
-                    </td>
+                      {/* Total ex.GST */}
+                      <td className="px-3 py-3 text-right">
+                        <div className="flex flex-col items-end">
+                          <span className="text-xs font-bold text-slate-700">₹{item.unitTotal.toFixed(2)}</span>
+                          {item.taxPerItem > 0 && (
+                            <span className="text-[10px] text-amber-500 font-medium">+₹{item.taxPerItem.toFixed(2)} tax</span>
+                          )}
+                        </div>
+                      </td>
 
-                    {/* Base Price */}
-                    <td className="px-2 py-3 text-right">
-                      <input
-                        type="number"
-                        min={0}
-                        className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 text-xs font-bold text-right text-indigo-700"
-                        value={item.basePrice || ""}
-                        disabled={isApprovedPO}
-                        onChange={(e) =>
-                          updateItem(
-                            item.id,
-                            "basePrice",
-                            parseFloat(e.target.value) || 0
-                          )
-                        }
-                      />
-                    </td>
+                      {/* Total incl.GST */}
+                      <td className="px-3 py-3 text-right">
+                        <span className={`text-sm font-black whitespace-nowrap ${item.articleId ? "text-indigo-700" : "text-slate-300"}`}>
+                          ₹{(item.unitTotal + item.taxPerItem).toFixed(2)}
+                        </span>
+                      </td>
 
-                    {/* Tax Per Item */}
-                    <td className="px-2 py-3 text-right">
-                      <span className="text-xs font-medium text-slate-600">
-                        ₹{item.taxPerItem.toFixed(2)}
-                      </span>
-                    </td>
-
-                    {/* Unit Total */}
-                    <td className="px-2 py-3 text-right">
-                      <span className="text-xs font-bold text-slate-900">
-                        ₹{item.unitTotal.toFixed(2)}
-                      </span>
-                    </td>
-
-                    {/* Delete */}
-                    <td className="px-2 py-3">
-                      {items.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => !isApprovedPO && removeRow(item.id)}
-                          className={`p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 ${isApprovedPO ? 'hidden' : ''}`}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      {/* Delete */}
+                      <td className="px-2 py-3">
+                        {items.length > 1 && !isApprovedPO && (
+                          <button
+                            type="button"
+                            onClick={() => removeRow(item.id)}
+                            className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                {/* Totals footer */}
+                {items.some(it => it.articleId) && (
+                  <tfoot>
+                    <tr className="bg-gradient-to-r from-indigo-50 to-violet-50 border-t-2 border-indigo-200">
+                      <td colSpan={7} className="px-4 py-3 text-xs font-bold text-slate-500 text-right border-l border-amber-100">
+                        Totals
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <span className="text-xs font-bold text-slate-700">
+                          ₹{items.reduce((s, it) => s + it.unitTotal, 0).toFixed(2)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <span className="text-sm font-black text-indigo-700">
+                          ₹{items.reduce((s, it) => s + it.unitTotal + it.taxPerItem, 0).toFixed(2)}
+                        </span>
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={addNewRow}
-            disabled={isApprovedPO}
-            className={`mt-3 flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 px-4 py-2 rounded-lg transition-all ${isApprovedPO ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            <Plus size={16} />
-            Add New Row
-          </button>
+          {/* ── Mobile Card View ── */}
+          <div className="md:hidden space-y-3">
+            {items.map((item, idx) => (
+              <div key={item.id} className={`border rounded-2xl overflow-hidden ${item.articleId ? "border-slate-200 bg-white" : "border-dashed border-slate-300 bg-slate-50"}`}>
+                {/* Card header */}
+                <div className="flex items-center gap-3 p-3 border-b border-slate-100">
+                  <span className="text-[10px] font-black text-slate-400 w-5 shrink-0">{idx + 1}</span>
+                  {item.image ? (
+                    <img src={getImageUrl(item.image)} className="w-10 h-10 rounded-xl object-cover border border-slate-200 shrink-0" alt="" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                      <Package size={14} className="text-slate-300" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <button
+                      type="button"
+                      className="w-full text-left"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => !isApprovedPO && toggleItemPicker(idx, e)}
+                    >
+                      {item.articleId ? (
+                        <>
+                          <p className="text-xs font-semibold text-slate-800 truncate">{item.itemName}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            {item.gender && <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] font-bold">{item.gender}</span>}
+                            {item.assortment && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[9px] font-bold border border-indigo-100">{item.assortment}</span>}
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-xs text-indigo-500 flex items-center gap-1"><Plus size={11} /> Select item…</span>
+                      )}
+                    </button>
+                  </div>
+                  {items.length > 1 && !isApprovedPO && (
+                    <button type="button" onClick={() => removeRow(item.id)} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg shrink-0">
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+                {/* Card body - fields grid */}
+                <div className="p-3 grid grid-cols-3 gap-2">
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">HSN</p>
+                    <input type="text" className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-mono text-center outline-none" value={item.itemTaxCode} disabled={isApprovedPO} onChange={(e) => updateItem(item.id, "itemTaxCode", e.target.value)} placeholder="HSN" />
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">Qty (Ctn)</p>
+                    {item.articleId ? (
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        disabled={isApprovedPO}
+                        value={item.cartonCount || 0}
+                        onChange={e => handleCartonCountChange(item.id, parseInt(e.target.value) || 0)}
+                        className={`w-full h-8 px-2 bg-indigo-50 border border-indigo-200 rounded-lg text-sm font-black text-indigo-700 text-center outline-none focus:ring-2 focus:ring-indigo-500/20 ${isApprovedPO ? "cursor-not-allowed opacity-70" : ""}`}
+                      />
+                    ) : <div className="w-full h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-300 text-xs">—</div>}
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold text-amber-500 uppercase mb-1">GST %</p>
+                    <input type="number" min={0} max={100} step={0.5} className="w-full px-2 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] font-bold text-center outline-none text-amber-700" value={item.taxRate || ""} disabled={isApprovedPO} onChange={(e) => updateItem(item.id, "taxRate", parseFloat(e.target.value) || 0)} />
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold text-violet-500 uppercase mb-1">MRP/Ctn (₹)</p>
+                    <input type="number" min={0} className="w-full px-2 py-1.5 bg-violet-50 border border-violet-200 rounded-lg text-[11px] font-bold text-right outline-none" value={item.mrp || ""} disabled={isApprovedPO} onChange={(e) => updateItem(item.id, "mrp", parseFloat(e.target.value) || 0)} />
+                    {item.mrp > 0 && <p className="text-[9px] text-violet-400 text-right mt-0.5">₹{(item.mrp / 24).toFixed(1)}/pair</p>}
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold text-violet-600 uppercase mb-1">Costing/Ctn (₹)</p>
+                    <input type="number" min={0} className="w-full px-2 py-1.5 bg-violet-50 border border-violet-200 rounded-lg text-[11px] font-bold text-right outline-none text-violet-700" value={item.basePrice || ""} disabled={isApprovedPO} onChange={(e) => updateItem(item.id, "basePrice", parseFloat(e.target.value) || 0)} />
+                    {item.basePrice > 0 && <p className="text-[9px] text-violet-400 text-right mt-0.5">₹{(item.basePrice / 24).toFixed(1)}/pair</p>}
+                  </div>
+                  <div className="flex flex-col justify-end">
+                    <p className="text-[9px] font-bold text-indigo-500 uppercase mb-1">Total (incl.GST)</p>
+                    <p className="text-sm font-black text-indigo-700 text-right">₹{(item.unitTotal + item.taxPerItem).toFixed(2)}</p>
+                    <p className="text-[10px] text-slate-400 text-right">ex. ₹{item.unitTotal.toFixed(2)}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!isApprovedPO && (
+              <button type="button" onClick={addNewRow} className="w-full py-3 border-2 border-dashed border-indigo-200 rounded-2xl text-sm font-bold text-indigo-500 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2">
+                <Plus size={15} />
+                Add Row
+              </button>
+            )}
+          </div>
+
+          {/* Desktop add row */}
+          {!isApprovedPO && (
+            <button
+              type="button"
+              onClick={addNewRow}
+              className="hidden md:flex mt-3 items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 px-4 py-2 rounded-xl transition-all border border-transparent hover:border-indigo-200"
+            >
+              <Plus size={15} />
+              Add New Row
+            </button>
+          )}
+
+          {/* ── Single item picker portal (shared by desktop & mobile) ── */}
+          {activeItemPickerIdx !== null && (() => {
+            const activePickerItem = items[activeItemPickerIdx];
+            if (!activePickerItem) return null;
+            const selectedCount = items.filter(it => it.articleId).length;
+            return createPortal(
+              <div
+                ref={itemPickerDropdownRef}
+                style={{
+                  position: "absolute",
+                  top: pickerPos.openUp ? pickerPos.top - 10 : pickerPos.top + 42,
+                  left: Math.max(8, pickerPos.left),
+                  width: Math.min(Math.max(pickerPos.width * 2, 380), window.innerWidth - 16),
+                  transform: pickerPos.openUp ? "translateY(-100%)" : "none",
+                  zIndex: 9999,
+                  maxHeight: 400,
+                }}
+                className="bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+              >
+                {/* Header */}
+                <div className="p-2.5 border-b border-slate-100 shrink-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider flex-1">
+                      Select Items
+                      {selectedCount > 0 && (
+                        <span className="ml-1.5 px-1.5 py-0.5 bg-indigo-100 rounded-full text-indigo-700">{selectedCount} selected</span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={() => { setActiveItemPickerIdx(null); setItemPickerSearch(""); }}
+                      className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-[11px] font-bold hover:bg-indigo-700 transition-colors"
+                    >
+                      Done
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search items…"
+                      className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm"
+                      value={itemPickerSearch}
+                      onChange={(e) => setItemPickerSearch(e.target.value)}
+                      autoFocus
+                      onMouseDown={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                </div>
+                <div className="overflow-y-auto flex-1">
+                  {Object.keys(groupedItems).length === 0 ? (
+                    <div className="p-6 text-center text-sm text-slate-400">No items found.</div>
+                  ) : (
+                    Object.entries(groupedItems).map(([masterName, variants]) => (
+                      <div key={masterName}>
+                        <div className="px-3 py-1.5 bg-gradient-to-r from-indigo-50 to-transparent border-b border-slate-100 sticky top-0">
+                          <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider">{masterName}</span>
+                        </div>
+                        {variants.map((option) => {
+                          const selected = isOptionSelected(option);
+                          return (
+                            <button
+                              key={`${option.articleId}-${option.variantId}-${option.name}`}
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              className={`w-full text-left px-3 py-2.5 transition-colors flex items-center gap-3 border-b border-slate-50 last:border-0 ${selected ? "bg-indigo-50/80 hover:bg-indigo-100/80" : "hover:bg-slate-50"}`}
+                              onClick={() => toggleItemSelection(activePickerItem.id, option)}
+                            >
+                              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${selected ? "bg-indigo-600 border-indigo-600" : "border-slate-300 bg-white"}`}>
+                                {selected && <CheckCircle2 size={10} className="text-white" strokeWidth={3} />}
+                              </div>
+                              {option.image ? (
+                                <img src={getImageUrl(option.image)} className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0" alt="" />
+                              ) : (
+                                <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                                  <Package size={13} className="text-slate-400" />
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className={`text-xs font-semibold truncate ${selected ? "text-indigo-700" : "text-slate-800"}`}>{option.name}</p>
+                                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                  <span className="text-[10px] text-slate-400 font-mono">{option.sku}{option.brand ? ` · ${option.brand}` : ""}</span>
+                                  {option.gender && <span className="text-[9px] px-1 py-0.5 bg-slate-100 text-slate-500 rounded font-bold">{option.gender}</span>}
+                                  {option.assortment && <span className="text-[9px] px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded font-bold border border-indigo-100">{option.assortment}</span>}
+                                </div>
+                              </div>
+                              <span className={`ml-auto text-xs font-bold shrink-0 ${selected ? "text-indigo-600" : "text-slate-500"}`}>₹{option.basePrice}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>,
+              document.body
+            );
+          })()}
         </div>
 
         {/* ── Summary Section ── */}

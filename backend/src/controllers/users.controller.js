@@ -1,6 +1,7 @@
 const usersService = require("../services/users.service");
 const { created, ok, fail } = require("../utils/apiResponse");
 const mongoose = require("mongoose");
+const { emitUserUpdated, emitUserProfileUpdated } = require("../socket");
 
 /* --------------------------------------------------
    👤 CREATE USER (Superadmin / Admin as per route middleware)
@@ -19,6 +20,7 @@ exports.createUser = async (req, res, next) => {
       user: req.user,
     });
 
+    emitUserUpdated(user._id || user.id);
     return created(res, { message: "User created successfully", data: user });
   } catch (err) {
     next(err);
@@ -77,6 +79,7 @@ exports.updateMe = async (req, res, next) => {
 
     const user = await usersService.updateMe(userId, req.body);
 
+    emitUserProfileUpdated(userId, { name: user.name, email: user.email, phone: user.phone });
     return ok(res, {
       message: "Profile updated successfully",
       data: user,
@@ -170,6 +173,7 @@ exports.updateUser = async (req, res, next) => {
       user: req.user,
     });
 
+    emitUserUpdated(targetUserId);
     return ok(res, { message: "User updated successfully", data: user });
   } catch (err) {
     next(err);
@@ -194,6 +198,7 @@ exports.deleteUser = async (req, res, next) => {
 
     await usersService.deleteUser(actorUserId, targetUserId);
 
+    emitUserUpdated(targetUserId);
     return ok(res, {
       message: "User deleted successfully",
       data: null,

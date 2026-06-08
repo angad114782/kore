@@ -24,6 +24,7 @@ const gstRoutes = require("./routes/gst.routes");
 const settingsRoutes = require("./routes/settings.routes");
 const notificationRoutes = require("./routes/notification.routes");
 const rolesRoutes = require("./routes/roles.routes");
+const tdsRateRoutes = require("./routes/tdsRate.routes");
 const errorMiddleware = require("./middlewares/error.middleware");
 
 const app = express();
@@ -73,6 +74,7 @@ app.use("/api/gst", gstRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/roles", rolesRoutes);
+app.use("/api/tds-rates", tdsRateRoutes);
 /* ------------------ 404 HANDLER ------------------ */
 app.use((req, res, next) => {
   res.status(404).json({ message: "Route not found" });

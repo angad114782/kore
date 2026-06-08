@@ -57,6 +57,13 @@ const DispatchReport: React.FC = () => {
 
   useEffect(() => { fetch(); }, [fetch]);
 
+  // Real-time: refresh when order status changes (dispatch, delivery, etc.)
+  useEffect(() => {
+    const handler = () => fetch();
+    window.addEventListener("orderUpdatedSocket", handler);
+    return () => window.removeEventListener("orderUpdatedSocket", handler);
+  }, [fetch]);
+
   const handleFilter = () => { setPage(1); fetch(); };
 
   const exportCsv = () => {

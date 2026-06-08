@@ -34,6 +34,9 @@ const DistributorSchema = new mongoose.Schema(
     // login mapping
     // actual credentials live only on the User record; distributor holds
     // a reference and a flag indicating whether login is enabled.
+    tag: { type: String, enum: ["online", "offline"], default: "online" },
+
+    loginPasswordPlain: { type: String, trim: true, default: "" },
     loginEnabled: { type: Boolean, default: false },
     userId: {
       type: mongoose.Schema.Types.ObjectId,

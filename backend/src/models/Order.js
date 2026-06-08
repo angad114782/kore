@@ -173,6 +173,17 @@ const OrderSchema = new mongoose.Schema(
     deliveryAgentName: { type: String, default: null },
     deliveryAgentMobile: { type: String, default: null },
     deliveryNote: { type: String, default: null },
+
+    // Dispatch details — filled when BOOKED → PFD (CTN out-scan + dispatch form)
+    vehicleNo: { type: String, default: null },
+    lrNo: { type: String, default: null },           // Lorry Receipt / Consignment No
+    transporterName: { type: String, default: null },
+    eWayBillNo: { type: String, default: null },     // E-Way Bill number (text)
+    driverName: { type: String, default: null },
+    driverMobile: { type: String, default: null },
+    grossWeightKg: { type: Number, default: null },
+    outScannedCartons: { type: [String], default: [] }, // Carton barcodes scanned on dispatch
+    dispatchedAt: { type: Date, default: null },
     items: [OrderItemSchema],
     fulfillmentHistory: [FulfillmentHistorySchema],
     totalAmount: {

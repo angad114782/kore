@@ -164,6 +164,13 @@ const Returns: React.FC<ReturnsProps> = ({ orders, articles, onSuccess, onInward
     if (activeTab === 'history') fetchHistory();
   }, [activeTab, historyPage, pageSize]);
 
+  // Real-time: refresh return history when a new return is created
+  useEffect(() => {
+    const handler = () => { if (activeTab === 'history') fetchHistory(); };
+    window.addEventListener("returnRefetch", handler);
+    return () => window.removeEventListener("returnRefetch", handler);
+  }, [activeTab]);
+
   const fetchHistory = async () => {
     setIsLoadingHistory(true);
     try {

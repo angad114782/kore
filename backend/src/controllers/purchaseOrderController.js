@@ -158,17 +158,19 @@ exports.rejectBill = async (req, res) => {
 
 exports.deletePO = async (req, res) => {
   try {
+    const PurchaseOrder = require("../models/PurchaseOrder");
+    const po = await PurchaseOrder.findById(req.params.id).select("poNumber vendorName").lean();
     await service.softDelete(req.params.id);
 
     activityLog.createLog({
       action: "PO_DELETED",
       entityType: "PO",
       entityId: String(req.params.id),
-      description: `PO (id: ${req.params.id}) deleted by ${req.user?.name || "admin"}`,
+      description: `PO ${po?.poNumber || req.params.id} deleted by ${req.user?.name || "admin"}`,
       user: req.user,
     });
 
-    emitPOEvent("poDeleted", { poId: String(req.params.id) });
+    emitPOEvent("poDeleted", { poId: String(req.params.id), poNumber: po?.poNumber || "", vendorName: po?.vendorName || "" });
     return res.json({ message: "PO deleted" });
   } catch (err) {
     return sendError(res, err);

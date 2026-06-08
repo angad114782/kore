@@ -82,7 +82,8 @@ const updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
     let { status, allocatedItems, blockedItems, receiverName, receiverMobile, deliveryAgentName, deliveryAgentMobile, deliveryNote,
-          expectedDispatchDate, bookingPriority, adminNote, stockStatus, blockReason } = req.body;
+          expectedDispatchDate, bookingPriority, adminNote, stockStatus, blockReason,
+          vehicleNo, lrNo, transporterName, eWayBillNo, driverName, driverMobile, grossWeightKg, outScannedCartons } = req.body;
     
     // allocatedItems arrives as a JSON string via FormData — parse it
     if (typeof allocatedItems === 'string') {
@@ -117,6 +118,14 @@ const updateOrderStatus = async (req, res) => {
       adminNote: adminNote !== undefined ? adminNote : null,
       stockStatus: stockStatus || null,
       blockReason: blockReason !== undefined ? blockReason : null,
+      vehicleNo: vehicleNo || null,
+      lrNo: lrNo || null,
+      transporterName: transporterName || null,
+      eWayBillNo: eWayBillNo || null,
+      driverName: driverName || null,
+      driverMobile: driverMobile || null,
+      grossWeightKg: grossWeightKg ? Number(grossWeightKg) : null,
+      outScannedCartons: outScannedCartons ? JSON.parse(outScannedCartons) : null,
     });
 
     emitOrderUpdate(updatedOrder);

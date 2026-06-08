@@ -101,7 +101,8 @@ const ArticleCard: React.FC<{
   addToCart: ShopProps["addToCart"];
   discountPercentage: number;
   priceView: PriceView;
-}> = ({ group, inv, inCartPairs, addToCart, discountPercentage, priceView }) => {
+  distributorTag?: "online" | "offline";
+}> = ({ group, inv, inCartPairs, addToCart, discountPercentage, priceView, distributorTag }) => {
   const { article, color, variants } = group;
 
   const [selectedVariantId, setSelectedVariantId] = useState<string>(
@@ -121,6 +122,11 @@ const ArticleCard: React.FC<{
   const fullPricePerPair = article.pricePerPair;
   const discountedPricePerPair = fullPricePerPair * (1 - discountPercentage / 100);
   const discountedPricePerCarton = discountedPricePerPair * PAIRS_PER_CARTON;
+  const variantMrp = distributorTag === "online"
+    ? (selectedVariant?.onlineMrp || article.mrp || fullPricePerPair * 2)
+    : distributorTag === "offline"
+    ? (selectedVariant?.offlineMrp || article.mrp || fullPricePerPair * 2)
+    : (article.mrp || fullPricePerPair * 2);
 
   // Images carousel
   const images = useMemo(() => {
@@ -324,7 +330,7 @@ const ArticleCard: React.FC<{
             )}
             {discountPercentage === 0 && (
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                MRP: ₹{article.mrp || fullPricePerPair * 2}
+                MRP: ₹{variantMrp.toLocaleString()}
               </p>
             )}
           </div>
@@ -425,6 +431,7 @@ const Shop: React.FC<ShopProps> = ({
 }) => {
   const cartItemsCount = cart.reduce((sum, item) => sum + item.pairCount, 0);
   const discountPercentage = user?.discountPercentage || 0;
+  const distributorTag = user?.tag;
   const [priceView, setPriceView] = useState<PriceView>("pair");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -440,22 +447,25 @@ const Shop: React.FC<ShopProps> = ({
     );
   }, [articles, search]);
 
-  // Build color groups
+  // Build color groups — filtered by distributor tag
   const allColorGroups = useMemo(() => {
     return filtered.flatMap((article) => {
       const variants = article.variants || [];
       const groups: Record<string, Variant[]> = {};
       variants.forEach((v) => {
+        if (distributorTag && v.tag && v.tag !== distributorTag) return;
         if (!groups[v.color]) groups[v.color] = [];
         groups[v.color].push(v);
       });
-      return Object.entries(groups).map(([color, colorVariants]) => ({
-        article,
-        color,
-        variants: colorVariants,
-      }));
+      return Object.entries(groups)
+        .filter(([, colorVariants]) => colorVariants.length > 0)
+        .map(([color, colorVariants]) => ({
+          article,
+          color,
+          variants: colorVariants,
+        }));
     });
-  }, [filtered]);
+  }, [filtered, distributorTag]);
 
   const totalPages = Math.ceil(allColorGroups.length / PAGE_SIZE);
   const colorGroups = useMemo(
@@ -546,6 +556,7 @@ const Shop: React.FC<ShopProps> = ({
               addToCart={addToCart}
               discountPercentage={discountPercentage}
               priceView={priceView}
+              distributorTag={distributorTag}
             />
           );
         })}

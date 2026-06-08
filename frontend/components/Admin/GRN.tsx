@@ -30,6 +30,9 @@ import {
   ArrowUpDown,
   SortAsc,
   SortDesc,
+  X,
+  Plus,
+  Link2,
 } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
@@ -44,13 +47,20 @@ import { formatAssortment } from "../../utils/assortmentUtils";
 
 /* ═══════════════════ Types ═══════════════════ */
 
+type POItemExtended = MockPOItem & {
+  _poId: string;
+  _poNo: string;
+  _scanKey: string; // unique key for scanState — itemName for primary PO, `${poId}::${itemName}` for linked
+};
+
 type GRNForm = {
   grnDate: string;
-  vendorInvoiceNo: string;
-  vendorChallanNo: string;
+  vendorInvoiceNos: string[];  // one PO can have multiple invoices
+  vendorChallanNos: string[];  // one invoice can cover multiple challans
   vehicleNo: string;
   eWayBillNo: string;
   receivedBy: string;
+  receivedByMobile: string;
   warehouse: string;
   remarks: string;
 };
@@ -101,14 +111,20 @@ const GRN: React.FC = () => {
   const [poDetail, setPoDetail] = useState<MockPODetail | null>(null);
   const [poLoading, setPoLoading] = useState(false);
 
+  /* ── Linked POs (many-to-many PO ↔ Invoice relationship) ── */
+  const [linkedPOIds, setLinkedPOIds] = useState<string[]>([]);
+  const [linkedPODetails, setLinkedPODetails] = useState<MockPODetail[]>([]);
+  const [linkedPOAdding, setLinkedPOAdding] = useState(false);
+
   /* ── Step 2: GRN Info ── */
   const [form, setForm] = useState<GRNForm>({
     grnDate: todayISODate(),
-    vendorInvoiceNo: "",
-    vendorChallanNo: "",
+    vendorInvoiceNos: [],
+    vendorChallanNos: [],
     vehicleNo: "",
     eWayBillNo: "",
     receivedBy: "",
+    receivedByMobile: "",
     warehouse: "",
     remarks: "",
   });
@@ -125,6 +141,9 @@ const GRN: React.FC = () => {
 
   // Collapsible state for items in All Items Status
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+
+  /* ── Scan UX state ── */
+  const [lastScannedSize, setLastScannedSize] = useState<string>("");
 
   /* ── History ── */
   const [grnHistory, setGrnHistory] = useState<GRNHistoryItem[]>([]);
@@ -459,10 +478,45 @@ const GRN: React.FC = () => {
   }, [selectedPOId]);
 
   /* ── Derived data ── */
+
+  // Merge primary PO items + all linked PO items into one array with unique _scanKey per item
+  const allPOItems = useMemo<POItemExtended[]>(() => {
+    const primary: POItemExtended[] = (poDetail?.items || []).map((item) => ({
+      ...item,
+      _poId: selectedPOId,
+      _poNo: poDetail?.poNo || "",
+      _scanKey: item.itemName,
+    }));
+    const linked: POItemExtended[] = linkedPODetails.flatMap((pd) =>
+      pd.items.map((item) => ({
+        ...item,
+        _poId: pd.id,
+        _poNo: pd.poNo,
+        _scanKey: `${pd.id}::${item.itemName}`,
+      }))
+    );
+    return [...primary, ...linked];
+  }, [poDetail, selectedPOId, linkedPODetails]);
+
+  // Returns the key used in doneCartons for a given item
+  // Primary PO items use variantId/itemName directly; linked PO items use prefixed key
+  const getDoneKey = (item: POItemExtended) =>
+    item._poId === selectedPOId
+      ? (item.variantId || item.itemName)
+      : `${item._poId}::${item.variantId || item.itemName}`;
+
   const selectedItem = useMemo(
-    () => poDetail?.items.find((i) => i.itemName === selectedItemName) || null,
-    [poDetail, selectedItemName]
+    () => allPOItems.find((i) => i._scanKey === selectedItemName) || null,
+    [allPOItems, selectedItemName]
   );
+
+  /* ── Auto-focus scanner when item/carton changes ── */
+  useEffect(() => {
+    if (selectedItem) {
+      const t = setTimeout(() => scanInputRef.current?.focus(), 80);
+      return () => clearTimeout(t);
+    }
+  }, [selectedItem, currentCartonIdx]);
 
   const sizes = useMemo(() => {
     if (!selectedItem) return [];
@@ -513,17 +567,20 @@ const GRN: React.FC = () => {
     let doneCartonsAll = 0; // previously GRN'd
     let completedCartonsThisSession = 0;
 
-    poDetail?.items.forEach((item) => {
+    allPOItems.forEach((item) => {
       const perCartonTotal = Object.values(item.sizeMap).reduce((s, d) => s + (d.qty || 0), 0);
       const cartonCount = item.cartonCount || 1;
-      const prevDoneIndices = doneCartons[item.variantId || item.itemName] || [];
+      const doneKey = item._poId === selectedPOId
+        ? (item.variantId || item.itemName)
+        : `${item._poId}::${item.variantId || item.itemName}`;
+      const prevDoneIndices = doneCartons[doneKey] || [];
       doneCartonsAll += prevDoneIndices.length;
-      
+
       const remainingCartons = Math.max(0, cartonCount - prevDoneIndices.length);
       totalPairsAll += perCartonTotal * remainingCartons;
       totalCartonsAll += cartonCount;
-      
-      const itemScans = scanState[item.itemName] || [];
+
+      const itemScans = scanState[item._scanKey] || [];
       itemScans.forEach((carton, idx) => {
         if (!prevDoneIndices.includes(idx)) {
           const cartonScanned = Object.values(carton).reduce((s, q) => s + q, 0);
@@ -543,18 +600,18 @@ const GRN: React.FC = () => {
       completedThisSession: completedCartonsThisSession,
       remainingCartons: totalCartonsAll - doneCartonsAll - completedCartonsThisSession,
     };
-  }, [poDetail, scanState, doneCartons]);
+  }, [allPOItems, scanState, doneCartons, selectedPOId]);
 
-  // Item-level progress
-  const getItemProgress = (itemName: string) => {
-    const item = poDetail?.items.find(i => i.itemName === itemName);
-    const cartons = scanState[itemName];
+  // Item-level progress — takes _scanKey as identifier
+  const getItemProgress = (scanKey: string) => {
+    const item = allPOItems.find((i) => i._scanKey === scanKey);
+    const cartons = scanState[scanKey];
     if (!item || !cartons) return { total: 0, scanned: 0 };
-    
+
     const perCartonTotal = Object.values(item.sizeMap).reduce((s, d) => s + (d.qty || 0), 0);
-    const doneIndices = doneCartons[item.variantId || item.itemName] || [];
+    const doneIndices = doneCartons[getDoneKey(item)] || [];
     const remainingCartons = Math.max(0, (item.cartonCount || 1) - doneIndices.length);
-    
+
     const total = perCartonTotal * remainingCartons;
     let scanned = 0;
     cartons.forEach((c, idx) => {
@@ -565,15 +622,15 @@ const GRN: React.FC = () => {
     return { total, scanned };
   };
 
-  // Carton-level progress
-  const getCartonProgress = (itemName: string, cartonIdx: number) => {
-    const item = poDetail?.items.find(i => i.itemName === itemName);
-    const carton = scanState[itemName]?.[cartonIdx];
+  // Carton-level progress — takes _scanKey as identifier
+  const getCartonProgress = (scanKey: string, cartonIdx: number) => {
+    const item = allPOItems.find((i) => i._scanKey === scanKey);
+    const carton = scanState[scanKey]?.[cartonIdx];
     if (!item || !carton) return { total: 0, scanned: 0 };
-    
+
     const total = Object.values(item.sizeMap).reduce((s, d) => s + (d.qty || 0), 0);
     const scanned = Object.values(carton).reduce((s, q) => s + q, 0);
-    return { total: Math.max(total, 24), scanned }; // Enforce 24 total for UI consistency
+    return { total: Math.max(total, 24), scanned };
   };
 
   /* ── Scan handler ── */
@@ -588,7 +645,7 @@ const GRN: React.FC = () => {
     }
 
     // Check if current carton was already received in a past session
-    const itemKey = selectedItem.variantId || selectedItemName;
+    const itemKey = getDoneKey(selectedItem);
     if (doneCartons[itemKey]?.includes(currentCartonIdx)) {
       toast.error(`Carton ${currentCartonIdx + 1} has already been received. Please select a pending carton.`);
       setScanInput("");
@@ -621,12 +678,16 @@ const GRN: React.FC = () => {
       const updated = { ...prev };
       const itemCartons = [...(updated[selectedItemName] || [])];
       const carton = { ...itemCartons[currentCartonIdx] };
-      
+
       carton[size] = (carton[size] || 0) + 1;
       itemCartons[currentCartonIdx] = carton;
       updated[selectedItemName] = itemCartons;
       return updated;
     });
+
+    // Flash the scanned size row
+    setLastScannedSize(size);
+    setTimeout(() => setLastScannedSize(""), 900);
 
     toast.success(`Size ${size} scanned for Carton ${currentCartonIdx + 1}`);
     setScanInput("");
@@ -668,63 +729,145 @@ const GRN: React.FC = () => {
   const resetAll = () => {
     setSelectedPOId("");
     setPoDetail(null);
+    setLinkedPOIds([]);
+    setLinkedPODetails([]);
     setSelectedItemName("");
     setCurrentCartonIdx(0);
     setScanState({});
+    setDoneCartons({});
     setScanInput("");
     setForm({
       grnDate: todayISODate(),
-      vendorInvoiceNo: "",
-      vendorChallanNo: "",
+      vendorInvoiceNos: [],
+      vendorChallanNos: [],
       vehicleNo: "",
       eWayBillNo: "",
       receivedBy: "",
+      receivedByMobile: "",
       warehouse: "",
       remarks: "",
     });
   };
+
+  /* ── Add a linked PO (many-to-many: one invoice → many POs) ── */
+  const addLinkedPO = async (poId: string) => {
+    if (poId === selectedPOId || linkedPOIds.includes(poId)) {
+      toast.error("This PO is already added");
+      return;
+    }
+    setLinkedPOAdding(true);
+    try {
+      const res = await grnService.getReferenceDetail(poId);
+      const data = res.data as MockPODetail | null;
+      if (!data) return;
+
+      // Initialise scanState for linked PO's items (prefixed keys)
+      const linkedState: ScanState = {};
+      data.items.forEach((item) => {
+        linkedState[`${poId}::${item.itemName}`] = Array.from(
+          { length: item.cartonCount || 1 },
+          () => ({})
+        );
+      });
+
+      // Load already-received cartons for this linked PO and prefix their keys
+      const doneRes = await grnService.getReceivedCartons(poId);
+      const rawDone = doneRes.data || {};
+      const prefixedDone: Record<string, number[]> = {};
+      Object.keys(rawDone).forEach((k) => {
+        prefixedDone[`${poId}::${k}`] = rawDone[k];
+      });
+
+      setLinkedPOIds((prev) => [...prev, poId]);
+      setLinkedPODetails((prev) => [...prev, data]);
+      setScanState((prev) => ({ ...prev, ...linkedState }));
+      setDoneCartons((prev) => ({ ...prev, ...prefixedDone }));
+      toast.success(`PO ${data.poNo} linked`);
+    } catch {
+      toast.error("Failed to load PO details");
+    } finally {
+      setLinkedPOAdding(false);
+    }
+  };
+
+  /* ── Remove a linked PO ── */
+  const removeLinkedPO = (poId: string) => {
+    const detail = linkedPODetails.find((d) => d.id === poId);
+    if (!detail) return;
+
+    setScanState((prev) => {
+      const updated = { ...prev };
+      detail.items.forEach((item) => { delete updated[`${poId}::${item.itemName}`]; });
+      return updated;
+    });
+    setDoneCartons((prev) => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach((k) => { if (k.startsWith(`${poId}::`)) delete updated[k]; });
+      return updated;
+    });
+    setLinkedPOIds((prev) => prev.filter((id) => id !== poId));
+    setLinkedPODetails((prev) => prev.filter((d) => d.id !== poId));
+    if (selectedItemName.startsWith(`${poId}::`)) setSelectedItemName("");
+  };
+
+  /* ── GRN form completion tracking ── */
+  const grnFormRequired = useMemo(() => ({
+    grnDate: !!form.grnDate,
+    receivedBy: !!form.receivedBy.trim(),
+    receivedByMobile: !!form.receivedByMobile.trim(),
+    warehouse: !!form.warehouse.trim(),
+  }), [form]);
+  const grnRequiredCount = Object.values(grnFormRequired).filter(Boolean).length;
+  const grnRequiredTotal = Object.keys(grnFormRequired).length;
+  const grnFormComplete = grnRequiredCount === grnRequiredTotal;
 
   /* ── Submit ── */
   /* ── Submit validation ── */
   const canSubmit = useMemo(() => {
     if (!poDetail) return false;
     if (overallProgress.scanned === 0) return false;
-    
-    // Strict rule: Every carton MUST be fully scanned (24 pairs) if it has at least 1 pair scanned
-    for(const item of poDetail.items) {
-      const cartons = scanState[item.itemName];
-      if(!cartons) continue;
-      
-      for(let i=0; i<cartons.length; i++) {
-        const prog = getCartonProgress(item.itemName, i);
-        if(prog.scanned > 0 && prog.scanned < 24) return false; // Partial carton
+    if (!grnFormComplete) return false;
+
+    // Every started carton MUST be fully scanned (24 pairs)
+    for (const item of allPOItems) {
+      const cartons = scanState[item._scanKey];
+      if (!cartons) continue;
+      for (let i = 0; i < cartons.length; i++) {
+        const prog = getCartonProgress(item._scanKey, i);
+        if (prog.scanned > 0 && prog.scanned < 24) return false;
       }
     }
-    
+
     return true;
-  }, [poDetail, overallProgress, scanState]);
+  }, [poDetail, overallProgress, scanState, grnFormComplete, allPOItems]);
 
   const submitGRN = async () => {
     if (!canSubmit || !poDetail) return;
     setSubmitting(true);
 
     try {
+      const allPONos = [poDetail.poNo, ...linkedPODetails.map((d) => d.poNo)].join(" + ");
+
       const res = await grnService.create({
         poId: poDetail.id,
+        // Pass MongoDB _ids so service can build scanKey-matching allPOItems map
+        linkedPoIds: linkedPODetails.map((d) => d.id),
+        // PO numbers for backend storage reference
+        poNos: [poDetail.poNo, ...linkedPODetails.map((d) => d.poNo)],
         form,
         scanState,
         totals: overallProgress,
       });
 
-      const articleName = res.data._scannedItemNames?.length 
-        ? res.data._scannedItemNames.join(", ") 
-        : (poDetail.items[0]?.itemName || "");
+      const articleName = res.data._scannedItemNames?.length
+        ? res.data._scannedItemNames.join(", ")
+        : (allPOItems[0]?.itemName || "");
 
       setGrnHistory((prev) => [
         {
           grnId: res.data._id,
           grnNo: res.data.grnNo,
-          refId: poDetail.poNo,
+          refId: allPONos,
           vendorName: poDetail.vendorName,
           articleName,
           totalPairs: overallProgress.scanned,
@@ -736,49 +879,47 @@ const GRN: React.FC = () => {
 
       toast.success("GRN submitted successfully");
 
-      // 1. Update `doneCartons` with the newly submitted indices
+      // Update doneCartons with newly submitted indices
       const newDone = { ...doneCartons };
-      Object.keys(scanState).forEach((itemName) => {
-        const item = poDetail.items.find(i => i.itemName === itemName);
-        const key = item?.variantId || itemName;
-        const cartons = scanState[itemName];
-        if (!newDone[key]) newDone[key] = [];
+      Object.keys(scanState).forEach((scanKey) => {
+        const item = allPOItems.find((i) => i._scanKey === scanKey);
+        if (!item) return;
+        const doneKey = getDoneKey(item);
+        const cartons = scanState[scanKey];
+        if (!newDone[doneKey]) newDone[doneKey] = [];
         cartons.forEach((carton, idx) => {
           const pairsCount = Object.values(carton).reduce((s, q) => s + q, 0);
-          if (pairsCount >= 24 && !newDone[key].includes(idx)) {
-            newDone[key].push(idx);
+          if (pairsCount >= 24 && !newDone[doneKey].includes(idx)) {
+            newDone[doneKey].push(idx);
           }
         });
       });
       setDoneCartons(newDone);
 
-      // 2. Reset scanState so remaining cartons are clean
+      // Reset scanState for all PO items
       const freshScanState: ScanState = {};
-      poDetail.items.forEach((item) => {
-        freshScanState[item.itemName] = Array.from(
+      allPOItems.forEach((item) => {
+        freshScanState[item._scanKey] = Array.from(
           { length: item.cartonCount || 1 },
           () => ({})
         );
       });
       setScanState(freshScanState);
 
-      // 3. Reset form
       setScanInput("");
       setForm({
         grnDate: new Date().toISOString().split("T")[0],
-        vendorInvoiceNo: "",
-        vendorChallanNo: "",
+        vendorInvoiceNos: [],
+        vendorChallanNos: [],
         vehicleNo: "",
         eWayBillNo: "",
         receivedBy: "",
+        receivedByMobile: "",
         warehouse: "",
         remarks: "",
       });
 
-      // 4. Auto-select the first item that still has pending cartons (if possible)
-      // For now, we just keep the selectedItemName but reset currentCartonIdx
       setCurrentCartonIdx(0);
-
     } catch (err: any) {
       toast.error(err.message || "Failed to submit GRN");
     } finally {
@@ -790,13 +931,6 @@ const GRN: React.FC = () => {
   const poOptions = poRefs.map((po) => po.poNo);
   const selectedPOLabel = poRefs.find((p) => p.id === selectedPOId)?.poNo || "";
 
-  /* ── Item dropdown options ── */
-  const itemOptions = (poDetail?.items || []).map((i) => {
-    const ratio = formatAssortment(Object.fromEntries(
-      Object.entries(i.sizeMap).map(([sz, d]) => [sz, d.qty])
-    ));
-    return ratio ? `${i.itemName} (${ratio})` : i.itemName;
-  });
 
 
   /* ═══════════════════ RENDER ═══════════════════ */
@@ -881,7 +1015,69 @@ const GRN: React.FC = () => {
               )}
 
               {poDetail && !poLoading && (
-                <div className="mt-6 space-y-4">
+                <div className="mt-6 space-y-5">
+                  {/* Primary PO + Linked POs pills row */}
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">
+                      Purchase Orders in this GRN
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Primary PO chip */}
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-100 px-3 py-1.5 text-xs font-bold text-indigo-800">
+                        <Hash size={11} />
+                        {poDetail.poNo}
+                        <span className="ml-1 rounded-full bg-indigo-200 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-indigo-600">
+                          Primary
+                        </span>
+                      </span>
+                      {/* Linked PO chips */}
+                      {linkedPODetails.map((lp) => (
+                        <span key={lp.id} className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-100 px-3 py-1.5 text-xs font-bold text-teal-800">
+                          <Link2 size={11} />
+                          {lp.poNo}
+                          <button
+                            type="button"
+                            onClick={() => removeLinkedPO(lp.id)}
+                            className="ml-1 rounded-full p-0.5 text-teal-500 hover:bg-teal-200 hover:text-teal-800 transition"
+                            title={`Remove ${lp.poNo}`}
+                          >
+                            <X size={10} />
+                          </button>
+                        </span>
+                      ))}
+                      {/* Add another PO dropdown */}
+                      <div className="relative inline-flex items-center gap-1">
+                        {linkedPOAdding ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-400">
+                            <Loader2 size={11} className="animate-spin" /> Loading...
+                          </span>
+                        ) : (
+                          <select
+                            className="appearance-none cursor-pointer inline-flex items-center gap-1.5 rounded-full border border-dashed border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-500 hover:border-teal-400 hover:text-teal-600 transition focus:outline-none"
+                            defaultValue=""
+                            onChange={(e) => {
+                              const ref = poRefs.find((p) => p.poNo === e.target.value);
+                              if (ref) { addLinkedPO(ref.id); e.currentTarget.value = ""; }
+                            }}
+                          >
+                            <option value="" disabled>+ Link another PO</option>
+                            {poRefs
+                              .filter((p) => p.id !== selectedPOId && !linkedPOIds.includes(p.id))
+                              .map((p) => (
+                                <option key={p.id} value={p.poNo}>{p.poNo}</option>
+                              ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                    {linkedPODetails.length > 0 && (
+                      <p className="mt-1.5 text-[10px] text-teal-600 italic">
+                        This GRN will cover {1 + linkedPODetails.length} POs — one invoice / shipment for multiple orders.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* PO Summary cards — shows merged totals */}
                   <p className="text-xs font-black uppercase tracking-widest text-slate-400">
                     PO Summary
                   </p>
@@ -914,12 +1110,12 @@ const GRN: React.FC = () => {
                     <InfoCard
                       icon={<Boxes size={16} />}
                       label="Total Qty"
-                      value={String(poDetail.totalQty)}
+                      value={String(allPOItems.reduce((s, i) => s + (i.cartonCount || 1) * Object.values(i.sizeMap).reduce((ss, d) => ss + (d.qty || 0), 0), 0))}
                     />
                     <InfoCard
                       icon={<Package size={16} />}
                       label="Items"
-                      value={`${poDetail.items.length} variants`}
+                      value={`${allPOItems.length} variants`}
                     />
                     <InfoCard
                       icon={<FileText size={16} />}
@@ -931,451 +1127,445 @@ const GRN: React.FC = () => {
               )}
             </SectionCard>
 
-            {/* ═══ STEP 2: GRN Basic Info ═══ */}
+            {/* ═══ STEP 2: GRN Basic Info — prominent card ═══ */}
             {poDetail && (
-              <SectionCard
-                icon={<User size={18} className="text-emerald-600" />}
-                title="2. GRN Basic Information"
-              >
-                {/* PO context banner */}
-                <div className="mb-5 flex items-center gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3">
-                  <Hash size={16} className="text-indigo-600" />
-                  <span className="text-sm font-bold text-indigo-900">
-                    {poDetail?.poNo}
-                  </span>
-                  <span className="text-sm text-indigo-600">
-                    • {poDetail?.vendorName}
-                  </span>
+              <div className="rounded-3xl border-2 border-emerald-200 bg-white shadow-sm overflow-hidden">
+                {/* Top accent gradient strip */}
+                <div className="h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-500" />
+
+                {/* Card header */}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-5 py-4 border-b border-emerald-100 bg-emerald-50/50">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-xl bg-emerald-100 p-2.5">
+                      <User size={20} className="text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="font-black text-slate-900 text-base">2. GRN Basic Information</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {poDetail.poNo} &nbsp;·&nbsp; {poDetail.vendorName}
+                      </p>
+                    </div>
+                  </div>
+                  {/* Required field completion badge */}
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-bold shrink-0 ${
+                    grnFormComplete
+                      ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                      : "bg-amber-50 text-amber-700 border border-amber-200"
+                  }`}>
+                    {grnFormComplete
+                      ? <CheckCircle2 size={13} />
+                      : <XCircle size={13} />}
+                    {grnRequiredCount}/{grnRequiredTotal} Required filled
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <FormInput
-                    label="GRN Date"
-                    type="date"
-                    value={form.grnDate}
-                    onChange={(v) => updateForm("grnDate", v)}
-                  />
-                  <FormInput
-                    label="Received By"
-                    value={form.receivedBy}
-                    onChange={(v) => updateForm("receivedBy", v)}
-                  />
-                  <FormInput
-                    label="Vendor Invoice No"
-                    value={form.vendorInvoiceNo}
-                    onChange={(v) => updateForm("vendorInvoiceNo", v)}
-                  />
-                  <FormInput
-                    label="Vendor Challan No"
-                    value={form.vendorChallanNo}
-                    onChange={(v) => updateForm("vendorChallanNo", v)}
-                  />
-                  <FormInput
-                    label="Vehicle No"
-                    value={form.vehicleNo}
-                    onChange={(v) => updateForm("vehicleNo", v)}
-                  />
-                  <FormInput
-                    label="E-Way Bill No"
-                    value={form.eWayBillNo}
-                    onChange={(v) => updateForm("eWayBillNo", v)}
-                  />
-                  <div className="sm:col-span-2 lg:col-span-3">
-                    <FormInput
-                      label="Warehouse / Location"
-                      value={form.warehouse}
-                      onChange={(v) => updateForm("warehouse", v)}
-                    />
-                  </div>
-                  <div className="sm:col-span-2 lg:col-span-3">
-                    <FormTextArea
-                      label="Remarks"
-                      value={form.remarks}
-                      onChange={(v) => updateForm("remarks", v)}
-                    />
+                <div className="p-5">
+                  <div className="grid grid-cols-1 gap-x-6 gap-y-0 md:grid-cols-3">
+
+                    {/* Column 1: Receipt Details (required) */}
+                    <div className="space-y-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 flex items-center gap-1.5">
+                        <span className="h-3 w-3 rounded-full bg-emerald-400 inline-block" />
+                        Receipt Details <span className="text-rose-400">*</span>
+                      </p>
+                      <FormInputHighlight
+                        label="GRN Date"
+                        type="date"
+                        value={form.grnDate}
+                        onChange={(v) => updateForm("grnDate", v)}
+                        required
+                        filled={!!form.grnDate}
+                      />
+                      <FormInputHighlight
+                        label="Received By"
+                        value={form.receivedBy}
+                        onChange={(v) => updateForm("receivedBy", v)}
+                        required
+                        filled={!!form.receivedBy.trim()}
+                        placeholder="Name of person receiving"
+                      />
+                      <FormInputHighlight
+                        label="Mobile No"
+                        type="tel"
+                        value={form.receivedByMobile}
+                        onChange={(v) => updateForm("receivedByMobile", v)}
+                        required
+                        filled={!!form.receivedByMobile.trim()}
+                        placeholder="10-digit mobile number"
+                      />
+                      <FormInputHighlight
+                        label="Warehouse / Location"
+                        value={form.warehouse}
+                        onChange={(v) => updateForm("warehouse", v)}
+                        required
+                        filled={!!form.warehouse.trim()}
+                        placeholder="e.g. Warehouse A, Delhi"
+                      />
+                    </div>
+
+                    {/* Column 2: Document References */}
+                    <div className="space-y-4 mt-6 md:mt-0">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500 flex items-center gap-1.5">
+                        <span className="h-3 w-3 rounded-full bg-indigo-400 inline-block" />
+                        Document References
+                      </p>
+                      <TagInput
+                        label="Invoice No(s)"
+                        values={form.vendorInvoiceNos}
+                        onChange={(v) => updateForm("vendorInvoiceNos", v)}
+                        placeholder="Type invoice no, press Enter"
+                        hint="One invoice per tag — add multiple if needed"
+                      />
+                      <TagInput
+                        label="Challan No(s)"
+                        values={form.vendorChallanNos}
+                        onChange={(v) => updateForm("vendorChallanNos", v)}
+                        placeholder="Type challan no, press Enter"
+                        hint="Add multiple challans if shipment is split"
+                      />
+                      <FormInput
+                        label="E-Way Bill No"
+                        value={form.eWayBillNo}
+                        onChange={(v) => updateForm("eWayBillNo", v)}
+                      />
+                    </div>
+
+                    {/* Column 3: Logistics + Notes */}
+                    <div className="space-y-4 mt-6 md:mt-0">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                        <span className="h-3 w-3 rounded-full bg-slate-300 inline-block" />
+                        Logistics &amp; Notes
+                      </p>
+                      <FormInput
+                        label="Vehicle No"
+                        value={form.vehicleNo}
+                        onChange={(v) => updateForm("vehicleNo", v)}
+                      />
+                      <FormTextArea
+                        label="Remarks"
+                        value={form.remarks}
+                        onChange={(v) => updateForm("remarks", v)}
+                      />
+                    </div>
+
                   </div>
                 </div>
-              </SectionCard>
+              </div>
             )}
 
-            {/* ═══ STEP 3: Item Receiving ═══ */}
+            {/* ═══ STEP 3: Item Receiving — 3-column layout ═══ */}
             {poDetail && (
-              <div className="space-y-6">
-                {/* PO context banner */}
-                <div className="flex items-center gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3">
-                  <Hash size={16} className="text-indigo-600" />
-                  <span className="text-sm font-bold text-indigo-900">
-                    {poDetail.poNo}
-                  </span>
-                  <span className="text-sm text-indigo-600">
-                    • {poDetail.vendorName}
-                  </span>
-                </div>
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
 
-                <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-                  {/* ── Left: Dropdowns & Scanner ── */}
-                  <div className="xl:col-span-5 space-y-5">
-                    <SectionCard
-                      icon={<ScanLine size={18} className="text-slate-900" />}
-                      title="3. Select Item & Scan"
-                      className="z-50" // ensure stacking over below cards if dropdown opens
-                    >
-                      <div className="space-y-5">
-                        {/* Item dropdown */}
-                        <SearchableSelect
-                          label="PO Item"
-                          options={itemOptions}
-                          value={selectedItemName}
-                          onChange={(val) => {
-                            setSelectedItemName(val);
-                            setScanInput("");
-                            
-                            // Auto-jump to first pending carton for this item
-                            const item = poDetail.items.find(i => {
-                              const ratio = formatAssortment(Object.fromEntries(
-                                Object.entries(i.sizeMap).map(([sz, d]) => [sz, d.qty])
-                              ));
-                              const label = ratio ? `${i.itemName} (${ratio})` : i.itemName;
-                              return label === val;
-                            });
-                            if (item) {
-                              const itemDoneIndices = doneCartons[item.variantId || item.itemName] || [];
-                              let firstPending = 0;
-                              while (itemDoneIndices.includes(firstPending) && firstPending < (item.cartonCount || 1)) {
-                                firstPending++;
-                              }
-                              setCurrentCartonIdx(firstPending >= (item.cartonCount || 1) ? 0 : firstPending);
-                            }
-                          }}
-                          placeholder="Select item to receive..."
-                          renderOption={(opt) => {
-                            const item = poDetail?.items.find(i => {
-                              const ratio = formatAssortment(Object.fromEntries(
-                                Object.entries(i.sizeMap).map(([sz, d]) => [sz, d.qty])
-                              ));
-                              const label = ratio ? `${i.itemName} (${ratio})` : i.itemName;
-                              return label === opt;
-                            });
-                            if (!item) return opt;
-                            const ratio = formatAssortment(Object.fromEntries(
-                              Object.entries(item.sizeMap).map(([sz, d]) => [sz, d.qty])
-                            ));
-                            return (
-                              <div className="flex flex-col">
-                                <span className="font-bold">{item.itemName}</span>
-                                {ratio && <span className="text-[10px] text-indigo-500 font-bold">Assortment: {ratio}</span>}
-                              </div>
-                            );
-                          }}
-                        />
+                {/* ── LEFT RAIL: PO Items list ── */}
+                <div className="xl:col-span-3">
+                  <SectionCard
+                    icon={<Package size={18} className="text-indigo-600" />}
+                    title={`3. Items (${allPOItems.length})`}
+                  >
+                    <div className="space-y-2">
+                      {allPOItems.map((item) => {
+                        const totalCartons = item.cartonCount || 1;
+                        const doneIndices = doneCartons[getDoneKey(item)] || [];
+                        const doneCnt = doneIndices.length;
+                        const isSelected = selectedItemName === item._scanKey;
+                        const ip = getItemProgress(item._scanKey);
+                        const sessionDone = (scanState[item._scanKey] || []).filter((c, idx) =>
+                          Object.values(c).reduce((s, q) => s + q, 0) >= 24 && !doneIndices.includes(idx)
+                        ).length;
+                        const totalDone = doneCnt + sessionDone;
+                        const allDone = totalDone >= totalCartons;
+                        const ratio = formatAssortment(Object.fromEntries(
+                          Object.entries(item.sizeMap).map(([sz, d]) => [sz, d.qty])
+                        ));
+                        const isLinked = item._poId !== selectedPOId;
 
-                        {/* Selected Item Summary Area */}
-                        {selectedItem && (
-                          <div className="space-y-4">
-                            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
-                               <div className="flex items-center justify-between mb-2">
-                                 <p className="text-xs font-black uppercase tracking-widest text-indigo-400">Current Item</p>
-                                 <StatusPill label="ACTIVE" tone="indigo" />
-                               </div>
-                               <p className="font-bold text-indigo-900 break-all leading-snug">{selectedItem.itemName}</p>
-                               <p className="text-xs text-indigo-600 font-medium">
-                                 {selectedItem.color} • {formatAssortment(Object.fromEntries(Object.entries(selectedItem.sizeMap).map(([sz, d]) => [sz, d.qty])))}
-                               </p>
-                            </div>
-                            
-                            {/* Simple Progress text */}
-                            {(() => {
-                              const ip = getItemProgress(selectedItemName);
-                              const cp = getCartonProgress(selectedItemName, currentCartonIdx);
-                              return (
-                                <div className="grid grid-cols-2 gap-3">
-                                  <div className="px-1">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Item Total</p>
-                                    <p className="text-sm font-bold text-slate-700">{ip.scanned} / {ip.total}</p>
-                                  </div>
-                                  <div className="px-1 text-right">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Current Carton</p>
-                                    <p className="text-sm font-bold text-slate-700">{cp.scanned} / {cp.total}</p>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        )}
-
-                        {/* Scanner input */}
-                        {selectedItem && (
-                          <div className="space-y-4 pt-4 border-t border-slate-100">
-                            <div className="relative">
-                              <ScanLine
-                                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                                size={18}
-                              />
-                              <input
-                                ref={scanInputRef}
-                                type="text"
-                                autoComplete="off"
-                                placeholder="Scan or type SKU here..."
-                                value={scanInput}
-                                onChange={(e) => setScanInput(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    handleScan();
-                                  }
-                                }}
-                                className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-mono text-sm outline-none transition focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
-                              />
-                            </div>
-
-                             <p className="text-[10px] font-medium text-slate-500 italic">
-                               Tip: Press Enter after scanning each SKU.
-                             </p>
-                          </div>
-                        )}
-                      </div>
-                    </SectionCard>
-                  </div>
-
-                  {/* ── Right: Box Grid & Summary ── */}
-                  <div className="xl:col-span-7 space-y-5">
-                    {/* Box Grid */}
-                    {selectedItem && (
-                      <SectionCard
-                        icon={<Boxes size={18} className="text-indigo-600" />}
-                        title={`Carton View — ${selectedItemName} (Carton ${currentCartonIdx + 1})`}
-                        action={
+                        return (
                           <button
+                            key={item._scanKey}
                             type="button"
-                            onClick={submitGRN}
-                            disabled={!canSubmit || submitting}
-                            className={`inline-flex items-center gap-2 rounded-2xl px-6 py-2.5 text-sm font-black transition ${
-                              canSubmit && !submitting
-                                ? "bg-emerald-600 text-white shadow-lg shadow-emerald-100 hover:bg-emerald-700"
-                                : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                            onClick={() => {
+                              setSelectedItemName(item._scanKey);
+                              setScanInput("");
+                              const dI = doneCartons[getDoneKey(item)] || [];
+                              let fp = 0;
+                              while (dI.includes(fp) && fp < totalCartons) fp++;
+                              setCurrentCartonIdx(fp >= totalCartons ? 0 : fp);
+                            }}
+                            className={`w-full text-left rounded-2xl border p-3 transition-all ${
+                              isSelected
+                                ? "border-indigo-300 bg-indigo-50 ring-2 ring-indigo-100"
+                                : "border-slate-200 bg-white hover:border-indigo-200 hover:bg-slate-50"
                             }`}
                           >
-                            {submitting ? (
-                              <Loader2 size={16} className="animate-spin" />
-                            ) : (
-                              <PackageCheck size={16} />
-                            )}
-                            Submit GRN
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <p className={`text-xs font-bold leading-tight break-all ${isSelected ? "text-indigo-900" : "text-slate-800"}`}>
+                                    {item.itemName}
+                                  </p>
+                                  {isLinked && (
+                                    <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full bg-teal-100 px-1.5 py-0.5 text-[9px] font-bold text-teal-700 border border-teal-200">
+                                      <Link2 size={8} /> {item._poNo}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-500 mt-0.5">{item.color}{ratio ? ` · ${ratio}` : ""}</p>
+                              </div>
+                              {allDone ? (
+                                <CheckCircle2 size={15} className="text-emerald-500 shrink-0 mt-0.5" />
+                              ) : totalDone > 0 ? (
+                                <span className="shrink-0 text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
+                                  {totalDone}/{totalCartons}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-2">
+                              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${allDone ? "bg-emerald-500" : isLinked ? "bg-teal-400" : "bg-indigo-400"}`}
+                                  style={{ width: `${Math.min(100, (totalDone / totalCartons) * 100)}%` }}
+                                />
+                              </div>
+                              <div className="flex justify-between mt-0.5">
+                                <span className="text-[9px] text-slate-400">{totalDone}/{totalCartons} ctns</span>
+                                <span className="text-[9px] text-slate-400">{ip.scanned} prs</span>
+                              </div>
+                            </div>
                           </button>
-                        }
-                      >
-                        <div className="mb-4">
-                          <p className="text-sm text-slate-600">
-                             <span className="font-bold text-emerald-600">{scannedCount}</span> of{" "}
-                             <span className="font-bold text-emerald-600">24</span> pairs scanned in this carton
+                        );
+                      })}
+                    </div>
+                  </SectionCard>
+                </div>
+
+                {/* ── CENTER: Active Item Scanner + Size Table ── */}
+                <div className="xl:col-span-6">
+                  {selectedItem ? (
+                    <SectionCard
+                      icon={<ScanLine size={18} className="text-slate-900" />}
+                      title={`Receiving: ${selectedItem.itemName}`}
+                    >
+                      <div className="space-y-5">
+
+                        {/* Carton Chip Strip + Progress Ring row */}
+                        <div className="flex items-start gap-4">
+                          {/* Progress Ring */}
+                          <CartonProgressRing scanned={scannedCount} total={24} />
+
+                          {/* Chip strip + legend */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                Carton {currentCartonIdx + 1} / {selectedItem.cartonCount || 1}
+                              </p>
+                              <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-emerald-500" /> Done</span>
+                                <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-indigo-500 ring-1 ring-indigo-300" /> Active</span>
+                                <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded bg-amber-400" /> Partial</span>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {Array.from({ length: selectedItem.cartonCount || 1 }).map((_, cIdx) => {
+                                const doneIndices = doneCartons[getDoneKey(selectedItem)] || [];
+                                const isPreviouslyDone = doneIndices.includes(cIdx);
+                                const prog = getCartonProgress(selectedItemName, cIdx);
+                                const isDone = isPreviouslyDone || prog.scanned >= 24;
+                                const isActive = cIdx === currentCartonIdx;
+                                const isPartial = !isDone && !isActive && prog.scanned > 0;
+
+                                let chipClass = "bg-slate-100 text-slate-500 hover:bg-slate-200";
+                                if (isPreviouslyDone) chipClass = "bg-emerald-500 text-white cursor-not-allowed opacity-70";
+                                else if (isDone) chipClass = "bg-emerald-500 text-white";
+                                else if (isActive) chipClass = "bg-indigo-500 text-white ring-2 ring-indigo-300 ring-offset-1";
+                                else if (isPartial) chipClass = "bg-amber-400 text-white";
+
+                                return (
+                                  <button
+                                    key={cIdx}
+                                    type="button"
+                                    disabled={isPreviouslyDone}
+                                    onClick={() => { if (!isPreviouslyDone) setCurrentCartonIdx(cIdx); }}
+                                    title={`Carton ${cIdx + 1} — ${isPreviouslyDone ? "Already GRN'd" : `${prog.scanned}/24 scanned`}`}
+                                    className={`h-8 w-8 rounded-lg text-[11px] font-bold tabular-nums transition-all ${chipClass}`}
+                                  >
+                                    {cIdx + 1}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Scanner input */}
+                        <div className="border-t border-slate-100 pt-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                              Scan — Carton {currentCartonIdx + 1}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={resetCartonScans}
+                              className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-rose-500 transition"
+                            >
+                              <RotateCcw size={10} /> Reset carton
+                            </button>
+                          </div>
+                          <div className="relative">
+                            <ScanLine className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-500" size={20} />
+                            <input
+                              ref={scanInputRef}
+                              type="text"
+                              autoComplete="off"
+                              placeholder="Scan or type SKU, then press Enter..."
+                              value={scanInput}
+                              onChange={(e) => setScanInput(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleScan(); } }}
+                              className="w-full rounded-2xl border-2 border-emerald-200 bg-emerald-50/30 py-3.5 pl-11 pr-4 font-mono text-sm outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-100"
+                            />
+                            {scanInput && (
+                              <button
+                                type="button"
+                                onClick={() => setScanInput("")}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                              >
+                                <XCircle size={16} />
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400 italic pl-1 mt-1.5">
+                            Each scan adds 1 pair. Press <kbd className="px-1 py-0.5 bg-slate-100 rounded text-[9px] font-mono">Enter</kbd> or use barcode scanner.
                           </p>
                         </div>
 
-                        {/* Box cards grid: Ultra-compact with SKU visibility */}
-                        <div className="grid grid-cols-2 gap-1.5 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
-                          {boxes.map((box, idx) => (
-                            <div
-                              key={`${box.size}-${idx}`}
-                              className={`group relative flex flex-col items-center justify-center rounded-xl border px-2 py-2 transition-all cursor-default min-w-0 ${
-                                idx === boxes.length - 1
-                                  ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-200 shadow-md'
-                                  : 'border-slate-100 bg-white hover:border-emerald-200 shadow-sm'
-                              }`}
-                            >
-                              {/* Slot Number */}
-                              <span className="text-[8px] font-black text-slate-300 absolute top-1 left-1.5 uppercase">
-                                #{idx + 1}
-                              </span>
-                              
-                              {/* SKU */}
-                              <p className="text-[10px] font-black text-indigo-600 break-all leading-none mt-1 text-center">
-                                {box.sku}
-                              </p>
-
-                              {/* Size (Carton Number) */}
-                              <p className="text-[14px] font-black text-slate-900 mt-1">
-                                {box.size}
-                              </p>
-                            </div>
-                          ))}
+                        {/* Size Table */}
+                        <div className="rounded-2xl overflow-hidden border border-slate-200">
+                          <table className="w-full text-sm">
+                            <thead className="bg-slate-50 border-b border-slate-200">
+                              <tr>
+                                <th className="px-4 py-2.5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Size</th>
+                                <th className="px-4 py-2.5 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">Expected</th>
+                                <th className="px-4 py-2.5 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">Scanned</th>
+                                <th className="px-4 py-2.5 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">SKU</th>
+                                <th className="px-4 py-2.5 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {sizes.map((sz) => {
+                                const expected = selectedItem.sizeMap[sz]?.qty || 0;
+                                const scanned = currentCartonScan?.[sz] || 0;
+                                const done = scanned >= expected;
+                                const partial = scanned > 0 && !done;
+                                const isFlashing = lastScannedSize === sz;
+                                return (
+                                  <tr
+                                    key={sz}
+                                    className={`transition-colors duration-300 ${
+                                      isFlashing
+                                        ? "bg-emerald-100"
+                                        : done
+                                        ? "bg-emerald-50/60"
+                                        : partial
+                                        ? "bg-amber-50/50"
+                                        : ""
+                                    }`}
+                                  >
+                                    <td className="px-4 py-3 font-black text-slate-900 text-lg leading-none">{sz}</td>
+                                    <td className="px-4 py-3 text-center font-bold text-slate-500">{expected}</td>
+                                    <td className="px-4 py-3 text-center">
+                                      <span className={`font-black text-lg tabular-nums ${done ? "text-emerald-600" : partial ? "text-amber-600" : "text-slate-300"}`}>
+                                        {scanned}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 font-mono text-[10px] text-slate-400">
+                                      {selectedItem.sizeMap[sz]?.sku || "—"}
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                      {done ? (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                                          <CheckCircle2 size={10} /> Done
+                                        </span>
+                                      ) : partial ? (
+                                        <span className="text-[10px] font-bold text-amber-600">{expected - scanned} left</span>
+                                      ) : (
+                                        <span className="text-[10px] text-slate-300">—</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
-                      </SectionCard>
-                    )}
-
-                    {!selectedItem && (
-                      <SectionCard
-                        icon={<Boxes size={18} className="text-slate-400" />}
-                        title="Box Grid"
-                      >
-                        <div className="py-12 text-center text-sm text-slate-400">
-                          Select an item to begin receiving.
-                        </div>
-                      </SectionCard>
-                    )}
-
-                    {/* All items progress — grouped & collapsible */}
-                    <SectionCard
-                      icon={
-                        <PackageCheck size={18} className="text-emerald-600" />
-                      }
-                      title="All Items Status"
-                    >
-                      <div className="space-y-4">
-                        {poDetail.items.map((item) => {
-                          const totalCartons = item.cartonCount || 1;
-                          const doneIndices = doneCartons[item.variantId || item.itemName] || [];
-                          const doneCnt = doneIndices.length;
-                          const isExpanded = expandedItems[item.itemName] ?? false;
-                          const itemProg = getItemProgress(item.itemName);
-                          const allDoneForItem = doneCnt >= totalCartons;
-
-                          // Show first 5 or all if expanded
-                          const visibleCount = isExpanded ? totalCartons : Math.min(5, totalCartons);
-
-                          return (
-                            <div key={item.itemName} className="rounded-2xl border border-slate-200 overflow-hidden">
-                              {/* Item Header */}
-                              <button
-                                type="button"
-                                onClick={() => setExpandedItems(prev => ({ ...prev, [item.itemName]: !isExpanded }))}
-                                className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-slate-50 hover:bg-slate-100 transition text-left"
-                              >
-                                  <div className="min-w-0">
-                                    <p className="font-bold text-sm text-slate-900 break-all leading-tight">{item.itemName}</p>
-                                    <p className="text-[10px] text-slate-500">{item.color} • {totalCartons} cartons • {Object.keys(item.sizeMap).join(", ")}</p>
-                                  </div>
-                                <div className="flex items-center gap-2">
-                                  {allDoneForItem ? (
-                                    <StatusPill label="ALL DONE" tone="emerald" />
-                                  ) : doneCnt > 0 ? (
-                                    <StatusPill label={`${doneCnt}/${totalCartons} GRN'd`} tone="amber" />
-                                  ) : null}
-                                  <span className="text-xs font-bold text-slate-500">{itemProg.scanned}/{itemProg.total}</span>
-                                  <ChevronDown size={16} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                </div>
-                              </button>
-
-                              {/* Carton Chip Grid — compact seat-map style */}
-                              <div className="p-3">
-                                {/* Legend */}
-                                <div className="flex flex-wrap items-center gap-3 mb-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                  <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-emerald-500" /> Done / GRN'd</span>
-                                  <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-indigo-500 ring-2 ring-indigo-300" /> Active</span>
-                                  <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-amber-400" /> Partial</span>
-                                  <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-slate-200" /> Open</span>
-                                </div>
-
-                                <div className="flex flex-wrap gap-1">
-                                  {Array.from({ length: totalCartons }).map((_, cIdx) => {
-                                    const isPreviouslyDone = doneIndices.includes(cIdx);
-                                    const prog = getCartonProgress(item.itemName, cIdx);
-                                    const isDone = isPreviouslyDone || prog.scanned >= 24;
-                                    const isActive = item.itemName === selectedItemName && cIdx === currentCartonIdx;
-                                    const isPartial = !isDone && !isActive && prog.scanned > 0;
-
-                                    let chipClass = "bg-slate-100 text-slate-500 hover:bg-slate-200";
-                                    if (isPreviouslyDone) chipClass = "bg-emerald-500 text-white cursor-not-allowed opacity-70";
-                                    else if (isDone) chipClass = "bg-emerald-500 text-white";
-                                    else if (isActive) chipClass = "bg-indigo-500 text-white ring-2 ring-indigo-300 ring-offset-1";
-                                    else if (isPartial) chipClass = "bg-amber-400 text-white";
-
-                                    return (
-                                      <button
-                                        key={`${item.itemName}-${cIdx}`}
-                                        type="button"
-                                        disabled={isPreviouslyDone}
-                                        title={
-                                          isPreviouslyDone
-                                            ? `Carton ${cIdx + 1} — Already GRN'd`
-                                            : isDone
-                                            ? `Carton ${cIdx + 1} — Complete (${prog.scanned}/${prog.total})`
-                                            : `Carton ${cIdx + 1} — ${prog.scanned}/${prog.total} scanned`
-                                        }
-                                        onClick={() => {
-                                          if (!isPreviouslyDone) {
-                                            setSelectedItemName(item.itemName);
-                                            setCurrentCartonIdx(cIdx);
-                                          }
-                                        }}
-                                        className={`h-7 w-7 rounded text-[10px] font-bold tabular-nums transition-all ${chipClass}`}
-                                      >
-                                        {cIdx + 1}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
                       </div>
                     </SectionCard>
-                  </div>
+                  ) : (
+                    <SectionCard icon={<ScanLine size={18} className="text-slate-300" />} title="3. Select an Item to Begin">
+                      <div className="py-20 text-center">
+                        <PackageSearch size={44} className="text-slate-200 mx-auto mb-3" />
+                        <p className="text-sm font-bold text-slate-400">Click on a PO item from the left panel</p>
+                        <p className="text-xs text-slate-300 mt-1">to start scanning cartons</p>
+                      </div>
+                    </SectionCard>
+                  )}
                 </div>
 
-                {/* ── Overall Summary Section (No Submit Button here) ── */}
-                <SectionCard
-                  icon={<ClipboardList size={18} className="text-slate-900" />}
-                  title="Receiving Summary"
-                >
-                  <div className="space-y-4">
-                    {overallProgress.scanned === 0 ? (
-                      <BannerMessage
-                        icon={<XCircle size={16} />}
-                        tone="amber"
-                      >
-                        Scan at least one box to enable submission.
-                      </BannerMessage>
-                    ) : !canSubmit ? (
-                      <BannerMessage
-                        icon={<XCircle size={16} />}
-                        tone="rose"
-                      >
-                        Cannot submit: One or more cartons are partially scanned. Each carton must have exactly 24 pairs.
-                      </BannerMessage>
-                    ) : (
-                      <BannerMessage
-                        icon={<CheckCircle2 size={16} />}
-                        tone="emerald"
-                      >
-                        Ready to submit — {overallProgress.scanned} pairs (fully packed cartons) scanned.
-                      </BannerMessage>
-                    )}
+                {/* ── RIGHT RAIL: Summary + Submit ── */}
+                <div className="xl:col-span-3 space-y-4">
+                  <SectionCard icon={<ClipboardList size={18} className="text-slate-900" />} title="Summary">
+                    <div className="space-y-3">
+                      {/* Status banner */}
+                      {!grnFormComplete ? (
+                        <BannerMessage icon={<XCircle size={14} />} tone="amber">
+                          Fill required GRN info above first.
+                        </BannerMessage>
+                      ) : overallProgress.scanned === 0 ? (
+                        <BannerMessage icon={<XCircle size={14} />} tone="amber">
+                          No pairs scanned yet.
+                        </BannerMessage>
+                      ) : !canSubmit ? (
+                        <BannerMessage icon={<XCircle size={14} />} tone="rose">
+                          Partial carton — each carton needs 24 pairs.
+                        </BannerMessage>
+                      ) : (
+                        <BannerMessage icon={<CheckCircle2 size={14} />} tone="emerald">
+                          Ready to submit!
+                        </BannerMessage>
+                      )}
 
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                      <MiniStatCard
-                        label="Total Cartons"
-                        value={overallProgress.totalCartons}
-                        tone="slate"
-                      />
-                      <MiniStatCard
-                        label="Prev GRN'd"
-                        value={overallProgress.previouslyDone}
-                        tone="indigo"
-                      />
-                      <MiniStatCard
-                        label="Done (Session)"
-                        value={overallProgress.completedThisSession}
-                        tone="emerald"
-                      />
-                      <MiniStatCard
-                        label="Remaining"
-                        value={overallProgress.remainingCartons}
-                        tone="amber"
-                      />
-                      <MiniStatCard
-                        label="Pairs Scanned"
-                        value={overallProgress.scanned}
-                        tone="emerald"
-                      />
-                      <MiniStatCard
-                        label="Items"
-                        value={poDetail.items.length}
-                        tone="indigo"
-                      />
+                      {/* Stat grid */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <MiniStatCard label="Total Ctns" value={overallProgress.totalCartons} tone="slate" />
+                        <MiniStatCard label="Prev GRN'd" value={overallProgress.previouslyDone} tone="indigo" />
+                        <MiniStatCard label="This Session" value={overallProgress.completedThisSession} tone="emerald" />
+                        <MiniStatCard label="Remaining" value={overallProgress.remainingCartons} tone="amber" />
+                      </div>
+
+                      {/* Pairs highlight */}
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Pairs Scanned</p>
+                        <p className="text-3xl font-black text-emerald-700 mt-0.5 tabular-nums">{overallProgress.scanned}</p>
+                        <p className="text-[10px] text-emerald-500 mt-0.5">{overallProgress.completedThisSession} cartons complete</p>
+                      </div>
+
+                      {/* Submit */}
+                      <button
+                        type="button"
+                        onClick={submitGRN}
+                        disabled={!canSubmit || submitting}
+                        className={`w-full flex items-center justify-center gap-2 rounded-2xl py-3 text-sm font-black transition ${
+                          canSubmit && !submitting
+                            ? "bg-emerald-600 text-white shadow-lg shadow-emerald-100 hover:bg-emerald-700"
+                            : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                        }`}
+                      >
+                        {submitting ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={16} />}
+                        Submit GRN
+                      </button>
                     </div>
-                  </div>
-                </SectionCard>
+                  </SectionCard>
+                </div>
+
               </div>
             )}
           </div>
@@ -1952,6 +2142,139 @@ const EmptyState: React.FC<{ label: string }> = ({ label }) => {
   return (
     <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-400">
       {label}
+    </div>
+  );
+};
+
+/* SVG circular progress ring for active carton */
+const CartonProgressRing: React.FC<{ scanned: number; total: number }> = ({ scanned, total }) => {
+  const r = 26;
+  const circ = 2 * Math.PI * r;
+  const pct = total > 0 ? Math.min(1, scanned / total) : 0;
+  const dash = pct * circ;
+  const done = scanned >= total && total > 0;
+  const color = done ? "#10b981" : pct > 0 ? "#6366f1" : "#e2e8f0";
+  return (
+    <div className="shrink-0 flex flex-col items-center gap-1">
+      <svg width="68" height="68" viewBox="0 0 68 68">
+        <circle cx="34" cy="34" r={r} fill="none" stroke="#f1f5f9" strokeWidth="7" />
+        <circle
+          cx="34" cy="34" r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="7"
+          strokeDasharray={`${dash} ${circ}`}
+          strokeLinecap="round"
+          transform="rotate(-90 34 34)"
+          style={{ transition: "stroke-dasharray 0.3s ease" }}
+        />
+        <text x="34" y="38" textAnchor="middle" fontSize="15" fontWeight="900" fill={done ? "#059669" : "#1e293b"}>
+          {scanned}
+        </text>
+      </svg>
+      <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">/{total} pairs</span>
+    </div>
+  );
+};
+
+/* Tag / chip input for multi-value fields like invoice numbers, challan numbers */
+const TagInput: React.FC<{
+  label: string;
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder?: string;
+  hint?: string;
+}> = ({ label, values, onChange, placeholder, hint }) => {
+  const [inputVal, setInputVal] = React.useState("");
+
+  const addTag = () => {
+    const v = inputVal.trim();
+    if (v && !values.includes(v)) onChange([...values, v]);
+    setInputVal("");
+  };
+
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-500">
+        {label}
+      </label>
+      {values.length > 0 && (
+        <div className="mb-1.5 flex flex-wrap gap-1">
+          {values.map((v) => (
+            <span
+              key={v}
+              className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-100 px-2.5 py-0.5 text-[11px] font-bold text-indigo-800"
+            >
+              {v}
+              <button
+                type="button"
+                onClick={() => onChange(values.filter((x) => x !== v))}
+                className="text-indigo-400 hover:text-indigo-700 transition"
+              >
+                <X size={9} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={inputVal}
+          onChange={(e) => setInputVal(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault();
+              addTag();
+            }
+          }}
+          placeholder={placeholder || "Type and press Enter"}
+          className="flex-1 rounded-2xl border-2 border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+        />
+        <button
+          type="button"
+          onClick={addTag}
+          disabled={!inputVal.trim()}
+          className="flex h-9 w-9 items-center justify-center rounded-2xl border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-40 transition"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+      {hint && <p className="mt-1 text-[10px] text-slate-400 italic">{hint}</p>}
+    </div>
+  );
+};
+
+/* Form input with filled/required visual indicator */
+const FormInputHighlight: React.FC<{
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  required?: boolean;
+  filled?: boolean;
+  placeholder?: string;
+}> = ({ label, value, onChange, type = "text", required, filled, placeholder }) => {
+  return (
+    <div>
+      <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase tracking-widest text-slate-500">
+        {label}
+        {required && <span className="text-rose-400">*</span>}
+        {filled && <CheckCircle2 size={11} className="text-emerald-500 ml-auto" />}
+      </label>
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className={`w-full rounded-2xl border-2 p-3 text-sm outline-none transition ${
+          filled
+            ? "border-emerald-200 bg-emerald-50/30 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
+            : required
+            ? "border-amber-200 bg-amber-50/30 focus:border-amber-400 focus:ring-4 focus:ring-amber-100"
+            : "border-slate-200 bg-slate-50 focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+        }`}
+      />
     </div>
   );
 };

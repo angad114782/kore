@@ -97,6 +97,19 @@ const StockReport: React.FC = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Real-time: refresh when GRN received or catalog changes
+  useEffect(() => {
+    const handler = () => fetchData();
+    window.addEventListener("grnRefetch",    handler);
+    window.addEventListener("catalogRefetch", handler);
+    window.addEventListener("orderUpdatedSocket", handler);
+    return () => {
+      window.removeEventListener("grnRefetch",    handler);
+      window.removeEventListener("catalogRefetch", handler);
+      window.removeEventListener("orderUpdatedSocket", handler);
+    };
+  }, [fetchData]);
+
   const handleSearch = () => { setPage(1); setSearch(searchInput); };
 
   const toggleExpand = (id: string) => {

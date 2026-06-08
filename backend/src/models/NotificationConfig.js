@@ -98,18 +98,26 @@ const NotificationConfigSchema = new mongoose.Schema({
   waPhoneNumberId:    { type: String, default: "" },
   waBusinessAccountId:{ type: String, default: "" },
 
-  rules: { type: [RuleSchema], default: () => EVENTS.map(e => ({
-    event:            e.event,
-    label:            e.label,
-    emailEnabled:     false,
-    emailRoles:       ["superadmin", "admin"],
-    emailDistributor: ["ORDER_OUT_FOR_DELIVERY", "ORDER_DELIVERED"].includes(e.event),
-    waEnabled:        false,
-    waRoles:          ["superadmin", "admin"],
-    waDistributor:    ["ORDER_OUT_FOR_DELIVERY", "ORDER_DELIVERED"].includes(e.event),
-    waTemplate:       e.waTemplate,
-    waLanguage:       "en",
-  })) },
+  rules: { type: [RuleSchema], default: () => {
+    // Critical events: superadmin gets email by default
+    const SUPERADMIN_DEFAULT_ON = new Set([
+      "ORDER_PLACED", "ORDER_BOOKED", "ORDER_DISPATCHED", "ORDER_DELIVERED",
+      "RETURN_PROCESSED", "PO_CREATED", "PO_APPROVED", "PO_REJECTED",
+      "GRN_SUBMITTED", "PAYMENT_RECEIVED", "NEW_DISTRIBUTOR",
+    ]);
+    return EVENTS.map(e => ({
+      event:            e.event,
+      label:            e.label,
+      emailEnabled:     SUPERADMIN_DEFAULT_ON.has(e.event),
+      emailRoles:       SUPERADMIN_DEFAULT_ON.has(e.event) ? ["superadmin"] : ["superadmin", "admin"],
+      emailDistributor: ["ORDER_OUT_FOR_DELIVERY", "ORDER_DELIVERED"].includes(e.event),
+      waEnabled:        false,
+      waRoles:          ["superadmin", "admin"],
+      waDistributor:    ["ORDER_OUT_FOR_DELIVERY", "ORDER_DELIVERED"].includes(e.event),
+      waTemplate:       e.waTemplate,
+      waLanguage:       "en",
+    }));
+  } },
 }, { timestamps: true });
 
 NotificationConfigSchema.statics.getSingleton = async function () {

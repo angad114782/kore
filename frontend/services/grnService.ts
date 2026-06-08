@@ -140,26 +140,47 @@ export const grnService = {
   },
 
   async create(payload: any) {
-    const { poId, scanState } = payload;
-    const listRes = await apiFetch(`/purchase-orders/${poId}`);
-    if (!listRes.data) throw new Error("Purchase Order details not found");
-    const poDoc = listRes.data;
-    
+    const { poId, linkedPoIds = [], poNos = [], form, scanState } = payload;
+
+    // Load primary PO by MongoDB _id
+    const primaryRes = await apiFetch(`/purchase-orders/${poId}`);
+    if (!primaryRes.data) throw new Error("Purchase Order details not found");
+    const primaryPODoc = primaryRes.data;
+
+    // Build scanKey → poItem map (scanKeys mirror what GRN.tsx puts in scanState)
+    // Primary items: scanKey = itemName
+    // Linked items:  scanKey = "${linkedMongoId}::itemName"
+    const allPOItems: Record<string, any> = {};
+    (primaryPODoc.items || []).forEach((it: any) => {
+      allPOItems[it.itemName] = it;
+    });
+
+    for (const linkedMongoId of linkedPoIds) {
+      try {
+        const lRes = await apiFetch(`/purchase-orders/${linkedMongoId}`);
+        if (lRes.data) {
+          (lRes.data.items || []).forEach((it: any) => {
+            allPOItems[`${linkedMongoId}::${it.itemName}`] = it;
+          });
+        }
+      } catch {}
+    }
+
     const draftRes = await apiFetch("/grn/drafts", {
       method: "POST",
-      body: JSON.stringify({ refType: "PO", refId: poDoc.poNumber })
+      body: JSON.stringify({ refType: "PO", refId: primaryPODoc.poNumber }),
     });
     if (!draftRes.data || !draftRes.data._id) throw new Error("Failed to create GRN Draft");
     const draftId = draftRes.data._id;
-    
+
     const scannedCartons: { cartonIndex: number; itemName: string; variantId: string; pairBarcodes: string[] }[] = [];
     const scannedItemNames: string[] = [];
-    
-    Object.keys(scanState).forEach((itemName) => {
-      const cartons = scanState[itemName];
-      const poItem = poDoc.items.find((it: any) => it.itemName === itemName);
+
+    Object.keys(scanState).forEach((scanKey) => {
+      const cartons = scanState[scanKey];
+      const poItem = allPOItems[scanKey];
       if (!poItem || !poItem.sizeMap) return;
-      
+
       let itemHasScans = false;
       cartons.forEach((carton: any, cIdx: number) => {
         const cartonPairs: string[] = [];
@@ -172,31 +193,44 @@ export const grnService = {
           }
         });
         if (cartonPairs.length > 0) {
-          scannedCartons.push({ 
-            cartonIndex: cIdx + 1, 
-            itemName: itemName,
-            variantId: poItem.variantId, // NEW: Include accurate variant ID
-            pairBarcodes: cartonPairs 
+          scannedCartons.push({
+            cartonIndex: cIdx + 1,
+            itemName: poItem.itemName,
+            variantId: poItem.variantId,
+            pairBarcodes: cartonPairs,
           });
         }
       });
-      if (itemHasScans) scannedItemNames.push(itemName);
+      if (itemHasScans && !scannedItemNames.includes(poItem.itemName)) {
+        scannedItemNames.push(poItem.itemName);
+      }
     });
-    
+
     if (scannedCartons.length > 0) {
       await apiFetch(`/grn/drafts/${draftId}/bulk-scan`, {
         method: "POST",
-        body: JSON.stringify({ cartons: scannedCartons })
+        body: JSON.stringify({ cartons: scannedCartons }),
       });
     }
-    
-    // Pass the actual scanned article names so backend stores the correct one
+
+    // Submit with all form metadata
     const submitRes = await apiFetch(`/grn/drafts/${draftId}/submit`, {
       method: "POST",
-      body: JSON.stringify({ scannedItemNames })
+      body: JSON.stringify({
+        scannedItemNames,
+        poIds: poNos,                              // PO numbers for record
+        grnDate: form?.grnDate,
+        vendorInvoiceNos: form?.vendorInvoiceNos || [],
+        vendorChallanNos: form?.vendorChallanNos || [],
+        vehicleNo: form?.vehicleNo || "",
+        eWayBillNo: form?.eWayBillNo || "",
+        receivedBy: form?.receivedBy || "",
+        receivedByMobile: form?.receivedByMobile || "",
+        warehouse: form?.warehouse || "",
+        remarks: form?.remarks || "",
+      }),
     });
-    
-    // Attach scanned item names to the response for the frontend history entry
+
     if (submitRes.data) {
       submitRes.data._scannedItemNames = scannedItemNames;
     }

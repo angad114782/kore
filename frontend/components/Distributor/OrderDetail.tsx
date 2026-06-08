@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { io } from 'socket.io-client';
 import {
   ArrowLeft,
   Package,
@@ -29,10 +28,12 @@ import {
   RotateCcw,
   Pencil,
   Trash2,
+  Ban,
   Plus,
   Minus,
   Save,
   AlertTriangle,
+  AlertCircle,
 } from 'lucide-react';
 import DocPreviewDialog from '../ui/DocPreviewDialog';
 import { Order, OrderStatus, Article, Inventory, OrderItem, FulfillmentBatch } from '../../types';
@@ -76,15 +77,16 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
   const [currentOrder, setCurrentOrder] = useState<Order>(order);
   const [activeTab, setActiveTab] = useState<'items' | 'history'>('items');
 
-  // ── Edit / Delete state ──────────────────────────────────────────────────
-  const canEditOrDelete = ['PENDING', 'PRE_BOOKED'].includes(currentOrder.status);
+  // ── Edit / Cancel state ───────────────────────────────────────────────────
+  const canEdit   = ['PENDING', 'PRE_BOOKED'].includes(currentOrder.status);
+  const canCancel = ['PENDING', 'PRE_BOOKED', 'BOOKED'].includes(currentOrder.status);
   const [editMode, setEditMode] = useState(false);
   // editCounts: variantId → carton count override
   const [editCounts, setEditCounts] = useState<Record<string, number>>({});
   const [deletedItems, setDeletedItems] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const toggleDeleteItem = (key: string) => {
     setDeletedItems(prev => {
@@ -145,51 +147,38 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
     }
   };
 
-  const handleDelete = async () => {
-    setDeleting(true);
+  const handleCancel = async () => {
+    setCancelling(true);
     try {
-      await distributorOrderService.deleteOrder(currentOrder.id);
-      toast.success('Order deleted');
+      await distributorOrderService.updateOrderStatus(currentOrder.id, OrderStatus.CANCELLED);
+      toast.success('Order cancelled');
       onBack();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || err?.message || 'Failed to delete order');
-      setShowDeleteConfirm(false);
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to cancel order');
+      setShowCancelConfirm(false);
     } finally {
-      setDeleting(false);
+      setCancelling(false);
     }
   };
 
-  // Real-time updates via Socket.io
+  // Real-time order refresh via shared socket window event (no duplicate connection)
   useEffect(() => {
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5005/api";
-    const socketBase = API_BASE_URL.replace("/api", "");
-    const socket = io(socketBase);
+    const currentId = String(currentOrder.id || (currentOrder as any)._id);
 
-    socket.on("connect", () => {
-      console.log("🔌 OrderDetail socket connected");
-    });
-
-    socket.on("orderUpdated", async (data) => {
+    const handler = async (e: Event) => {
+      const data = (e as CustomEvent).detail;
       const updatedOrderId = String(data.orderId);
-      const currentId = String(currentOrder.id || (currentOrder as any)._id);
-
-      if (updatedOrderId === currentId) {
-        console.log("📦 Current order updated via socket:", updatedOrderId);
-        // Manual refresh of the current order data
-        try {
-          const res = await distributorOrderService.getOrderById(updatedOrderId);
-          if (res) {
-            setCurrentOrder(res);
-          }
-        } catch (err) {
-          console.error("Failed to refresh order via socket", err);
-        }
+      if (updatedOrderId !== currentId) return;
+      try {
+        const res = await distributorOrderService.getOrderById(updatedOrderId);
+        if (res) setCurrentOrder(res);
+      } catch (err) {
+        console.error("Failed to refresh order via socket", err);
       }
-    });
-
-    return () => {
-      socket.disconnect();
     };
+
+    window.addEventListener("orderUpdatedSocket", handler);
+    return () => window.removeEventListener("orderUpdatedSocket", handler);
   }, [currentOrder.id, (currentOrder as any)._id]);
 
   // Sync state if order prop changes (real-time updates from parent/socket)
@@ -217,6 +206,14 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
   const [blockingState, setBlockingState] = useState<Record<string, any>>({});
   const [scannedItems, setScannedItems] = useState<Record<string, number>>({}); // variantId -> cartonCount verified
   const [scanInput, setScanInput] = useState("");
+
+  // ── Dispatch state (BOOKED → PFD) ────────────────────────────────────────
+  const [dispatchForm, setDispatchForm] = useState({
+    vehicleNo: '', lrNo: '', transporterName: '',
+    eWayBillNo: '', driverName: '', driverMobile: '', grossWeightKg: '',
+  });
+  const [ctnScanInput, setCtnScanInput] = useState('');
+  const [scannedCTNs, setScannedCTNs] = useState<Set<string>>(new Set());
   const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string } | null>(null);
   
   // Real-time stock state to align with VariantDetailsPage
@@ -232,11 +229,18 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
     const initialBlock: Record<string, any> = {};
     currentOrder.items.forEach(item => {
       if (item.variantId) {
+        const remaining = item.cartonCount - (item.fulfilledCartonCount || 0);
+        const defaultCartons = item.allocatedCartonCount || remaining;
+        const ratio = item.cartonCount > 0 ? defaultCartons / item.cartonCount : 0;
+        const defaultPairs = item.allocatedPairCount || Math.round(item.pairCount * ratio);
+        const defaultSizeQtys = Object.keys(item.allocatedSizeQuantities || {}).length > 0
+          ? { ...(item.allocatedSizeQuantities ?? {}) }
+          : Object.fromEntries(Object.entries(item.sizeQuantities || {}).map(([s, q]) => [s, Math.round((q as number) * ratio)]));
         initialAlloc[item.variantId] = {
           variantId: item.variantId,
-          allocatedCartonCount: item.allocatedCartonCount ?? 0,
-          allocatedPairCount: item.allocatedPairCount ?? 0,
-          allocatedSizeQuantities: { ...(item.allocatedSizeQuantities ?? {}) }
+          allocatedCartonCount: defaultCartons,
+          allocatedPairCount: defaultPairs,
+          allocatedSizeQuantities: defaultSizeQtys,
         };
         initialBlock[item.variantId] = {
           variantId: item.variantId,
@@ -454,43 +458,93 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
     try {
       setUploading(true);
       const allocatedItems = Object.values(allocations);
-      // If order is already in a stage beyond BOOKED, keep its current status during allocation update
-      const targetStatus = [OrderStatus.BOOKED, OrderStatus.PARTIAL].includes(currentOrder.status) 
-        ? OrderStatus.PFD 
+      const targetStatus = [OrderStatus.BOOKED, OrderStatus.PARTIAL].includes(currentOrder.status)
+        ? OrderStatus.PFD
         : currentOrder.status;
 
       const options: any = { allocatedItems };
 
-      // Moving to PFD (Dispatched) — attach all 3 shipping docs
       if (targetStatus === OrderStatus.PFD) {
-        if (!shippingFiles.invoice || !shippingFiles.ewayBill || !shippingFiles.transportBill) {
-          toast.error("Please upload all 3 shipping documents before dispatching");
+        // Validate required dispatch fields
+        if (!dispatchForm.vehicleNo.trim()) { toast.error('Vehicle No required'); setUploading(false); return; }
+        if (!dispatchForm.transporterName.trim()) { toast.error('Transporter Name required'); setUploading(false); return; }
+        if (!dispatchForm.lrNo.trim()) { toast.error('LR / Consignment No required'); setUploading(false); return; }
+
+        // Validate CTN out-scan completion
+        const expectedCTNs = generateExpectedCTNs();
+        if (expectedCTNs.length > 0 && scannedCTNs.size < expectedCTNs.length) {
+          toast.error(`CTN out-scan incomplete — ${scannedCTNs.size}/${expectedCTNs.length} cartons scanned`);
           setUploading(false);
           return;
         }
-        options.files = {
-          invoice: shippingFiles.invoice,
-          ewayBill: shippingFiles.ewayBill,
-          transportBill: shippingFiles.transportBill,
-        };
+
+        options.vehicleNo       = dispatchForm.vehicleNo.trim();
+        options.lrNo            = dispatchForm.lrNo.trim();
+        options.transporterName = dispatchForm.transporterName.trim();
+        if (dispatchForm.eWayBillNo.trim())   options.eWayBillNo   = dispatchForm.eWayBillNo.trim();
+        if (dispatchForm.driverName.trim())   options.driverName   = dispatchForm.driverName.trim();
+        if (dispatchForm.driverMobile.trim()) options.driverMobile = dispatchForm.driverMobile.trim();
+        if (dispatchForm.grossWeightKg)       options.grossWeightKg = Number(dispatchForm.grossWeightKg);
+        options.outScannedCartons = [...scannedCTNs];
+
+        // Optional document uploads
+        const files: Record<string, File> = {};
+        if (shippingFiles.invoice)       files.invoice      = shippingFiles.invoice;
+        if (shippingFiles.ewayBill)      files.ewayBill     = shippingFiles.ewayBill;
+        if (shippingFiles.transportBill) files.transportBill = shippingFiles.transportBill;
+        if (Object.keys(files).length)   options.files = files;
       }
 
-      const updated = await distributorOrderService.updateOrderStatus(
-        currentOrder.id,
-        targetStatus,
-        options
-      );
+      const updated = await distributorOrderService.updateOrderStatus(currentOrder.id, targetStatus, options);
       if (updated) {
         setCurrentOrder(updated);
         fetchAllVariantStock();
-        toast.success("Allocation saved and Order marked as Dispatched!");
+        toast.success('Order dispatched successfully!');
       }
     } catch (err: any) {
-      console.error("Failed to allocate order", err);
-      toast.error(err?.response?.data?.message || "Failed to update order");
+      console.error('Failed to dispatch order', err);
+      toast.error(err?.response?.data?.message || 'Failed to update order');
     } finally {
       setUploading(false);
     }
+  };
+
+  // ── CTN Out-Scan helpers ──────────────────────────────────────────────────
+  const makeOrderShort = () =>
+    (currentOrder.orderNumber || currentOrder.id.slice(-6).toUpperCase()).replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 8);
+
+  const getItemCode = (item: Order['items'][0]) => {
+    const article = articles.find(a => a.id === item.articleId);
+    const variant = article?.variants?.find(v => v.id === item.variantId || (v as any)._id === item.variantId);
+    // Use the actual variant SKU from the catalog (same as in master CSV)
+    const sku = variant?.sku || article?.sku || '';
+    if (sku) return sku.replace(/[^A-Z0-9\-_]/gi, '').toUpperCase();
+    // Fallback: derive from article name if SKU not set
+    return (article?.name || item.articleId || 'ITEM').replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 8);
+  };
+
+  const generateExpectedCTNs = (): string[] => {
+    const shortOrder = makeOrderShort();
+    const all: string[] = [];
+    Object.values(allocations).forEach((alloc: any) => {
+      const ctn = alloc.allocatedCartonCount || alloc.cartonCount || 0;
+      // Match allocation to order item by variantId for correct SKU lookup
+      const item = currentOrder.items.find(i => i.variantId === alloc.variantId) || currentOrder.items[0];
+      const code = getItemCode(item);
+      for (let n = 1; n <= ctn; n++) all.push(`${shortOrder}-${code}-C${String(n).padStart(2, '0')}`);
+    });
+    return all;
+  };
+
+  const handleCTNScan = (raw: string) => {
+    const barcode = raw.trim().toUpperCase();
+    if (!barcode) return;
+    const expected = generateExpectedCTNs();
+    if (!expected.includes(barcode)) { toast.error(`Unknown CTN: ${barcode}`); setCtnScanInput(''); return; }
+    if (scannedCTNs.has(barcode)) { toast.info(`${barcode} already scanned`); setCtnScanInput(''); return; }
+    setScannedCTNs(prev => new Set([...prev, barcode]));
+    setCtnScanInput('');
+    toast.success(`CTN ${barcode} scanned ✓`);
   };
 
   // Delivery agent state for OFD step
@@ -1007,20 +1061,24 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {canEditOrDelete && !editMode && (
+          {!editMode && (
             <>
-              <button
-                onClick={startEdit}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 font-bold text-xs hover:bg-indigo-100 transition-all"
-              >
-                <Pencil size={13} /> Edit Order
-              </button>
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-600 font-bold text-xs hover:bg-rose-100 transition-all"
-              >
-                <Trash2 size={13} /> Delete
-              </button>
+              {canEdit && (
+                <button
+                  onClick={startEdit}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 font-bold text-xs hover:bg-indigo-100 transition-all"
+                >
+                  <Pencil size={13} /> Edit Order
+                </button>
+              )}
+              {canCancel && (
+                <button
+                  onClick={() => setShowCancelConfirm(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-600 font-bold text-xs hover:bg-rose-100 transition-all"
+                >
+                  <Ban size={13} /> Cancel Order
+                </button>
+              )}
             </>
           )}
           {editMode && (
@@ -1051,37 +1109,37 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
         </div>
       </div>
 
-      {/* Delete Confirmation Dialog */}
-      {showDeleteConfirm && (
+      {/* Cancel Order Confirmation Dialog */}
+      {showCancelConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-80 max-w-full mx-4">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center">
-                <AlertTriangle size={20} className="text-rose-500" />
+                <Ban size={20} className="text-rose-500" />
               </div>
               <div>
-                <p className="font-black text-slate-900 text-sm">Delete Order?</p>
-                <p className="text-xs text-slate-500">Yeh action undo nahi hogi</p>
+                <p className="font-black text-slate-900 text-sm">Cancel Order?</p>
+                <p className="text-xs text-slate-500">Order cancel ho jaega aur list mein dikhega</p>
               </div>
             </div>
             <p className="text-xs text-slate-600 mb-5">
-              Order <span className="font-bold">#{currentOrder.orderNumber || currentOrder.id.slice(-6).toUpperCase()}</span> permanently delete ho jaega.
+              Order <span className="font-bold">#{currentOrder.orderNumber || currentOrder.id.slice(-6).toUpperCase()}</span> cancel kar diya jaega. Yeh action undo nahi hogi.
             </p>
             <div className="flex gap-2">
               <button
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={deleting}
+                onClick={() => setShowCancelConfirm(false)}
+                disabled={cancelling}
                 className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50"
               >
-                Cancel
+                Back
               </button>
               <button
-                onClick={handleDelete}
-                disabled={deleting}
+                onClick={handleCancel}
+                disabled={cancelling}
                 className="flex-1 px-4 py-2 rounded-xl bg-rose-500 text-white font-bold text-xs hover:bg-rose-600 disabled:opacity-60 flex items-center justify-center gap-1.5"
               >
-                {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                Delete
+                {cancelling ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
+                Cancel Order
               </button>
             </div>
           </div>
@@ -1667,7 +1725,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                                 {[OrderStatus.BOOKED, OrderStatus.PARTIAL, OrderStatus.PFD, OrderStatus.RFD].includes(currentOrder.status) ? (
                                   <input
                                     type="number"
-                                    value={(() => { const v = allocations[item.variantId!]?.allocatedCartonCount ?? 0; return v === 0 ? "" : v; })()}
+                                    value={allocations[item.variantId!]?.allocatedCartonCount ?? (item.cartonCount - (item.fulfilledCartonCount || 0))}
                                     placeholder="0"
                                     min={0}
                                     max={item.cartonCount - (item.fulfilledCartonCount || 0)}
@@ -1715,12 +1773,15 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                       return current !== saved;
                     });
 
-                    const allDocsUploaded = !!(shippingFiles.invoice && shippingFiles.ewayBill && shippingFiles.transportBill);
+                    const _expectedCTNsForBtn = generateExpectedCTNs();
+                    const ctnReady = _expectedCTNsForBtn.length === 0 || scannedCTNs.size >= _expectedCTNsForBtn.length;
+                    const dispatchFieldsReady = !!(dispatchForm.vehicleNo.trim() && dispatchForm.transporterName.trim() && dispatchForm.lrNo.trim());
+                    const allDocsUploaded = ctnReady && dispatchFieldsReady;
 
                     if (isDistributor || ![OrderStatus.BOOKED, OrderStatus.PARTIAL, OrderStatus.PFD, OrderStatus.RFD].includes(currentOrder.status)) return null;
 
                     const stepConfig = {
-                      [OrderStatus.BOOKED]:  { num: 1, color: 'bg-indigo-600', title: 'Allocate & Dispatch',    hint: isPartialBatch ? `Partial dispatch — ${itemsInBatch} item(s) now, ${itemsPending} item(s) later.` : 'Set carton quantities above, upload 3 shipping docs, then confirm dispatch.' },
+                      [OrderStatus.BOOKED]:  { num: 1, color: 'bg-indigo-600', title: 'Allocate & Dispatch',    hint: isPartialBatch ? `Partial dispatch — ${itemsInBatch} item(s) now, ${itemsPending} item(s) later.` : 'Set carton quantities, scan all CTNs, fill dispatch details, then confirm.' },
                       [OrderStatus.PARTIAL]: { num: 1, color: 'bg-indigo-600', title: 'Dispatch Next Batch',    hint: isPartialBatch ? `${itemsInBatch} item(s) in this batch, ${itemsPending} item(s) pending.` : 'Allocate next delivery batch.' },
                       [OrderStatus.PFD]:     { num: 2, color: 'bg-teal-500',   title: 'Mark as In Transit',    hint: 'Goods are dispatched — click to mark as In Transit when shipment is picked up by carrier.' },
                       [OrderStatus.RFD]:     { num: 3, color: 'bg-orange-500', title: 'Out for Delivery',      hint: 'Optionally enter delivery agent details, then mark as Out for Delivery.' },
@@ -1759,46 +1820,196 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                           )}
                         </div>
 
-                        {/* Shipping Documents — BOOKED / PARTIAL step (Dispatch) */}
-                        {[OrderStatus.BOOKED, OrderStatus.PARTIAL].includes(currentOrder.status) && (
-                          <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
-                              Shipping Documents <span className="text-rose-400 normal-case font-bold">* All 3 required</span>
-                            </p>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                              <div>
-                                <input type="file" ref={invoiceInputRef} className="hidden" onChange={(e) => onShippingFileSelected('invoice', e)} />
-                                <button onClick={() => invoiceInputRef.current?.click()} className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${shippingFiles.invoice ? 'border-emerald-400 bg-emerald-50' : 'border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100'}`}>
-                                  {shippingFiles.invoice ? <CheckCircle size={16} className="text-emerald-500 shrink-0" /> : <Upload size={16} className="text-slate-400 shrink-0" />}
-                                  <div className="text-left min-w-0">
-                                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Tax Invoice</p>
-                                    {shippingFiles.invoice && <p className="text-[8px] font-bold text-emerald-600 truncate">{shippingFiles.invoice.name}</p>}
+                        {/* ── CTN Out-Scan + Dispatch Details (BOOKED / PARTIAL) ── */}
+                        {[OrderStatus.BOOKED, OrderStatus.PARTIAL].includes(currentOrder.status) && (() => {
+                          const expectedCTNs = generateExpectedCTNs();
+                          const totalExpected = expectedCTNs.length;
+                          const totalScanned  = scannedCTNs.size;
+                          const allScanned    = totalExpected === 0 || totalScanned >= totalExpected;
+                          const dispatchReady = allScanned
+                            && dispatchForm.vehicleNo.trim()
+                            && dispatchForm.transporterName.trim()
+                            && dispatchForm.lrNo.trim();
+
+                          return (
+                            <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-5">
+
+                              {/* ── A. CTN Out-Scan ── */}
+                              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                                <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
+                                  <div className="flex items-center gap-2">
+                                    <Barcode size={14} className="text-indigo-500" />
+                                    <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest">CTN Out-Scan</p>
+                                    <span className="text-rose-400 text-[10px] font-bold">* Required</span>
                                   </div>
-                                </button>
+                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${allScanned ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                    {totalScanned}/{totalExpected} scanned
+                                  </span>
+                                </div>
+                                <div className="p-4 space-y-3">
+                                  {/* Scan input */}
+                                  <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                      <Barcode size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                      <input
+                                        type="text"
+                                        value={ctnScanInput}
+                                        onChange={e => setCtnScanInput(e.target.value.toUpperCase())}
+                                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCTNScan(ctnScanInput); }}}
+                                        placeholder="Scan carton barcode → Enter"
+                                        className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-500 text-xs font-mono font-bold"
+                                        autoComplete="off"
+                                      />
+                                    </div>
+                                    <button
+                                      onClick={() => handleCTNScan(ctnScanInput)}
+                                      className="px-3 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black hover:bg-indigo-700 transition-all"
+                                    >Scan</button>
+                                  </div>
+                                  {/* Expected CTN chips per item */}
+                                  {Object.values(allocations).map((alloc: any, idx) => {
+                                    const item = currentOrder.items[idx] || currentOrder.items[0];
+                                    if (!item) return null;
+                                    const code = getItemCode(item);
+                                    const short = makeOrderShort();
+                                    const ctns = Array.from({ length: alloc.allocatedCartonCount || alloc.cartonCount || 0 }, (_, n) =>
+                                      `${short}-${code}-C${String(n + 1).padStart(2, '0')}`
+                                    );
+                                    if (!ctns.length) return null;
+                                    const article = articles.find(a => a.id === item.articleId);
+                                    return (
+                                      <div key={idx}>
+                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                                          {article?.name || 'Item'} — {ctns.length} CTN
+                                        </p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {ctns.map(ctnId => (
+                                            <button
+                                              key={ctnId}
+                                              onClick={() => {
+                                                if (scannedCTNs.has(ctnId)) {
+                                                  setScannedCTNs(prev => { const n = new Set(prev); n.delete(ctnId); return n; });
+                                                } else {
+                                                  setScannedCTNs(prev => new Set([...prev, ctnId]));
+                                                  toast.success(`${ctnId} ✓`);
+                                                }
+                                              }}
+                                              title={scannedCTNs.has(ctnId) ? 'Click to unscan' : 'Click to mark scanned'}
+                                              className={`px-2 py-1 rounded-lg text-[9px] font-black font-mono transition-all border ${
+                                                scannedCTNs.has(ctnId)
+                                                  ? 'bg-emerald-500 text-white border-emerald-500'
+                                                  : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-400'
+                                              }`}
+                                            >
+                                              {scannedCTNs.has(ctnId) ? '✓ ' : ''}{ctnId}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                  {totalExpected === 0 && (
+                                    <p className="text-[10px] text-slate-400 text-center py-2">Set carton allocation above to see CTN list</p>
+                                  )}
+                                </div>
                               </div>
-                              <div>
-                                <input type="file" ref={ewayInputRef} className="hidden" onChange={(e) => onShippingFileSelected('ewayBill', e)} />
-                                <button onClick={() => ewayInputRef.current?.click()} className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${shippingFiles.ewayBill ? 'border-emerald-400 bg-emerald-50' : 'border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100'}`}>
-                                  {shippingFiles.ewayBill ? <CheckCircle size={16} className="text-emerald-500 shrink-0" /> : <Upload size={16} className="text-slate-400 shrink-0" />}
-                                  <div className="text-left min-w-0">
-                                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider">E-Way Bill</p>
-                                    {shippingFiles.ewayBill && <p className="text-[8px] font-bold text-emerald-600 truncate">{shippingFiles.ewayBill.name}</p>}
+
+                              {/* ── B. Dispatch Details ── */}
+                              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                                <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-100">
+                                  <Truck size={14} className="text-amber-500" />
+                                  <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Dispatch Details</p>
+                                </div>
+                                <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  {[
+                                    { key: 'vehicleNo',       label: 'Vehicle No',            placeholder: 'e.g. MH 04 AB 1234',  required: true },
+                                    { key: 'transporterName', label: 'Transporter Name',       placeholder: 'e.g. Gati / BlueDart',required: true },
+                                    { key: 'lrNo',            label: 'LR / Consignment No',    placeholder: 'e.g. LR-20240601-001',required: true },
+                                    { key: 'eWayBillNo',      label: 'E-Way Bill No',          placeholder: 'e.g. 1234 5678 9012', required: false },
+                                    { key: 'driverName',      label: 'Driver Name',            placeholder: 'e.g. Ramesh Kumar',   required: false },
+                                    { key: 'driverMobile',    label: 'Driver Mobile',          placeholder: 'e.g. 9876543210',     required: false },
+                                  ].map(f => (
+                                    <div key={f.key}>
+                                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                                        {f.label} {f.required && <span className="text-rose-400">*</span>}
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={(dispatchForm as any)[f.key]}
+                                        onChange={e => setDispatchForm(p => ({ ...p, [f.key]: e.target.value }))}
+                                        placeholder={f.placeholder}
+                                        className={`w-full px-3 py-2 bg-white border rounded-xl outline-none focus:ring-2 focus:ring-indigo-400/20 focus:border-indigo-400 text-xs font-medium ${
+                                          f.required && !(dispatchForm as any)[f.key].trim() ? 'border-rose-200' : 'border-slate-200'
+                                        }`}
+                                      />
+                                    </div>
+                                  ))}
+                                  <div>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">
+                                      Gross Weight (KG)
+                                    </label>
+                                    <input
+                                      type="number"
+                                      value={dispatchForm.grossWeightKg}
+                                      onChange={e => setDispatchForm(p => ({ ...p, grossWeightKg: e.target.value }))}
+                                      placeholder="e.g. 120"
+                                      min="0"
+                                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-400/20 focus:border-indigo-400 text-xs font-medium"
+                                    />
                                   </div>
-                                </button>
+                                </div>
                               </div>
+
+                              {/* ── C. Documents (optional) ── */}
                               <div>
-                                <input type="file" ref={transportInputRef} className="hidden" onChange={(e) => onShippingFileSelected('transportBill', e)} />
-                                <button onClick={() => transportInputRef.current?.click()} className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${shippingFiles.transportBill ? 'border-emerald-400 bg-emerald-50' : 'border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100'}`}>
-                                  {shippingFiles.transportBill ? <CheckCircle size={16} className="text-emerald-500 shrink-0" /> : <Upload size={16} className="text-slate-400 shrink-0" />}
-                                  <div className="text-left min-w-0">
-                                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Transport Bill</p>
-                                    {shippingFiles.transportBill && <p className="text-[8px] font-bold text-emerald-600 truncate">{shippingFiles.transportBill.name}</p>}
-                                  </div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                                  <FileText size={11} /> Supporting Documents <span className="font-normal normal-case text-slate-300">(optional)</span>
+                                </p>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {([
+                                    { ref: invoiceInputRef,   key: 'invoice',       label: 'Tax Invoice' },
+                                    { ref: ewayInputRef,      key: 'ewayBill',      label: 'E-Way Bill PDF' },
+                                    { ref: transportInputRef, key: 'transportBill', label: 'Transport Bill' },
+                                  ] as const).map(d => (
+                                    <div key={d.key}>
+                                      <input type="file" ref={d.ref} className="hidden" onChange={(e) => onShippingFileSelected(d.key, e)} />
+                                      <button
+                                        onClick={() => d.ref.current?.click()}
+                                        className={`w-full flex items-center gap-2 p-2.5 rounded-xl border-2 transition-all text-left ${
+                                          (shippingFiles as any)[d.key] ? 'border-emerald-400 bg-emerald-50' : 'border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100'
+                                        }`}
+                                      >
+                                        {(shippingFiles as any)[d.key]
+                                          ? <CheckCircle size={13} className="text-emerald-500 shrink-0" />
+                                          : <Upload size={13} className="text-slate-400 shrink-0" />}
+                                        <div className="min-w-0">
+                                          <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{d.label}</p>
+                                          {(shippingFiles as any)[d.key] && <p className="text-[8px] text-emerald-600 truncate font-bold">{(shippingFiles as any)[d.key].name}</p>}
+                                        </div>
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* ── D. PI Download (accessible from BOOKED stage) ── */}
+                              <div className="flex gap-2">
+                                <button onClick={handleDownloadPI} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold text-[10px] uppercase hover:bg-slate-50 transition-all shadow-sm">
+                                  <FileText size={12} className="text-indigo-600" /> PI PDF
                                 </button>
+                                <button onClick={handleDownloadExcelPI} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold text-[10px] uppercase hover:bg-slate-50 transition-all shadow-sm">
+                                  <Download size={12} className="text-green-600" /> PI Excel
+                                </button>
+                                {!dispatchReady && (
+                                  <span className="flex items-center gap-1 text-[9px] font-bold text-amber-600 ml-2">
+                                    <AlertCircle size={10} />
+                                    {!allScanned ? `${totalExpected - totalScanned} CTN(s) pending scan` : 'Fill required dispatch fields'}
+                                  </span>
+                                )}
                               </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {/* Action Row */}
                         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
@@ -1821,7 +2032,7 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                             {[OrderStatus.BOOKED, OrderStatus.PARTIAL].includes(currentOrder.status) && (
                               <button
                                 disabled={uploading || !hasAnyAllocation || !allDocsUploaded}
-                                title={!allDocsUploaded ? "Upload all 3 shipping documents above" : !hasAnyAllocation ? "Set allocation for at least one item" : undefined}
+                                title={!ctnReady ? `Scan all cartons (${scannedCTNs.size}/${_expectedCTNsForBtn.length})` : !dispatchFieldsReady ? "Fill Vehicle No, Transporter, and LR No" : !hasAnyAllocation ? "Set allocation for at least one item" : undefined}
                                 onClick={handleAllocateAndProceed}
                                 className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-md active:scale-95 disabled:opacity-50 w-full sm:w-auto justify-center"
                               >
@@ -1830,16 +2041,51 @@ const OrderDetail: React.FC<OrderDetailProps> = ({ order, articles, inventory, o
                               </button>
                             )}
 
-                            {/* PFD (Dispatched): simple In Transit button */}
+                            {/* PFD (Dispatched): dispatch info summary + In Transit button */}
                             {currentOrder.status === OrderStatus.PFD && (
-                              <button
-                                disabled={uploading}
-                                onClick={() => handleUpdateStatus(OrderStatus.RFD)}
-                                className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white rounded-xl font-bold text-xs hover:bg-teal-700 transition-all shadow-md active:scale-95 w-full sm:w-auto justify-center"
-                              >
-                                {uploading ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
-                                Mark as In Transit
-                              </button>
+                              <div className="w-full space-y-3">
+                                {/* Dispatch info card */}
+                                {(currentOrder.vehicleNo || currentOrder.lrNo || currentOrder.transporterName) && (
+                                  <div className="bg-teal-50 border border-teal-100 rounded-xl p-3">
+                                    <p className="text-[9px] font-black text-teal-600 uppercase tracking-widest mb-2 flex items-center gap-1">
+                                      <Truck size={11} /> Dispatch Info
+                                    </p>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px]">
+                                      {currentOrder.vehicleNo && (
+                                        <div><span className="text-slate-400 font-bold uppercase text-[9px]">Vehicle</span><p className="font-black text-slate-700 font-mono">{currentOrder.vehicleNo}</p></div>
+                                      )}
+                                      {currentOrder.transporterName && (
+                                        <div><span className="text-slate-400 font-bold uppercase text-[9px]">Transporter</span><p className="font-black text-slate-700">{currentOrder.transporterName}</p></div>
+                                      )}
+                                      {currentOrder.lrNo && (
+                                        <div><span className="text-slate-400 font-bold uppercase text-[9px]">LR / Consignment</span><p className="font-black text-slate-700 font-mono">{currentOrder.lrNo}</p></div>
+                                      )}
+                                      {currentOrder.eWayBillNo && (
+                                        <div><span className="text-slate-400 font-bold uppercase text-[9px]">E-Way Bill</span><p className="font-black text-slate-700 font-mono">{currentOrder.eWayBillNo}</p></div>
+                                      )}
+                                      {currentOrder.driverName && (
+                                        <div><span className="text-slate-400 font-bold uppercase text-[9px]">Driver</span><p className="font-black text-slate-700">{currentOrder.driverName}{currentOrder.driverMobile ? ` · ${currentOrder.driverMobile}` : ''}</p></div>
+                                      )}
+                                      {currentOrder.dispatchedAt && (
+                                        <div><span className="text-slate-400 font-bold uppercase text-[9px]">Dispatched At</span><p className="font-black text-slate-700">{new Date(currentOrder.dispatchedAt).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</p></div>
+                                      )}
+                                      {currentOrder.outScannedCartons && currentOrder.outScannedCartons.length > 0 && (
+                                        <div className="col-span-2 sm:col-span-3"><span className="text-slate-400 font-bold uppercase text-[9px]">Out-Scanned Cartons ({currentOrder.outScannedCartons.length})</span>
+                                          <div className="flex flex-wrap gap-1 mt-1">{currentOrder.outScannedCartons.map(c => <span key={c} className="px-1.5 py-0.5 bg-teal-100 text-teal-700 rounded-md font-mono text-[9px] font-bold">{c}</span>)}</div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                                <button
+                                  disabled={uploading}
+                                  onClick={() => handleUpdateStatus(OrderStatus.RFD)}
+                                  className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white rounded-xl font-bold text-xs hover:bg-teal-700 transition-all shadow-md active:scale-95 w-full sm:w-auto justify-center"
+                                >
+                                  {uploading ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+                                  Mark as In Transit
+                                </button>
+                              </div>
                             )}
 
                             {/* RFD (In Transit): delivery agent form + Out for Delivery button */}

@@ -37,15 +37,19 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [totalPOPairs, setTotalPOPairs] = useState(0);
   const [poPairsPerArticle, setPoPairsPerArticle] = useState<Record<string, number>>({});
+  const [poPairsPerVariant, setPoPairsPerVariant]  = useState<Record<string, number>>({});
+  // Secondary lookup by SKU — used when PO item has no variantId (older POs)
+  const [poPairsByVariantSku, setPoPairsByVariantSku] = useState<Record<string, number>>({});
 
-  // Compute live + blocked pairs from articles prop (always in sync)
+  // Live  = sizeMap[size].qty      → available stock; reduces when order blocked, stays reduced after dispatch
+  // Blocked = sizeMap[size].blockedQty → reserved for booked orders, reduces when order dispatched
   const { totalLivePairs, totalBlockedPairs } = useMemo(() => {
     let live = 0;
     let blocked = 0;
     articles.forEach(a => {
       (a.variants || []).forEach(v => {
         Object.values(v.sizeMap || {}).forEach((cell: any) => {
-          live += Number(cell?.qty || 0);
+          live    += Number(cell?.qty        || 0);
           blocked += Number(cell?.blockedQty || 0);
         });
       });
@@ -53,27 +57,73 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
     return { totalLivePairs: live, totalBlockedPairs: blocked };
   }, [articles]);
 
-  // Fetch approved PO pairs — global total + per-article map
-  useEffect(() => {
-    apiFetch("/purchase-orders?limit=1000")
-      .then((res: any) => {
-        const pos: any[] = res.data || [];
-        let total = 0;
-        const perArticle: Record<string, number> = {};
-        pos.forEach(po => {
-          if (po.billStatus === "APPROVED") {
-            (po.items || []).forEach((item: any) => {
-              const qty = Number(item.quantity || 0);
-              total += qty;
-              const aid = String(item.articleId || "");
-              if (aid) perArticle[aid] = (perArticle[aid] || 0) + qty;
-            });
-          }
+  // PO Pending = all active POs (SENT, not deleted) that have NOT yet been received via GRN
+  const fetchPOPairs = async () => {
+    try {
+      const [poRes, grnRes] = await Promise.all([
+        apiFetch("/purchase-orders?limit=1000&status=SENT"),
+        apiFetch("/grn/history?limit=2000"),
+      ]);
+
+      const grns: any[] = (grnRes.data || grnRes) as any[];
+
+      // Build set of received PO numbers from TWO sources:
+      // 1. poIds field (explicitly set on GRN submit)
+      // 2. refId field (GRN linked to PO via refId = poNumber)
+      const receivedPONos = new Set<string>();
+      grns.forEach((g: any) => {
+        // refId for PO-linked GRNs is the PO number itself
+        if (g.refId) receivedPONos.add(String(g.refId));
+        (g.poIds || []).forEach((p: string) => receivedPONos.add(String(p)));
+      });
+
+      const pos: any[] = poRes.data || poRes || [];
+      let total = 0;
+      const perArticle: Record<string, number> = {};
+      const perVariant: Record<string, number> = {};
+
+      const perSku: Record<string, number> = {};
+
+      pos.forEach((po: any) => {
+        if (po.isDeleted) return;
+        if (receivedPONos.has(String(po.poNumber))) return; // already GRN'd
+        (po.items || []).forEach((item: any) => {
+          // quantity = total pairs (always = cartonCount * 24, set by POPage)
+          const qty = Number(item.quantity || 0) || Number(item.cartonCount || 0) * 24;
+          if (!qty) return;
+          total += qty;
+          const aid = String(item.articleId || "");
+          const vid = String(item.variantId  || "");
+          const sku = String(item.sku || "").trim().toUpperCase();
+          if (aid) perArticle[aid] = (perArticle[aid] || 0) + qty;
+          if (vid) perVariant[vid]  = (perVariant[vid]  || 0) + qty;
+          // SKU fallback for PO items where variantId wasn't set (older POs)
+          if (sku) perSku[sku] = (perSku[sku] || 0) + qty;
         });
-        setTotalPOPairs(total);
-        setPoPairsPerArticle(perArticle);
-      })
-      .catch(() => {});
+      });
+
+      setTotalPOPairs(total);
+      setPoPairsPerArticle(perArticle);
+      setPoPairsPerVariant(perVariant);
+      setPoPairsByVariantSku(perSku);
+    } catch { /* silent */ }
+  };
+
+  useEffect(() => { fetchPOPairs(); }, []);
+
+  // Real-time: re-fetch when PO/GRN/catalog changes affect pending stock
+  useEffect(() => {
+    const handler = () => fetchPOPairs();
+    window.addEventListener("billRefetch",   handler);
+    window.addEventListener("grnRefetch",    handler);
+    window.addEventListener("catalogRefetch", handler);
+    window.addEventListener("poRefetch",     handler);
+    return () => {
+      window.removeEventListener("billRefetch",   handler);
+      window.removeEventListener("grnRefetch",    handler);
+      window.removeEventListener("catalogRefetch", handler);
+      window.removeEventListener("poRefetch",     handler);
+    };
   }, []);
 
   const toggleExpand = (id: string) => {
@@ -183,12 +233,12 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
             <TrendingUp size={20} className="text-emerald-600" />
           </div>
           <div>
-            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Live Stock</p>
+            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Available</p>
             <div className="flex items-baseline gap-1.5">
               <span className="text-2xl font-black text-slate-900">{Math.floor(totalLivePairs / 24).toLocaleString()}</span>
               <span className="text-xs font-bold text-slate-400">Ctns</span>
             </div>
-            <p className="text-[10px] text-slate-400 mt-0.5">{totalLivePairs.toLocaleString()} pairs</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">{totalLivePairs.toLocaleString()} free pairs</p>
           </div>
         </div>
         <div className="bg-white rounded-2xl border border-indigo-200 shadow-sm p-4 flex items-center gap-4">
@@ -196,12 +246,12 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
             <ShoppingCart size={20} className="text-indigo-600" />
           </div>
           <div>
-            <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Approved PO</p>
+            <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">PO Pending</p>
             <div className="flex items-baseline gap-1.5">
               <span className="text-2xl font-black text-slate-900">{Math.floor(totalPOPairs / 24).toLocaleString()}</span>
               <span className="text-xs font-bold text-slate-400">Ctns</span>
             </div>
-            <p className="text-[10px] text-slate-400 mt-0.5">{totalPOPairs.toLocaleString()} pairs</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">{totalPOPairs.toLocaleString()} pairs incoming</p>
           </div>
         </div>
         <div className="bg-white rounded-2xl border border-amber-200 shadow-sm p-4 flex items-center gap-4">
@@ -273,24 +323,24 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                 </div>
 
                 {/* Stock Summary Columns */}
-                <div className="hidden lg:flex items-center gap-8 mr-4">
-                  <div className="text-center w-28 border-l border-slate-100 pl-4">
-                    <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-0.5">Live Stock</p>
+                <div className="hidden lg:flex items-center gap-6 mr-4">
+                  <div className="text-center w-24 border-l border-slate-100 pl-4">
+                    <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-0.5">Available</p>
                     <div className="flex items-baseline justify-center gap-1">
                       <span className="text-xl font-black text-slate-900">{Math.floor(articleLivePairs / 24)}</span>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ctns</span>
                     </div>
                     <p className="text-[9px] text-slate-400 mt-0.5">{articleLivePairs} prs</p>
                   </div>
-                  <div className="text-center w-28 border-l border-slate-100 pl-4">
-                    <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest mb-0.5">PO</p>
+                  <div className="text-center w-24 border-l border-slate-100 pl-4">
+                    <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest mb-0.5">PO Pending</p>
                     <div className="flex items-baseline justify-center gap-1">
                       <span className="text-xl font-black text-slate-900">{Math.floor(articlePOPairs / 24)}</span>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Ctns</span>
                     </div>
                     <p className="text-[9px] text-slate-400 mt-0.5">{articlePOPairs} prs</p>
                   </div>
-                  <div className="text-center w-28 border-l border-slate-100 pl-4">
+                  <div className="text-center w-24 border-l border-slate-100 pl-4">
                     <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5">Blocked</p>
                     <div className="flex items-baseline justify-center gap-1">
                       <span className="text-xl font-black text-slate-900">{Math.floor(articleBlockedPairs / 24)}</span>
@@ -311,20 +361,20 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
               </div>
 
               {/* Mobile Stats Row */}
-              <div className="lg:hidden grid grid-cols-3 gap-2 px-4 pb-4">
-                <div className="bg-emerald-50/50 p-2.5 rounded-xl text-center border border-emerald-100">
-                  <p className="text-[8px] font-black text-emerald-600 uppercase tracking-tighter mb-0.5">Live</p>
-                  <p className="text-sm font-black text-slate-900">{Math.floor(articleLivePairs / 24)} <span className="text-[8px] text-slate-400">Ctns</span></p>
+              <div className="lg:hidden grid grid-cols-3 gap-1.5 px-4 pb-4">
+                <div className="bg-emerald-50/50 p-2 rounded-xl text-center border border-emerald-100">
+                  <p className="text-[8px] font-black text-emerald-600 uppercase tracking-tighter mb-0.5">Avail</p>
+                  <p className="text-sm font-black text-slate-900">{Math.floor(articleLivePairs / 24)} <span className="text-[8px] text-slate-400">C</span></p>
                   <p className="text-[8px] text-slate-400">{articleLivePairs} prs</p>
                 </div>
-                <div className="bg-indigo-50/50 p-2.5 rounded-xl text-center border border-indigo-100">
+                <div className="bg-indigo-50/50 p-2 rounded-xl text-center border border-indigo-100">
                   <p className="text-[8px] font-black text-indigo-600 uppercase tracking-tighter mb-0.5">PO</p>
-                  <p className="text-sm font-black text-slate-900">{Math.floor(articlePOPairs / 24)} <span className="text-[8px] text-slate-400">Ctns</span></p>
+                  <p className="text-sm font-black text-slate-900">{Math.floor(articlePOPairs / 24)} <span className="text-[8px] text-slate-400">C</span></p>
                   <p className="text-[8px] text-slate-400">{articlePOPairs} prs</p>
                 </div>
-                <div className="bg-amber-50/50 p-2.5 rounded-xl text-center border border-amber-100">
+                <div className="bg-amber-50/50 p-2 rounded-xl text-center border border-amber-100">
                   <p className="text-[8px] font-black text-amber-600 uppercase tracking-tighter mb-0.5">Blocked</p>
-                  <p className="text-sm font-black text-slate-900">{Math.floor(articleBlockedPairs / 24)} <span className="text-[8px] text-slate-400">Ctns</span></p>
+                  <p className="text-sm font-black text-slate-900">{Math.floor(articleBlockedPairs / 24)} <span className="text-[8px] text-slate-400">C</span></p>
                   <p className="text-[8px] text-slate-400">{articleBlockedPairs} prs</p>
                 </div>
               </div>
@@ -343,24 +393,26 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                              <tr>
                                <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Variant Details</th>
                                <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Color</th>
-                               <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Live Stock</th>
-                               <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Booked</th>
-                               <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Blocked</th>
+                               <th className="px-6 py-3 text-[9px] font-black text-emerald-500 uppercase tracking-widest text-center">Available</th>
+                               <th className="px-6 py-3 text-[9px] font-black text-indigo-500 uppercase tracking-widest text-center">PO Pending</th>
+                               <th className="px-6 py-3 text-[9px] font-black text-amber-500 uppercase tracking-widest text-center">Blocked</th>
                                <th className="px-6 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                              </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                              {article.variants?.map(variant => {
-                               // Calculate variant stock
-                               const livePairs = Object.values(variant.sizeMap || {}).reduce((sum, s) => sum + (s.qty || 0), 0);
-                               const bookedPairs = Object.values(variant.bookingMap || {}).reduce((sum, q) => sum + (q || 0), 0);
+                               // live = available (sizeMap.qty), blocked = reserved for booked orders
+                               const livePairs    = Object.values(variant.sizeMap || {}).reduce((sum, s) => sum + (s.qty        || 0), 0);
                                const blockedPairs = Object.values(variant.sizeMap || {}).reduce((sum, s) => sum + (s.blockedQty || 0), 0);
-                               const physicalPairs = livePairs + bookedPairs + blockedPairs;
-
-                               // Convert to cartons (1 Ctn = 24 Pairs)
-                               const liveCtns = Math.floor(livePairs / 24);
-                               const bookedCtns = Math.floor(bookedPairs / 24);
-                               const physicalCtns = Math.floor(physicalPairs / 24);
+                               const liveCtns    = Math.floor(livePairs    / 24);
+                               const blockedCtns = Math.floor(blockedPairs / 24);
+                               // Try by variantId first, then fall back to SKU (older POs may lack variantId)
+                               const variantSkuKey = (variant.sku || "").trim().toUpperCase();
+                               const poPairs = poPairsPerVariant[variant.id]
+                                 ?? poPairsPerVariant[(variant as any)._id]
+                                 ?? (variantSkuKey ? poPairsByVariantSku[variantSkuKey] : undefined)
+                                 ?? 0;
+                               const poCtns      = Math.floor(poPairs / 24);
 
                                  return (
                                  <tr key={variant.id} className="hover:bg-white transition-colors group">
@@ -370,16 +422,11 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                                            {(() => {
                                              const colorMedia = article.colorMedia || [];
                                              const matched = colorMedia.find(cm => cm.color.toLowerCase() === variant.color.toLowerCase());
-                                             const vImg = (matched && matched.images && matched.images.length > 0) 
-                                               ? matched.images[0].url 
+                                             const vImg = (matched && matched.images && matched.images.length > 0)
+                                               ? matched.images[0].url
                                                : (variant.images && variant.images.length > 0 ? variant.images[0] : article.imageUrl);
-                                             
                                              return vImg ? (
-                                               <img 
-                                                 src={getImageUrl(vImg)} 
-                                                 alt={variant.color} 
-                                                 className="w-full h-full object-cover rounded-md"
-                                               />
+                                               <img src={getImageUrl(vImg)} alt={variant.color} className="w-full h-full object-cover rounded-md" />
                                              ) : (
                                                <div className="w-full h-full rounded-md bg-slate-50 flex items-center justify-center">
                                                  <ImageIcon size={14} className="text-slate-300" />
@@ -397,25 +444,24 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({ inventory, articles, 
                                    </td>
                                    <td className="px-6 py-3 text-center">
                                       <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white border border-slate-100 shadow-sm">
-                                         {/* <div 
-                                           className="w-3 h-3 rounded-full border border-slate-200 shadow-inner" 
-                                           style={{ backgroundColor: variant.color?.toLowerCase() || '#eee' }}
-                                         /> */}
                                          <span className="text-[10px] font-bold text-slate-600 uppercase">{variant.color}</span>
                                       </div>
                                    </td>
-                                    <td className="px-6 py-3 text-center">
-                                       <span className="text-sm font-black text-emerald-600">{Math.abs(liveCtns)}</span>
-                                       <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
-                                    </td>
-                                    <td className="px-6 py-3 text-center">
-                                       <span className="text-sm font-black text-rose-500">{Math.abs(bookedCtns)}</span>
-                                       <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
-                                    </td>
-                                    <td className="px-6 py-3 text-center">
-                                       <span className="text-sm font-black text-amber-500">{Math.abs(Math.floor(blockedPairs / 24))}</span>
-                                       <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
-                                    </td>
+                                   <td className="px-6 py-3 text-center">
+                                     <span className="text-sm font-black text-emerald-600">{liveCtns}</span>
+                                     <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
+                                     <p className="text-[8px] text-slate-300">{livePairs} prs</p>
+                                   </td>
+                                   <td className="px-6 py-3 text-center">
+                                     <span className="text-sm font-black text-indigo-600">{poCtns}</span>
+                                     <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
+                                     <p className="text-[8px] text-slate-300">{poPairs} prs</p>
+                                   </td>
+                                   <td className="px-6 py-3 text-center">
+                                     <span className="text-sm font-black text-amber-500">{blockedCtns}</span>
+                                     <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cartons</p>
+                                     <p className="text-[8px] text-slate-300">{blockedPairs} prs</p>
+                                   </td>
                                    <td className="px-6 py-3">
                                       <div className="flex justify-end items-center gap-2">
                                         <button

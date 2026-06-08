@@ -26,5 +26,6 @@ router.delete("/:id", ctrl.deleteMasterCatalog);
 router.get("/variants/:variantId/stock", ctrl.getVariantStock);
 router.post("/variants/:variantId/reset-stock", ctrl.resetVariantStock);
 router.post("/variants/:variantId/stock-movement", ctrl.stockMovement);
+router.patch("/variants/:variantId/sku", ctrl.updateVariantSku);
 
 module.exports = router;

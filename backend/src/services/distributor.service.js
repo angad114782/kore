@@ -65,6 +65,7 @@ const sanitizePayload = (body = {}) => {
         : undefined,
 
     location: body.location,
+    tag: body.tag,
     loginEnabled: parseBoolean(body.loginEnabled, undefined),
     isActive: parseBoolean(body.isActive, undefined),
   };
@@ -202,6 +203,7 @@ exports.createDistributor = async (body) => {
 
       const user = await User.create([userPayload], { session });
       createdDistributor.userId = user[0]._id;
+      if (loginPassword) createdDistributor.loginPasswordPlain = String(loginPassword);
       await createdDistributor.save({ session });
     }
 
@@ -356,6 +358,7 @@ exports.updateDistributor = async (id, body) => {
     });
     const user = await User.create(userPayload);
     distributor.userId = user._id;
+    if (loginPassword) distributor.loginPasswordPlain = String(loginPassword);
     await distributor.save();
   }
 
@@ -377,6 +380,7 @@ exports.updateDistributor = async (id, body) => {
         String(body.loginPassword),
         SALT_ROUNDS
       );
+      distributor.loginPasswordPlain = String(body.loginPassword);
       // Invalidate all existing sessions when password is changed
       const linkedUser = await User.findById(distributor.userId).select('tokenVersion').lean();
       userPatch.tokenVersion = (linkedUser?.tokenVersion || 0) + 1;

@@ -60,6 +60,18 @@ const VariantSchema = new mongoose.Schema(
       default: {},
     },
 
+    // Channel tag — online or offline
+    tag: {
+      type: String,
+      enum: ["online", "offline"],
+      default: "online",
+    },
+    onlineMrp:  { type: Number, default: 0, min: 0 },
+    offlineMrp: { type: Number, default: 0, min: 0 },
+
+    // Carton-level SKU (e.g. slk-blk-5-9); sizeSkus auto-derived from this
+    sku: { type: String, trim: true, default: "" },
+
     isActive: { type: Boolean, default: true },
   },
   { _id: true }

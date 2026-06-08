@@ -131,6 +131,13 @@ const ActivityLogPage: React.FC = () => {
     fetchLogs();
   }, [fetchLogs]);
 
+  // Real-time: silently refresh log list when new activity arrives (page 1 only to avoid pagination confusion)
+  useEffect(() => {
+    const handler = () => { if (page === 1) fetchLogs(); };
+    window.addEventListener("activityLogRefetch", handler);
+    return () => window.removeEventListener("activityLogRefetch", handler);
+  }, [fetchLogs, page]);
+
   const filtered = search.trim()
     ? logs.filter((l) =>
         l.description.toLowerCase().includes(search.toLowerCase()) ||

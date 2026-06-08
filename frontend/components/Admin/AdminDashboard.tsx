@@ -477,11 +477,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [pos, setPOs] = useState<PurchaseOrder[]>([]);
 
   // Fetch POs for pending section
-  useEffect(() => {
+  const fetchPOs = () => {
     poService.listPOs({ limit: 500 }).then(res => {
       const list: PurchaseOrder[] = res.data ?? res ?? [];
       setPOs(list);
     }).catch(() => {});
+  };
+
+  useEffect(() => { fetchPOs(); }, []);
+
+  // Real-time: refresh PO list on socket events
+  useEffect(() => {
+    const handler = () => fetchPOs();
+    window.addEventListener("poRefetch", handler);
+    return () => window.removeEventListener("poRefetch", handler);
   }, []);
 
   // Filtered orders

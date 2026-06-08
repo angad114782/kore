@@ -21,9 +21,11 @@ export interface User {
   billingAddress?: string | DistributorAddress;
   shippingAddress?: string | DistributorAddress;
   paymentTerms?: string;
+  tag?: "online" | "offline";
   discountPercentage?: number;
   creditLimit?: number;
   loginEmail?: string; // populated from linked `User` record
+  loginPasswordPlain?: string; // plain text stored on distributor for admin reference
   /**
    * password is never returned from the server – only used transiently when
    * creating/updating a distributor. the UI will display a placeholder and
@@ -68,6 +70,9 @@ export interface Variant {
   poMap?: Record<string, number>;
   images?: string[];
   isActive?: boolean;
+  tag?: "online" | "offline";
+  onlineMrp?: number;
+  offlineMrp?: number;
 }
 
 export interface Assortment {
@@ -228,6 +233,16 @@ export interface Order {
   adminNote?: string;
   stockStatus?: 'DISPATCH_READY' | 'BLOCK_HOLD' | 'NO_STOCK';
   blockReason?: string;
+  // Dispatch details — filled at BOOKED → PFD (CTN out-scan step)
+  vehicleNo?: string;
+  lrNo?: string;
+  transporterName?: string;
+  eWayBillNo?: string;
+  driverName?: string;
+  driverMobile?: string;
+  grossWeightKg?: number;
+  outScannedCartons?: string[];
+  dispatchedAt?: string;
 }
 
 export interface MovementRecord {
@@ -363,6 +378,7 @@ export interface PurchaseOrderItem {
   sizeMap?: Record<string, { qty: number; sku: string }>;
   cartonCount?: number;
   assortment?: string;
+  gender?: string;
 }
 
 export type POStatus = "DRAFT" | "SENT";

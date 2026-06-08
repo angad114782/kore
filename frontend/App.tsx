@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { io } from "socket.io-client";
+import { useSocket } from "./context/SocketContext";
+import SocketStatusBadge from "./components/ui/SocketStatusBadge";
 import {
   ShoppingBag,
   Package,
@@ -66,6 +67,7 @@ import { distributorOrderService } from "./services/distributorOrderService";
 const App: React.FC = () => {
   const store = useKoreStore();
   const { currentUser: user, checkAuth, isLoadingAuth } = store;
+  const socket = useSocket();
 
   useEffect(() => {
     checkAuth();
@@ -272,32 +274,32 @@ const App: React.FC = () => {
     fetchOrders();
   }, [user?.id, user?.role]);
 
-  // ── Stable socket connection (does NOT depend on `user`) ──
+  // ── Socket event handlers (shared socket from SocketContext) ──
   useEffect(() => {
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5005/api";
-    const socketBase = API_BASE_URL.replace("/api", "");
-    const socket = io(socketBase);
+    if (!socket) return;
 
-    socket.on("connect", () => {
-      console.log("🔌 Connected to socket server");
-    });
+    const onConnect = () => {
+      console.log("🔌 Socket connected");
+      // Re-authenticate on every connect/reconnect so server assigns correct rooms
+      const token = localStorage.getItem("kore_token");
+      if (token) socket.emit("authenticate", token);
+    };
 
-    socket.on("orderUpdated", (data) => {
-      console.log("📦 Order update received:", data);
+    const onConnectError = (err: Error) => {
+      console.warn("⚠️ Socket connect error:", err.message);
+    };
+
+    const onOrderUpdated = (data: any) => {
       const u = userRef.current;
       if (!u) return;
 
       const isDistributor = u.role === UserRole.DISTRIBUTOR;
       const orderId = String(data.orderId);
       const distributorId = String(data.distributorId);
-      
       const isMyOrder = distributorId === String(u.id) || distributorId === String(u.distributorId);
 
-      // Distributors only care about their own orders
       if (isDistributor && !isMyOrder) return;
 
-      // Suppress toast for price-only updates (PENDING stays PENDING)
-      // But show toast for admin when a new PRE_BOOKED order arrives
       const isPriceOnly = data.status === "PENDING" && !isDistributor;
       if (!isPriceOnly) {
         if (data.status === "PRE_BOOKED" && !isDistributor) {
@@ -307,49 +309,47 @@ const App: React.FC = () => {
           });
         } else if (data.status !== "PRE_BOOKED") {
           toast.success(`Order Update: ${orderId.slice(-6).toUpperCase()}`, {
-            description: `Status changed to ${data.status?.replace(/_/g, ' ') || 'updated'}`,
+            description: `Status changed to ${data.status?.replace(/_/g, " ") || "updated"}`,
             duration: 3000,
           });
         }
       }
 
-      // Re-fetch orders for data consistency
-      if (fetchOrdersRef.current) {
-        fetchOrdersRef.current(true);
-      }
+      if (fetchOrdersRef.current) fetchOrdersRef.current(true);
+      if (isDistributor) checkAuthRef.current?.(true);
 
-      // Always refresh credit limits for distributors
-      if (isDistributor) {
-        checkAuthRef.current?.(true);
-      }
-    });
+      // Notify open OrderDetail to refresh itself
+      window.dispatchEvent(new CustomEvent("orderUpdatedSocket", { detail: data }));
+    };
 
-    socket.on("distributorUpdated", (data) => {
-      console.log("👤 Distributor profile update received:", data);
+    const onDistributorUpdated = (data: any) => {
       const u = userRef.current;
-      if (!u || u.role !== UserRole.DISTRIBUTOR) return;
+      if (!u) return;
 
-      if (
-        String(data.distributorId) === String(u.distributorId) ||
-        String(data.distributorId) === String(u.id)
-      ) {
-        checkAuthRef.current?.(true);
+      if (u.role === UserRole.DISTRIBUTOR) {
+        if (
+          String(data.distributorId) === String(u.distributorId) ||
+          String(data.distributorId) === String(u.id)
+        ) {
+          checkAuthRef.current?.(true);
+        }
+      } else {
+        // Admin: refresh distributor list
+        window.dispatchEvent(new CustomEvent("distributorRefetch"));
       }
-    });
+    };
 
-    socket.on("activityLog", (data) => {
+    const onActivityLog = (data: any) => {
       const u = userRef.current;
-      // Only show real-time alerts to admin/superadmin/manager
       if (!u || u.role === UserRole.DISTRIBUTOR) return;
 
       const label = (data.action as string).replace(/_/g, " ");
-      toast.info(`${label}`, {
-        description: data.description,
-        duration: 4000,
-      });
-    });
+      toast.info(label, { description: data.description, duration: 4000 });
+      // Refresh activity log page if open
+      window.dispatchEvent(new CustomEvent("activityLogRefetch"));
+    };
 
-    socket.on("grnSubmitted", (data) => {
+    const onGrnSubmitted = (data: any) => {
       const u = userRef.current;
       if (!u || u.role === UserRole.DISTRIBUTOR) return;
       toast.info(`GRN #${data.grnNumber} submitted`, {
@@ -358,45 +358,73 @@ const App: React.FC = () => {
       });
       if (fetchArticlesRef.current) fetchArticlesRef.current();
       window.dispatchEvent(new CustomEvent("grnRefetch"));
-    });
+    };
 
-    socket.on("poCreated", (data) => {
+    const onPoCreated = (data: any) => {
       const u = userRef.current;
       if (!u || u.role === UserRole.DISTRIBUTOR) return;
       toast.info(`PO #${data.poNumber} created`, { description: `Vendor: ${data.vendorName}`, duration: 4000 });
       window.dispatchEvent(new CustomEvent("poRefetch"));
-    });
+    };
 
-    socket.on("poUpdated", (data) => {
+    const onPoUpdated = (data: any) => {
       const u = userRef.current;
       if (!u || u.role === UserRole.DISTRIBUTOR) return;
       toast.info(`PO #${data.poNumber} updated`, { duration: 3000 });
       window.dispatchEvent(new CustomEvent("poRefetch"));
-    });
+    };
 
-    socket.on("billApproved", (data) => {
+    const onPoDeleted = (data: any) => {
+      const u = userRef.current;
+      if (!u || u.role === UserRole.DISTRIBUTOR) return;
+      toast.warning(`PO #${data.poNumber || ""} deleted`, { duration: 3000 });
+      window.dispatchEvent(new CustomEvent("poRefetch"));
+    };
+
+    const onBillApproved = (data: any) => {
       const u = userRef.current;
       if (!u || u.role === UserRole.DISTRIBUTOR) return;
       toast.success(`Bill Approved: PO #${data.poNumber}`, { description: data.vendorName, duration: 4000 });
-    });
+      window.dispatchEvent(new CustomEvent("billRefetch"));
+    };
 
-    socket.on("billRejected", (data) => {
+    const onBillRejected = (data: any) => {
       const u = userRef.current;
       if (!u || u.role === UserRole.DISTRIBUTOR) return;
       toast.error(`Bill Rejected: PO #${data.poNumber}`, { description: data.reason || "", duration: 4000 });
-    });
+      window.dispatchEvent(new CustomEvent("billRefetch"));
+    };
 
-    socket.on("catalogUpdated", () => {
+    const onCatalogUpdated = () => {
       if (fetchArticlesRef.current) fetchArticlesRef.current();
-      // Refresh orders & pre-orders so embedded catalog data (MRP etc.) stays current
       if (fetchOrdersRef.current) fetchOrdersRef.current(true);
-    });
+      window.dispatchEvent(new CustomEvent("catalogRefetch"));
+    };
 
-    socket.on("returnCreated", (data) => {
+    const onUserUpdated = () => {
+      window.dispatchEvent(new CustomEvent("userRefetch"));
+    };
+
+    const onUserProfileUpdated = (data: any) => {
+      const u = userRef.current;
+      if (!u) return;
+      if (String(data.userId) === String(u.id)) {
+        // Sync store so Sidebar/ProfilePage reflect updated name/email instantly
+        if (data.name || data.email || data.phone) {
+          store.setCurrentUser({ ...u, ...data });
+        }
+        window.dispatchEvent(new CustomEvent("userProfileRefetch", { detail: data }));
+      }
+    };
+
+    const onVendorUpdated = () => {
+      window.dispatchEvent(new CustomEvent("vendorRefetch"));
+    };
+
+    const onReturnCreated = (data: any) => {
       const u = userRef.current;
       if (!u) return;
       if (u.role === UserRole.DISTRIBUTOR) {
-        // Only notify the distributor whose return it is
         const isMyReturn =
           String(data.distributorId) === String(u.id) ||
           String(data.distributorId) === String(u.distributorId);
@@ -406,16 +434,16 @@ const App: React.FC = () => {
           duration: 4000,
         });
       } else {
-        // Admin / superadmin — show all returns
         toast.info(`New Return: #${data.returnNumber}`, {
           description: `${data.distributorName} · ${data.totalPairs} pairs`,
           duration: 5000,
         });
         if (fetchOrdersRef.current) fetchOrdersRef.current(true);
+        window.dispatchEvent(new CustomEvent("returnRefetch"));
       }
-    });
+    };
 
-    socket.on("sessionInvalidated", (data) => {
+    const onSessionInvalidated = (data: any) => {
       const u = userRef.current;
       if (!u) return;
       if (String(data.userId) !== String(u.id)) return;
@@ -424,12 +452,46 @@ const App: React.FC = () => {
         description: "Admin ne aapka password change kar diya. Please login karein.",
         duration: 6000,
       });
-    });
+    };
+
+    socket.on("connect",             onConnect);
+    socket.on("connect_error",       onConnectError);
+    socket.on("orderUpdated",        onOrderUpdated);
+    socket.on("distributorUpdated",  onDistributorUpdated);
+    socket.on("activityLog",         onActivityLog);
+    socket.on("grnSubmitted",        onGrnSubmitted);
+    socket.on("poCreated",           onPoCreated);
+    socket.on("poUpdated",           onPoUpdated);
+    socket.on("poDeleted",           onPoDeleted);
+    socket.on("billApproved",        onBillApproved);
+    socket.on("billRejected",        onBillRejected);
+    socket.on("catalogUpdated",      onCatalogUpdated);
+    socket.on("returnCreated",       onReturnCreated);
+    socket.on("sessionInvalidated",  onSessionInvalidated);
+    socket.on("userUpdated",         onUserUpdated);
+    socket.on("userProfileUpdated",  onUserProfileUpdated);
+    socket.on("vendorUpdated",       onVendorUpdated);
 
     return () => {
-      socket.disconnect();
+      socket.off("connect",             onConnect);
+      socket.off("connect_error",       onConnectError);
+      socket.off("orderUpdated",        onOrderUpdated);
+      socket.off("distributorUpdated",  onDistributorUpdated);
+      socket.off("activityLog",         onActivityLog);
+      socket.off("grnSubmitted",        onGrnSubmitted);
+      socket.off("poCreated",           onPoCreated);
+      socket.off("poUpdated",           onPoUpdated);
+      socket.off("poDeleted",           onPoDeleted);
+      socket.off("billApproved",        onBillApproved);
+      socket.off("billRejected",        onBillRejected);
+      socket.off("catalogUpdated",      onCatalogUpdated);
+      socket.off("returnCreated",       onReturnCreated);
+      socket.off("sessionInvalidated",  onSessionInvalidated);
+      socket.off("userUpdated",         onUserUpdated);
+      socket.off("userProfileUpdated",  onUserProfileUpdated);
+      socket.off("vendorUpdated",       onVendorUpdated);
     };
-  }, []); // Empty deps = socket connects ONCE, never reconnects
+  }, [socket]); // Re-bind only if socket instance changes
 
   // ── Periodic credit refresh when distributor is on the cart tab ──
   useEffect(() => {
@@ -1079,6 +1141,7 @@ const App: React.FC = () => {
         )}
       </main>
       <Toaster position="top-right" richColors />
+      <SocketStatusBadge />
     </div>
   );
 };

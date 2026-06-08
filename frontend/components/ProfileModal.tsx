@@ -53,6 +53,17 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   }, [isOpen, user]);
 
+  // Real-time: update form if admin changed profile from another session
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const data = (e as CustomEvent).detail;
+      if (data?.name) setProfileForm(prev => ({ ...prev, name: data.name }));
+      if (data?.email) setProfileForm(prev => ({ ...prev, email: data.email }));
+    };
+    window.addEventListener("userProfileRefetch", handler);
+    return () => window.removeEventListener("userProfileRefetch", handler);
+  }, []);
+
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
 

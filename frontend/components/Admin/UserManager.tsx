@@ -232,6 +232,13 @@ const UserManager: React.FC = () => {
     fetchUsers();
   }, [search, page]);
 
+  // Real-time: refresh when user created/updated/deleted
+  useEffect(() => {
+    const handler = () => fetchUsers();
+    window.addEventListener("userRefetch", handler);
+    return () => window.removeEventListener("userRefetch", handler);
+  }, []);
+
   const handleOpenAdd = () => {
     setEditingUser(null);
     setFormData({ name: "", email: "", password: "", role: "manager", phone: "" });

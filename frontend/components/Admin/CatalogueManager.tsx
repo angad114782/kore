@@ -8,7 +8,6 @@ import {
   X,
   Image as ImageIcon,
   Tag,
-  ShoppingBag,
   Layers,
   CheckCircle2,
   Heart,
@@ -34,7 +33,8 @@ type CatalogStatus = "AVAILABLE" | "WISHLIST";
 type CatalogueForm = {
   name: string;
   category: AssortmentType;
-  mrp: number;
+  onlineMrp: number;
+  offlineMrp: number;
   sizeRange: string;
   sizeBreakup: Record<string, number>;
   images: File[];
@@ -57,11 +57,87 @@ interface CatalogueManagerProps {
 
 // ─── CSV Types ──────────────────────────────────────────────────────────────────
 interface CsvRow {
-  name: string; color: string; size: string; mrp: string;
+  name: string; color: string; size: string;
+  sku_ctn?: string;
+  online_mrp?: string; offline_mrp?: string;
+  tag?: string;
   cost_price?: string; hsn?: string;
   gender?: string; category?: string; brand?: string; manufacturer?: string; unit?: string; image?: string;
   sole_color?: string; listing_status?: string; expected_date?: string;
-  [key: string]: string | undefined;
+  _isAutoRenamed?: boolean; // true when name was auto-suffixed due to assortment collision
+  [key: string]: string | boolean | undefined;
+}
+
+// Flexible date parser — accepts DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD, DD-MM-YYYY, etc.
+function parseFlexibleDate(input: string | undefined): string {
+  if (!input?.trim()) return "";
+  const s = input.trim();
+  // Already ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // YYYY/MM/DD
+  if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(s)) return s.replace(/\//g, "-").split("-").map((p, i) => i > 0 ? p.padStart(2, "0") : p).join("-");
+  // DD/MM/YYYY or D/M/YYYY  (Indian slash = day first)
+  const slashDMY = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashDMY) return `${slashDMY[3]}-${slashDMY[2].padStart(2, "0")}-${slashDMY[1].padStart(2, "0")}`;
+  // DD-MM-YYYY (if first part ≤ 2 digits, third is 4 digits)
+  const dashDMY = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dashDMY) return `${dashDMY[3]}-${dashDMY[2].padStart(2, "0")}-${dashDMY[1].padStart(2, "0")}`;
+  // DD.MM.YYYY
+  const dotDMY = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (dotDMY) return `${dotDMY[3]}-${dotDMY[2].padStart(2, "0")}-${dotDMY[1].padStart(2, "0")}`;
+  // Fallback: try native Date parse
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+  return s;
+}
+
+// ─── CSV Conflict Detection ───────────────────────────────────────────────────
+// "skip"/"import" = user decision required; "info" = informational only, always imports
+type ConflictResolution = "skip" | "import" | "info";
+interface CsvConflict {
+  key: string;  // groupKey "Name|||STAGE" for blocking; "⚠type:..." for info
+  name: string;
+  csvStage: "AVAILABLE" | "WISHLIST";
+  type:
+    | "db-cross-stage"      // DB has same name in opposite stage
+    | "csv-both-stages"     // CSV has same name in both stages
+    | "auto-rename"         // Name was auto-suffixed due to assortment collision
+    | "duplicate-sku"       // Same sku_ctn used in multiple articles
+    | "zero-mrp"            // Online/offline row has MRP = 0
+    | "csv-duplicate-row";  // Exact duplicate rows in CSV (auto-merged)
+  detail: string;
+  resolution: ConflictResolution;
+}
+
+// Generate per-size SKUs from carton SKU — same 2-strategy logic as backend + VariantDetailsPage
+// Strategy 1: if ctnSku ends with sizeRange (e.g. "amr-gry-7-11" ends with "7-11"), strip it
+// Strategy 2: regex /^(.*)-\d+-\d+$/ — handles cases where sizeRange is empty/missing in DB
+function generateSizeSkus(ctnSku: string, sizeRange: string, sizeKeys: string[]): Record<string, string> {
+  if (!ctnSku || !sizeKeys.length) return {};
+  const result: Record<string, string> = {};
+  let base: string | null = null;
+  if (sizeRange && ctnSku.endsWith(sizeRange)) {
+    base = ctnSku.slice(0, ctnSku.length - sizeRange.length);
+  }
+  if (base === null) {
+    const m = ctnSku.match(/^(.*)-\d+-\d+$/);
+    if (m) base = m[1] + "-";
+  }
+  if (base !== null) {
+    sizeKeys.forEach(sz => { result[sz] = `${base}${sz}`; });
+  } else {
+    sizeKeys.forEach(sz => { result[sz] = `${ctnSku}-${sz}`; });
+  }
+  return result;
+}
+
+// Assortment fingerprint — canonical sorted string of size:qty pairs
+// Used to distinguish same-color/sizeRange variants with different per-size distributions
+function assortFp(sizeQty: Record<string, number>): string {
+  return Object.entries(sizeQty)
+    .sort(([a], [b]) => sortSizeKey(a, b))
+    .map(([k, v]) => `${k}:${v}`)
+    .join(",");
 }
 
 // Reads size_5, size_6 ... columns → { "5": 6, "6": 8 }
@@ -77,21 +153,56 @@ function extractSizeQty(row: CsvRow): Record<string, number> {
   return result;
 }
 
+// Kids-aware size sort: zero-padded junior sizes (01, 02) sort AFTER 13
+function sortSizeKey(a: string, b: string): number {
+  const aJunior = a.startsWith("0") && a.length === 2;
+  const bJunior = b.startsWith("0") && b.length === 2;
+  if (aJunior && !bJunior) return 1;
+  if (!aJunior && bJunior) return -1;
+  return Number(a) - Number(b);
+}
+
 function formatSizeQtyDisplay(row: CsvRow): string {
   const sizes = extractSizeQty(row);
-  const entries = Object.entries(sizes).sort((a, b) => Number(a[0]) - Number(b[0]));
+  const entries = Object.entries(sizes).sort(([a], [b]) => sortSizeKey(a, b));
   if (!entries.length) return "—";
   return entries.map(([sz, qty]) => `${sz}→${qty}`).join(", ");
+}
+
+// RFC 4180 compliant CSV parser — handles quoted fields containing commas and escaped quotes ("")
+function parseCsvRow(line: string): string[] {
+  const fields: string[] = [];
+  let i = 0;
+  while (i <= line.length) {
+    if (line[i] === '"') {
+      i++;
+      let field = "";
+      while (i < line.length) {
+        if (line[i] === '"') {
+          if (line[i + 1] === '"') { field += '"'; i += 2; }
+          else { i++; break; }
+        } else { field += line[i++]; }
+      }
+      fields.push(field);
+      if (line[i] === ",") i++;
+    } else {
+      const end = line.indexOf(",", i);
+      if (end === -1) { fields.push(line.slice(i).trim()); break; }
+      fields.push(line.slice(i, end).trim());
+      i = end + 1;
+    }
+  }
+  return fields;
 }
 
 function parseCsv(text: string): CsvRow[] {
   const lines = text.trim().split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+  const headers = parseCsvRow(lines[0]).map(h => h.trim().toLowerCase());
   return lines.slice(1).map(line => {
-    const vals = line.split(",").map(v => v.trim());
+    const vals = parseCsvRow(line);
     const row: any = {};
-    headers.forEach((h, i) => { row[h] = vals[i] || ""; });
+    headers.forEach((h, i) => { row[h] = vals[i] ?? ""; });
     return row as CsvRow;
   }).filter(r => r.name);
 }
@@ -102,18 +213,60 @@ function groupCsvByName(rows: CsvRow[]): Record<string, CsvRow[]> {
   return g;
 }
 
-// Group by (name + stage) so same article name with different stages is handled separately
-// Key format: "ArticleName|||AVAILABLE" or "ArticleName|||WISHLIST"
+// Normalize listing_status → "WISHLIST" or "AVAILABLE"
+// Accepts: wishlist, preorder, pre-order, pre_order, "pre order" → all = WISHLIST
+function resolveStage(raw: string | undefined): "AVAILABLE" | "WISHLIST" {
+  const s = (raw || "").trim().toLowerCase().replace(/[\s_-]/g, "");
+  return (s === "wishlist" || s === "preorder") ? "WISHLIST" : "AVAILABLE";
+}
+
+// Group by (name + stage) — key format: "ArticleName|||AVAILABLE" or "ArticleName|||WISHLIST"
+// ALSO splits same-name groups where the same color+size appears with DIFFERENT assortments
+// into separate masters: "ArticleName", "ArticleName2", "ArticleName3", etc. (not "ArticleName-2")
 function groupCsvByNameAndStage(rows: CsvRow[]): Record<string, CsvRow[]> {
-  const g: Record<string, CsvRow[]> = {};
+  // Step 1: basic grouping by name + stage
+  const raw: Record<string, CsvRow[]> = {};
   rows.forEach(r => {
-    const stage = (r.listing_status || "available").trim().toUpperCase() === "WISHLIST"
-      ? "WISHLIST"
-      : "AVAILABLE";
+    const stage = resolveStage(r.listing_status as string | undefined);
     const key = `${r.name}|||${stage}`;
-    (g[key] = g[key] || []).push(r);
+    (raw[key] = raw[key] || []).push(r);
   });
-  return g;
+
+  const getVarKey = (r: CsvRow) =>
+    `${(r.color || "").toLowerCase().trim()}|||${(r.size || "").trim()}`;
+
+  // Step 2: for each group, detect assortment collisions and split into sub-groups
+  const result: Record<string, CsvRow[]> = {};
+  Object.entries(raw).forEach(([key, groupRows]) => {
+    const [name, stage] = key.split("|||");
+
+    // Assign each row to the first sub-group where its color+size isn't already taken
+    // with a different assortment. Same color+size + same assortment = same variant (OK).
+    const subGroups: CsvRow[][] = [];
+    groupRows.forEach(r => {
+      const vk = getVarKey(r);
+      const fp = assortFp(extractSizeQty(r));
+      let placed = false;
+      for (const sg of subGroups) {
+        const conflict = sg.some(
+          x => getVarKey(x) === vk && assortFp(extractSizeQty(x)) !== fp
+        );
+        if (!conflict) { sg.push(r); placed = true; break; }
+      }
+      if (!placed) subGroups.push([r]);
+    });
+
+    // First sub-group keeps the original name; overflow groups get numeric suffix
+    subGroups.forEach((sg, idx) => {
+      const newName = idx === 0 ? name : `${name}${idx + 1}`;
+      const renamed = sg.map(r =>
+        idx === 0 ? r : { ...r, name: newName, _isAutoRenamed: true }
+      );
+      result[`${newName}|||${stage}`] = renamed;
+    });
+  });
+
+  return result;
 }
 
 // BASE_URL removed in favor of getImageUrl utility
@@ -143,6 +296,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   const [csvRows, setCsvRows] = useState<CsvRow[]>([]);
   const [csvLoading, setCsvLoading] = useState(false);
   const [csvStep, setCsvStep] = useState<1 | 2>(1); // 1=upload, 2=preview+import
+  const [csvConflicts, setCsvConflicts] = useState<CsvConflict[]>([]);
   const [taxonomy, setTaxonomy] = useState<{ categories: any[]; brands: any[]; manufacturers: any[]; units: any[] }>({ categories: [], brands: [], manufacturers: [], units: [] });
 
   const loadTaxonomy = async () => {
@@ -164,13 +318,140 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
     }
   };
 
-  const openCsvModal = () => { setCsvOpen(true); setCsvStep(1); setCsvText(""); setCsvRows([]); loadTaxonomy(); };
-  const closeCsvModal = () => { setCsvOpen(false); setCsvRows([]); setCsvText(""); setCsvStep(1); };
+  const openCsvModal = () => { setCsvOpen(true); setCsvStep(1); setCsvText(""); setCsvRows([]); setCsvConflicts([]); loadTaxonomy(); };
+  const closeCsvModal = () => { setCsvOpen(false); setCsvRows([]); setCsvText(""); setCsvStep(1); setCsvConflicts([]); };
 
   const handleCsvParse = () => {
-    const rows = parseCsv(csvText);
-    if (!rows.length) return toast.error("No valid rows found. Check CSV format: name,color,size,mrp");
-    setCsvRows(rows);
+    const rawRows = parseCsv(csvText);
+    if (!rawRows.length) return toast.error("No valid rows found. Check CSV format: name,sku,color,size,online_mrp,offline_mrp,tag,...");
+
+    // Run grouping (which applies assortment-based splitting + auto-renaming)
+    const groups = groupCsvByNameAndStage(rawRows);
+    // Flatten back to rows — names may have been updated (e.g. "Nike-Air2")
+    const processedRows = Object.values(groups).flat();
+
+    // ── Conflict detection ──────────────────────────────────────────────────
+    const conflicts: CsvConflict[] = [];
+
+    // Check: same article name exists in opposite stage in DB
+    Object.keys(groups).forEach(key => {
+      const [name, stage] = key.split("|||");
+      const opposite = stage === "AVAILABLE" ? "WISHLIST" : "AVAILABLE";
+      const existsInOpposite = articles.some(
+        a => a.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+             (a.status || "AVAILABLE") === opposite
+      );
+      if (existsInOpposite) {
+        conflicts.push({
+          key, name,
+          csvStage: stage as "AVAILABLE" | "WISHLIST",
+          type: "db-cross-stage",
+          detail: `"${name}" already exists as ${opposite} in the database. Importing as ${stage} will create a duplicate cross-stage entry.`,
+          resolution: "import",
+        });
+      }
+    });
+
+    // Check: same article name in both stages in this CSV
+    const nameToKeys: Record<string, string[]> = {};
+    Object.keys(groups).forEach(key => {
+      const [name] = key.split("|||");
+      (nameToKeys[name] = nameToKeys[name] || []).push(key);
+    });
+    Object.entries(nameToKeys).forEach(([name, keys]) => {
+      if (keys.length > 1) {
+        keys.forEach(key => {
+          if (!conflicts.find(c => c.key === key && c.type === "db-cross-stage")) {
+            conflicts.push({
+              key, name,
+              csvStage: key.split("|||")[1] as "AVAILABLE" | "WISHLIST",
+              type: "csv-both-stages",
+              detail: `"${name}" appears in both AVAILABLE and WISHLIST in this CSV.`,
+              resolution: "import",
+            });
+          }
+        });
+      }
+    });
+
+    // ── A6: Auto-rename → conflict card (skip/import choice) ─────────────────
+    const renamedGroups = Object.keys(groups).filter(k => groups[k].some(r => r._isAutoRenamed));
+    renamedGroups.forEach(k => {
+      const [name, stage] = k.split("|||");
+      if (!conflicts.find(c => c.key === k)) {
+        conflicts.push({
+          key: k, name,
+          csvStage: stage as "AVAILABLE" | "WISHLIST",
+          type: "auto-rename",
+          detail: `"${name}" was auto-renamed — the original article already had the same color+size with a different assortment distribution. Importing creates a new separate master. Skip to ignore and fix your CSV instead.`,
+          resolution: "import",
+        });
+      }
+    });
+
+    // ── D1/D2: Zero MRP → info warning ────────────────────────────────────
+    const zeroMrpByArticle: Record<string, string[]> = {};
+    processedRows.forEach(r => {
+      const tag = (r.tag || "online").toLowerCase().trim();
+      const mrpVal = tag === "offline" ? Number(r.offline_mrp) : Number(r.online_mrp);
+      if (!mrpVal || mrpVal <= 0) {
+        const label = `${r.color} ${r.size} (${tag})`;
+        (zeroMrpByArticle[r.name] = zeroMrpByArticle[r.name] || []).push(label);
+      }
+    });
+    Object.entries(zeroMrpByArticle).forEach(([name, labels]) => {
+      conflicts.push({
+        key: `⚠zero:${name}`, name,
+        csvStage: "AVAILABLE",
+        type: "zero-mrp",
+        detail: `"${name}" — ${labels.length} row(s) have MRP = 0: ${labels.join(", ")}. Check online_mrp / offline_mrp columns.`,
+        resolution: "info",
+      });
+    });
+
+    // ── D3: Duplicate sku_ctn across different articles → info warning ──────
+    const skuToNames: Record<string, Set<string>> = {};
+    processedRows.forEach(r => {
+      if (!r.sku_ctn?.trim()) return;
+      const sku = r.sku_ctn.trim();
+      if (!skuToNames[sku]) skuToNames[sku] = new Set();
+      skuToNames[sku].add(r.name.trim());
+    });
+    Object.entries(skuToNames).forEach(([sku, names]) => {
+      if (names.size > 1) {
+        conflicts.push({
+          key: `⚠sku:${sku}`, name: sku,
+          csvStage: "AVAILABLE",
+          type: "duplicate-sku",
+          detail: `SKU "${sku}" appears in multiple articles: ${Array.from(names).join(", ")}. Per-size SKUs will collide — fix the sku_ctn column.`,
+          resolution: "info",
+        });
+      }
+    });
+
+    // ── A4: Duplicate CSV rows within same group → info warning ───────────
+    Object.entries(groups).forEach(([key, groupRows]) => {
+      const [name, stage] = key.split("|||");
+      const seen = new Set<string>();
+      const dups: string[] = [];
+      groupRows.forEach(r => {
+        const vk = `${(r.color || "").toLowerCase()}|||${(r.size || "").trim()}|||${assortFp(extractSizeQty(r))}|||${(r.tag || "online").toLowerCase()}`;
+        if (seen.has(vk)) dups.push(`${r.color} ${r.size} (${r.tag || "online"})`);
+        else seen.add(vk);
+      });
+      if (dups.length > 0) {
+        conflicts.push({
+          key: `⚠dup:${key}`, name,
+          csvStage: stage as "AVAILABLE" | "WISHLIST",
+          type: "csv-duplicate-row",
+          detail: `"${name}" has ${dups.length} duplicate row(s) in CSV — auto-merged on import: ${Array.from(new Set(dups)).join(", ")}.`,
+          resolution: "info",
+        });
+      }
+    });
+
+    setCsvConflicts(conflicts);
+    setCsvRows(processedRows);
     setCsvStep(2);
   };
 
@@ -184,10 +465,13 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   };
 
   const handleCsvImport = async () => {
-    // Group by (name + stage) — same article name with AVAILABLE and PRE-ORDER
-    // colors in CSV will be processed as two separate groups
     const groups = groupCsvByNameAndStage(csvRows);
-    const keys = Object.keys(groups);
+    // Build set of group keys the user chose to SKIP
+    const skippedKeys = new Set(
+      csvConflicts.filter(c => c.resolution === "skip").map(c => c.key)
+    );
+    const keys = Object.keys(groups).filter(k => !skippedKeys.has(k));
+    if (!keys.length) { toast.error("All groups skipped — nothing to import."); return; }
     setCsvLoading(true);
 
     const importPromise = async () => {
@@ -267,43 +551,74 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
 
         const colors = Array.from(new Set(rows.map(r => r.color).filter(Boolean)));
         const sizes  = Array.from(new Set(rows.map(r => r.size).filter(Boolean)));
-        const mrp    = Math.max(...rows.map(r => Number(r.mrp) || 0));
+        // Master MRP = max of each variant's effective MRP
+        // For online items, only online_mrp matters; for offline, only offline_mrp matters
+        const mrp = Math.max(...rows.map(r => {
+          const t = (r.tag || "online").toLowerCase().trim();
+          return t === "offline" ? (Number(r.offline_mrp) || 0) : (Number(r.online_mrp) || 0);
+        }));
 
         // Build color → image URL map from CSV
         const colorImageUrls: Record<string, string> = {};
         rows.forEach(r => { if (r.color && r.image) colorImageUrls[r.color] = r.image; });
 
-        // Each CSV row = one variant directly (no cartesian product)
-        const variants = rows
-          .filter(r => r.color && r.size)
-          .map(r => {
-            const sizeQuantities = extractSizeQty(r);
-            // sizeMap mirrors sizeQuantities for stock tracking
-            const sizeMap: Record<string, { qty: number; sku: string }> = {};
-            Object.entries(sizeQuantities).forEach(([sz, qty]) => {
-              sizeMap[sz] = { qty: 0, sku: "" };
-            });
-            return {
-              itemName:   `${name}-${r.color}-${r.size}`,
-              color:      r.color,
-              sizeRange:  r.size,
-              costPrice:  Number(r.cost_price) || 0,
-              sellingPrice: 0,
-              mrp:        Number(r.mrp) || mrp,
-              hsnCode:    r.hsn?.trim() || "",
-              sizeQuantities,
-              sizeSkus:   {},
-              sizeMap,
-            };
+        // Build variants: each CSV row = one variant (no cartesian product)
+        const buildVariant = (r: CsvRow) => {
+          const sizeQuantities = extractSizeQty(r);
+          const sizeMap: Record<string, { qty: number; sku: string }> = {};
+          const ctnSku = r.sku_ctn?.trim() || "";
+          const rawTag = (r.tag || "online").toLowerCase().trim();
+          const tag = (["online", "offline"].includes(rawTag) ? rawTag : "online") as "online" | "offline";
+          const onlineMrp  = Number(r.online_mrp)  || 0;
+          const offlineMrp = Number(r.offline_mrp) || 0;
+          // Tag-aware MRP: online items use online_mrp only; offline items use offline_mrp only
+          // Absence of the other field has no impact
+          const variantMrp = tag === "offline" ? offlineMrp : onlineMrp;
+          // Auto-generate per-size SKUs from carton SKU
+          const sizeSkus = generateSizeSkus(ctnSku, r.size, Object.keys(sizeQuantities));
+          // sizeMap: initialize qty=0 (inventory populated via GRN)
+          Object.keys(sizeQuantities).forEach(sz => {
+            sizeMap[sz] = { qty: 0, sku: sizeSkus[sz] || "" };
           });
+          return {
+            itemName:    `${name}-${r.color}-${r.size}`,
+            color:       r.color,
+            sizeRange:   r.size,
+            costPrice:   Number(r.cost_price) || 0,
+            sellingPrice: 0,
+            mrp:         variantMrp,
+            hsnCode:     r.hsn?.trim() || "",
+            sizeQuantities,
+            sizeSkus,
+            sizeMap,
+            sku:         ctnSku,
+            tag,
+            onlineMrp,
+            offlineMrp,
+          };
+        };
+
+        // Variant uniqueness key: color + sizeRange + assortment + tag
+        // Tag included so "Black 5-10 online" and "Black 5-10 offline" are treated as distinct variants
+        const makeVariantKey = (r: CsvRow) =>
+          `${(r.color || "").toLowerCase().trim()}|||${(r.size || "").trim()}|||${assortFp(extractSizeQty(r))}|||${(r.tag || "online").toLowerCase().trim()}`;
+
+        // Deduplicate CSV rows before building variants (prevents duplicate variants in DB on new article create)
+        const seenVariantKeys = new Set<string>();
+        const variants = rows.filter(r => {
+          if (!r.color || !r.size) return false;
+          const vk = makeVariantKey(r);
+          if (seenVariantKeys.has(vk)) return false;
+          seenVariantKeys.add(vk);
+          return true;
+        }).map(buildVariant);
 
         const soleColor = firstRow.sole_color?.trim() || "";
-        // Stage comes from groupKey — all rows in this group share same stage
         const stage = groupStage as "AVAILABLE" | "WISHLIST";
-        const expectedDate = firstRow.expected_date?.trim() || "";
+        // Flexible date: accept any format, convert to YYYY-MM-DD
+        const expectedDate = parseFlexibleDate(firstRow.expected_date);
 
-        // Match existing master by BOTH name AND stage — so "Nike Air" AVAILABLE
-        // and "Nike Air" WISHLIST are treated as separate articles
+        // Match existing master by BOTH name AND stage
         const existingMaster = articles.find(
           a =>
             a.name.trim().toLowerCase() === name.trim().toLowerCase() &&
@@ -312,7 +627,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
 
         const fd = new FormData();
         fd.append("articleName", name);
-        fd.append("mrp", String(mrp));
+        fd.append("mrp", String(mrp || 0));
         fd.append("gender", gender);
         fd.append("categoryId", catDoc._id);
         fd.append("brandId", brandDoc._id);
@@ -326,60 +641,40 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
         }
 
         if (existingMaster) {
-          // ── Color-level duplicate check ──────────────────────────────
-          const existingColorSet = new Set(
-            (existingMaster.variants || [])
-              .map(v => (v.color || "").toLowerCase().trim())
+          // ── Duplicate check: color + sizeRange + assortment + tag composite key ─
+          // Same color + DIFFERENT sizeRange → new variant (OK)
+          // Same color + same sizeRange + DIFFERENT assortment → new variant (OK, different product)
+          // Same color + same sizeRange + same assortment + DIFFERENT tag → new variant (OK, online vs offline)
+          // Same color + same sizeRange + same assortment + same tag → true duplicate (skip)
+          const existingVariantKeys = new Set(
+            (existingMaster.variants || []).map(v =>
+              `${(v.color || "").toLowerCase().trim()}|||${(v.sizeRange || "").trim()}|||${assortFp(v.sizeQuantities || {})}|||${(v.tag || "online").toLowerCase()}`
+            )
           );
 
-          const duplicateColors = Array.from(new Set(
-            rows
-              .filter(r => r.color && existingColorSet.has(r.color.toLowerCase().trim()))
-              .map(r => r.color)
+          const duplicateRows = rows.filter(r => r.color && existingVariantKeys.has(makeVariantKey(r)));
+          const newRows       = rows.filter(r => r.color && r.size && !existingVariantKeys.has(makeVariantKey(r)));
+
+          const duplicateLabels = Array.from(new Set(
+            duplicateRows.map(r => `${r.color} (${r.size})`)
           ));
 
-          const newColorRows = rows.filter(
-            r => r.color && !existingColorSet.has(r.color.toLowerCase().trim())
-          );
-          const newColors = Array.from(new Set(newColorRows.map(r => r.color)));
-
-          // All colors from CSV already exist → skip entirely
-          if (newColors.length === 0) {
+          // All variants already exist → skip entirely
+          if (newRows.length === 0) {
             skipped++;
-            warnings.push(`"${name}" skipped — colors already exist: ${duplicateColors.join(", ")}`);
+            warnings.push(`"${name}" skipped — all variants already exist: ${duplicateLabels.join(", ")}`);
             continue;
           }
 
-          // Some colors already exist → inform
-          if (duplicateColors.length > 0) {
-            warnings.push(`"${name}" — skipped existing colors: ${duplicateColors.join(", ")}`);
+          // Some variants already exist → inform
+          if (duplicateLabels.length > 0) {
+            warnings.push(`"${name}" — skipped existing variants: ${duplicateLabels.join(", ")}`);
           }
 
-          // ── Build variants ONLY for new colors ──────────────────────
-          // (No PRE-ORDER conflict possible — grouping already separates by stage)
-          const newVariantsOnly = newColorRows
-            .filter(r => r.color && r.size)
-            .map(r => {
-              const sizeQuantities = extractSizeQty(r);
-              const sizeMap: Record<string, { qty: number; sku: string }> = {};
-              Object.entries(sizeQuantities).forEach(([sz]) => {
-                sizeMap[sz] = { qty: 0, sku: "" };
-              });
-              return {
-                itemName: `${name}-${r.color}-${r.size}`,
-                color: r.color,
-                sizeRange: r.size,
-                costPrice: Number(r.cost_price) || 0,
-                sellingPrice: 0,
-                mrp: Number(r.mrp) || mrp,
-                hsnCode: r.hsn?.trim() || "",
-                sizeQuantities,
-                sizeSkus: {},
-                sizeMap,
-              };
-            });
+          // ── Build variants ONLY for new color+sizeRange combos ──────
+          const newVariantsOnly = newRows.filter(r => r.color && r.size).map(buildVariant);
 
-          // ── Merge and update ─────────────────────────────────────────
+          // ── Merge: preserve existing variants with their inventory ───
           const existingVariants = (existingMaster.variants || []).map(v => ({
             _id: v.id,
             itemName: v.itemName,
@@ -393,17 +688,20 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
             sizeSkus: v.sizeSkus || {},
             sizeMap: v.sizeMap || {},
             isActive: v.isActive !== false,
+            tag: v.tag || "online",
+            onlineMrp: v.onlineMrp || 0,
+            offlineMrp: v.offlineMrp || 0,
+            sku: v.sku || "",
           }));
 
           const allVariants = [...existingVariants, ...newVariantsOnly];
-          const finalNewColors = Array.from(new Set(newColorRows.map(r => r.color).filter(Boolean)));
           const allColors = Array.from(new Set([
             ...(existingMaster.variants || []).map(v => v.color),
-            ...finalNewColors,
+            ...newRows.map(r => r.color),
           ].filter(Boolean)));
           const allSizes = Array.from(new Set([
             ...(existingMaster.variants || []).map(v => v.sizeRange),
-            ...Array.from(new Set(newColorRows.map(r => r.size).filter(Boolean))),
+            ...newRows.map(r => r.size),
           ].filter(Boolean)));
 
           fd.append("productColors", JSON.stringify(allColors));
@@ -448,7 +746,8 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   const [formData, setFormData] = useState<CatalogueForm>({
     name: "",
     category: AssortmentType.MEN,
-    mrp: 0,
+    onlineMrp: 0,
+    offlineMrp: 0,
     sizeRange: "",
     sizeBreakup: {},
     images: [],
@@ -655,10 +954,20 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
       setEditingArticle(article);
       const status: CatalogStatus =
         (article.status as CatalogStatus) || "AVAILABLE";
+
+      // Derive onlineMrp/offlineMrp from variants (not article.mrp which drifts)
+      const variants: any[] = (article as any).variants || [];
+      const onlineVariant = variants.find((v: any) => v.tag === "online" || v.tag === "ONLINE");
+      const offlineVariant = variants.find((v: any) => v.tag === "offline" || v.tag === "OFFLINE");
+      const fallbackMrp = Number((article as any).mrp || 0);
+      const onlineMrp = Number(onlineVariant?.onlineMrp || onlineVariant?.mrp || fallbackMrp || 0);
+      const offlineMrp = Number(offlineVariant?.offlineMrp || offlineVariant?.mrp || fallbackMrp || 0);
+
       setFormData({
         name: article.name || "",
         category: article.category,
-        mrp: Number((article as any).mrp || 0),
+        onlineMrp,
+        offlineMrp,
         sizeRange: String((article as any).sizeRange || ""),
         sizeBreakup: (article as any).sizeBreakup || {},
         images: [],
@@ -674,7 +983,8 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
       setFormData({
         name: "",
         category: AssortmentType.MEN,
-        mrp: 0,
+        onlineMrp: 0,
+        offlineMrp: 0,
         sizeRange: "",
         sizeBreakup: {},
         images: [],
@@ -690,7 +1000,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) return toast.error("Article name required");
-    if (formData.mrp <= 0) return toast.error("MRP must be > 0");
+    if (formData.onlineMrp <= 0 && formData.offlineMrp <= 0) return toast.error("At least one MRP (Online or Offline) must be > 0");
     if (
       Object.keys(formData.sizeBreakup || {}).length > 0 &&
       !isValidMultiple
@@ -714,7 +1024,11 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
       pricePerPair: editingArticle?.pricePerPair ?? 0,
       imageUrl: editingArticle?.imageUrl ?? "",
       // @ts-ignore
-      mrp: Number(formData.mrp || 0),
+      onlineMrp: Number(formData.onlineMrp || 0),
+      // @ts-ignore
+      offlineMrp: Number(formData.offlineMrp || 0),
+      // @ts-ignore
+      mrp: Math.max(Number(formData.onlineMrp || 0), Number(formData.offlineMrp || 0)),
       // @ts-ignore
       sizeRange: String(formData.sizeRange || "").trim(),
       // @ts-ignore
@@ -740,7 +1054,9 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
           await masterCatalogService.updateMasterItemFields(editingArticle.id, {
             articleName: payload.name,
             gender: payload.category,
-            mrp: payload.mrp,
+            onlineMrp: (payload as any).onlineMrp,
+            offlineMrp: (payload as any).offlineMrp,
+            mrp: (payload as any).mrp,
             sizeRanges: [payload.sizeRange],
             stage: payload.status,
             expectedAvailableDate: payload.expectedAvailableDate || null,
@@ -892,16 +1208,10 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
           // Unique colors across variants
           const variantColors = Array.from(new Set(article.variants?.map(v => v.color).filter(Boolean)));
 
-          // Find common HSN
-          const hsnCodes = Array.from(
-            new Set(article.variants?.map((v) => v.hsnCode).filter(Boolean))
-          );
-          const hsnDisplay =
-            hsnCodes.length === 1
-              ? hsnCodes[0]
-              : hsnCodes.length > 1
-              ? "Multiple"
-              : "N/A";
+          // Master-level total stock
+          const masterTotalPairs = article.variants?.reduce((s, v) =>
+            s + Object.values(v.sizeMap || {}).reduce((ss: number, c: any) => ss + (Number(c?.qty) || 0), 0), 0) || 0;
+          const masterTotalCtns = Math.floor(masterTotalPairs / 24);
 
           return (
             <div
@@ -977,6 +1287,19 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                   )}
                 </div>
 
+                {/* Variant count badge */}
+                <div className="hidden lg:block shrink-0 px-4 border-l border-slate-100">
+                  <div className="text-center">
+                    <span className="text-xl font-black text-green-600 block leading-tight">
+                      {masterTotalCtns}
+                    </span>
+                    <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest">
+                      ctn
+                    </span>
+
+                        <span className="block text-[9px] text-slate-400">{masterTotalPairs.toLocaleString()} pairs</span>
+                  </div>
+                </div>
                 {/* Variant count badge */}
                 <div className="hidden lg:block shrink-0 px-4 border-l border-slate-100">
                   <div className="text-center">
@@ -1071,7 +1394,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                                   Color
                                 </th>
                                 <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                  HSN Code
+                                  Stock
                                 </th>
                                 <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                   Cost
@@ -1137,8 +1460,17 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                                         {v.color || "—"}
                                       </span>
                                     </td>
-                                    <td className="px-6 py-3 font-mono text-[11px] text-slate-500">
-                                      {v.hsnCode || article.sku || "—"}
+                                    <td className="px-6 py-3">
+                                      {(() => {
+                                        const vPairs = Object.values(v.sizeMap || {}).reduce((s: number, c: any) => s + (Number(c?.qty) || 0), 0);
+                                        const vCtns = Math.floor(vPairs / 24);
+                                        return (
+                                          <>
+                                            <p className="text-sm font-bold text-emerald-600">{vCtns} <span className="text-[10px] font-normal text-slate-400">ctn</span></p>
+                                            <p className="text-[10px] text-slate-400">{vPairs.toLocaleString()} pairs</p>
+                                          </>
+                                        );
+                                      })()}
                                     </td>
                                     <td className="px-6 py-3">
                                       <p className="text-sm font-bold text-slate-700">₹{((v.costPrice || 0) * 24).toLocaleString()}<span className="text-[10px] font-normal text-slate-400"> /ctn</span></p>
@@ -1229,6 +1561,15 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                                       <span className="text-xs font-bold text-indigo-600">
                                         ₹{((v.mrp || 0) * 24).toLocaleString()}<span className="text-[9px] font-normal text-slate-400">/ctn</span>
                                       </span>
+                                      {(() => {
+                                        const vPairs = Object.values(v.sizeMap || {}).reduce((s: number, c: any) => s + (Number(c?.qty) || 0), 0);
+                                        const vCtns = Math.floor(vPairs / 24);
+                                        return (
+                                          <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                                            {vCtns} ctn · {vPairs} prs
+                                          </span>
+                                        );
+                                      })()}
                                     </div>
                                   </div>
                                   <div
@@ -1281,7 +1622,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                   <div className="bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-5 text-center">
                     <FileSpreadsheet size={36} className="mx-auto text-emerald-500 mb-2" />
                     <p className="text-sm font-semibold text-slate-700 mb-1">Upload CSV file or paste CSV text</p>
-                    <p className="text-xs text-slate-400 mb-3">Columns: <code className="bg-slate-100 px-1 rounded">name, color, size, mrp, cost_price, hsn, gender, category, brand, manufacturer, unit, image, sole_color, listing_status, expected_date, size_5, size_6, size_7 ...</code></p>
+                    <p className="text-xs text-slate-400 mb-3">Columns (koi bhi order): <code className="bg-slate-100 px-1 rounded">name, sku_ctn, color, size, online_mrp, offline_mrp, tag, cost_price, hsn, gender, category, brand, manufacturer, unit, image, sole_color, listing_status, expected_date, size_5 ... size_13, size_01, size_02 ...</code></p>
                     <a
                       href="/sample_catalog.csv"
                       download="sample_catalog.csv"
@@ -1299,7 +1640,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Or paste CSV content:</p>
                     <textarea
                       rows={7}
-                      placeholder={"name,color,size,mrp,cost_price,hsn,gender,category,brand,manufacturer,unit,image,sole_color,listing_status,expected_date,size_5,size_6,size_7,size_8,size_9,size_10\nUrban Runner,Red,5-10,1999,1200,6403,MEN,Sports,Nike,Nike Factory,PAIR,https://img.com/red.jpg,White,available,,6,8,10,8,4,2\nUrban Runner,Blue,5-10,1999,1200,6403,MEN,Sports,Nike,Nike Factory,PAIR,https://img.com/blue.jpg,White,available,,6,8,10,8,4,2"}
+                      placeholder={"name,sku_ctn,color,size,online_mrp,offline_mrp,tag,cost_price,hsn,gender,category,brand,manufacturer,unit,image,sole_color,listing_status,expected_date,size_5,size_6,size_7,size_8,size_9,size_10\nUrban Runner,urb-red-5-10,Red,5-10,1999,1799,online,1200,6403,MEN,Sports,Nike,Nike Factory,PAIR,https://img.com/red.jpg,White,available,,6,8,10,8,4,2\nKids Sneaker,kid-pnk-11-03,Pink,11-03,999,899,online,600,6403,KIDS,Sports,Nike,Nike Factory,PAIR,,White,available,,,,4,4,2 (size_11,size_12,size_13 ke liye)"}
                       className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 resize-none"
                       value={csvText}
                       onChange={e => setCsvText(e.target.value)}
@@ -1307,9 +1648,11 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                   </div>
 
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 space-y-1">
-                    <p><b>Format:</b> First row = header. Multiple rows with same <code>name</code> = same article with different color variants.</p>
-                    <p><b>Size columns</b> = har size ka alag column, jaise <code>size_5</code>, <code>size_6</code>, <code>size_7</code> — usme sirf quantity likho (e.g. 6, 8, 10). Jo size nahi hai use khali chhod do. <b>cost_price</b> aur <b>hsn</b> optional. <b>listing_status</b> = <code>available</code> ya <code>wishlist</code>. <b>expected_date</b> = YYYY-MM-DD.</p>
-                    <p><b>category/brand/manufacturer/unit</b> exact match hona chahiye system mein jo hai.</p>
+                    <p><b>Format:</b> First row = header. Same <code>name</code> ke multiple rows = same article, alag color variants.</p>
+                    <p><b>sku_ctn</b> = carton-level SKU (e.g. <code>slk-blk-5-9</code> or <code>kid-pnk-11-03</code>). Per-size SKUs auto-generate honge. <b>tag</b> = <code>online</code> ya <code>offline</code>. <b>online_mrp</b> + <b>offline_mrp</b> alag-alag.</p>
+                    <p><b>Kids sizes</b>: size range jaise <code>11-03</code> (11→12→13→01→02→03). CSV columns: <code>size_11</code>, <code>size_12</code>, <code>size_13</code>, <code>size_01</code>, <code>size_02</code>, <code>size_03</code>.</p>
+                    <p><b>listing_status</b> = <code>available</code> ya <code>wishlist</code> ya <code>preorder</code>. <b>expected_date</b> = any format (DD/MM/YYYY, YYYY-MM-DD, etc.). Columns ki order koi bhi ho sakti hai.</p>
+                    <p><b>category/brand/manufacturer/unit</b> exact match hona chahiye system me.</p>
                   </div>
 
                   <button
@@ -1331,8 +1674,9 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
 
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800">
                     {(() => {
-                      const groups = groupCsvByName(csvRows);
-                      const names = Object.keys(groups);
+                      const groups = groupCsvByNameAndStage(csvRows);
+                      const names = Object.keys(groups).map(k => k.split("|||")[0]);
+                      const autoRenamed = csvRows.filter(r => r._isAutoRenamed).length;
                       const addon = names.filter(n => articles.some(a => a.name.trim().toLowerCase() === n.trim().toLowerCase())).length;
                       const newCount = names.length - addon;
                       return (
@@ -1340,10 +1684,108 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                           <b>{names.length} article(s)</b> ready to import ({csvRows.length} variant rows).
                           {addon > 0 && <span className="ml-1 text-amber-700 font-bold">{addon} existing will get new variants added.</span>}
                           {newCount > 0 && <span className="ml-1 text-emerald-700 font-bold">{newCount} will be created new.</span>}
+                          {autoRenamed > 0 && <span className="ml-1 text-purple-700 font-bold">{autoRenamed} row(s) auto-renamed (different assortment).</span>}
                         </>
                       );
                     })()}
                   </div>
+
+                  {/* ── Conflict Warnings ── */}
+                  {csvConflicts.length > 0 && (
+                    <div className="space-y-3">
+
+                      {/* Blocking conflicts — user must decide skip or import */}
+                      {(() => {
+                        const blocking = Array.from(new Map(
+                          csvConflicts.filter(c => c.resolution !== "info").map(c => [c.key, c])
+                        ).values());
+                        if (!blocking.length) return null;
+                        return (
+                          <div className="space-y-2">
+                            <p className="text-xs font-black text-rose-500 uppercase tracking-wider flex items-center gap-1.5">
+                              ⚠ Conflicts — Decide per group
+                            </p>
+                            {blocking.map(conflict => (
+                              <div
+                                key={conflict.key}
+                                className={`rounded-xl border p-3 text-xs flex items-start justify-between gap-3 ${
+                                  conflict.type === "db-cross-stage"
+                                    ? "bg-rose-50 border-rose-200 text-rose-800"
+                                    : conflict.type === "auto-rename"
+                                      ? "bg-purple-50 border-purple-200 text-purple-800"
+                                      : "bg-amber-50 border-amber-200 text-amber-800"
+                                }`}
+                              >
+                                <div className="flex-1">
+                                  <p className="font-black text-[10px] uppercase tracking-wider mb-0.5 opacity-60">
+                                    {conflict.type === "db-cross-stage" ? "DB Conflict"
+                                      : conflict.type === "auto-rename" ? "Auto Renamed"
+                                      : "Both Stages"}
+                                  </p>
+                                  <p className="leading-relaxed">{conflict.detail}</p>
+                                </div>
+                                <div className="flex gap-1.5 shrink-0">
+                                  <button
+                                    onClick={() => setCsvConflicts(prev =>
+                                      prev.map(c => c.key === conflict.key ? { ...c, resolution: "skip" } : c)
+                                    )}
+                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all ${
+                                      conflict.resolution === "skip"
+                                        ? "bg-rose-500 text-white"
+                                        : "bg-white border border-rose-300 text-rose-600 hover:bg-rose-50"
+                                    }`}
+                                  >Skip</button>
+                                  <button
+                                    onClick={() => setCsvConflicts(prev =>
+                                      prev.map(c => c.key === conflict.key ? { ...c, resolution: "import" } : c)
+                                    )}
+                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all ${
+                                      conflict.resolution === "import"
+                                        ? "bg-emerald-500 text-white"
+                                        : "bg-white border border-emerald-300 text-emerald-600 hover:bg-emerald-50"
+                                    }`}
+                                  >Import</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Info-only warnings — always import, just informational */}
+                      {(() => {
+                        const infoItems = csvConflicts.filter(c => c.resolution === "info");
+                        if (!infoItems.length) return null;
+                        return (
+                          <div className="space-y-2">
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-wider">
+                              ℹ Warnings (import continues)
+                            </p>
+                            {infoItems.map(conflict => (
+                              <div
+                                key={conflict.key}
+                                className={`rounded-xl border p-3 text-xs ${
+                                  conflict.type === "duplicate-sku"
+                                    ? "bg-orange-50 border-orange-200 text-orange-800"
+                                    : conflict.type === "zero-mrp"
+                                      ? "bg-yellow-50 border-yellow-200 text-yellow-800"
+                                      : "bg-slate-50 border-slate-200 text-slate-500"
+                                }`}
+                              >
+                                <p className="font-black text-[10px] uppercase tracking-wider mb-0.5 opacity-50">
+                                  {conflict.type === "duplicate-sku" ? "Duplicate SKU"
+                                    : conflict.type === "zero-mrp" ? "Zero MRP"
+                                    : "Duplicate Row (auto-merged)"}
+                                </p>
+                                <p className="leading-relaxed">{conflict.detail}</p>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+
+                    </div>
+                  )}
 
                   {/* Preview Table */}
                   <div>
@@ -1353,47 +1795,62 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                         <thead className="bg-slate-50">
                           <tr>
                             <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Name</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">SKU (Ctn)</th>
                             <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Color</th>
                             <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Size</th>
-                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">MRP</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Tag</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Online MRP</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Offline MRP</th>
                             <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Cost ₹</th>
                             <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">HSN</th>
-                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Size Qty (1 Ctn)</th>
+                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Size Qty</th>
                             <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Gender</th>
-                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Category</th>
                             <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Brand</th>
-                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Sole Color</th>
                             <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                            <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Exp. Date</th>
                             <th className="px-3 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Image</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {csvRows.slice(0, 20).map((r, i) => {
-                            const isWishlist = (r.listing_status || "").toUpperCase() === "WISHLIST";
+                            const isWishlist = resolveStage(r.listing_status as string | undefined) === "WISHLIST";
+                            const groupKey = `${r.name}|||${isWishlist ? "WISHLIST" : "AVAILABLE"}`;
+                            const conflict = csvConflicts.find(c => c.key === groupKey);
+                            const isSkipped = conflict?.resolution === "skip";
                             return (
-                            <tr key={i} className="hover:bg-slate-50">
-                              <td className="px-3 py-2 font-semibold text-slate-800">{r.name}</td>
+                            <tr key={i} className={`hover:bg-slate-50 ${isSkipped ? "opacity-40" : ""}`}>
+                              <td className="px-3 py-2 font-semibold text-slate-800">
+                                {isSkipped && <span className="text-[9px] font-black text-rose-500 mr-1">SKIP</span>}
+                                {r._isAutoRenamed && (
+                                  <span className="text-[9px] font-black text-purple-600 bg-purple-50 border border-purple-200 rounded px-1 mr-1" title="Name auto-suffixed: same name had different assortment">AUTO</span>
+                                )}
+                                {r.name}
+                              </td>
+                              <td className="px-3 py-2 font-mono text-[10px] text-indigo-600">{r.sku_ctn || <span className="text-slate-300 italic">—</span>}</td>
                               <td className="px-3 py-2 text-slate-600">{r.color}</td>
                               <td className="px-3 py-2 text-slate-600 font-mono">{r.size}</td>
-                              <td className="px-3 py-2 font-bold text-indigo-600">₹{r.mrp}</td>
+                              <td className="px-3 py-2">
+                                {r.tag ? (
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${r.tag === "online" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
+                                    {r.tag}
+                                  </span>
+                                ) : <span className="text-slate-300 text-[10px]">—</span>}
+                              </td>
+                              <td className="px-3 py-2 font-bold text-blue-600">{r.online_mrp ? `₹${r.online_mrp}` : "—"}</td>
+                              <td className="px-3 py-2 font-bold text-amber-600">{r.offline_mrp ? `₹${r.offline_mrp}` : "—"}</td>
                               <td className="px-3 py-2 text-slate-600">₹{r.cost_price || "—"}</td>
                               <td className="px-3 py-2 font-mono text-slate-500">{r.hsn || "—"}</td>
                               <td className="px-3 py-2 font-mono text-xs text-slate-600">{formatSizeQtyDisplay(r)}</td>
                               <td className="px-3 py-2 text-slate-500">{r.gender || "—"}</td>
-                              <td className="px-3 py-2 text-slate-500">{r.category || "—"}</td>
                               <td className="px-3 py-2 text-slate-500">{r.brand || "—"}</td>
-                              <td className="px-3 py-2 text-slate-500">{r.sole_color || "—"}</td>
                               <td className="px-3 py-2">
                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isWishlist ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
                                   {isWishlist ? "WISHLIST" : "AVAILABLE"}
                                 </span>
                               </td>
-                              <td className="px-3 py-2 text-slate-500 font-mono text-[10px]">{isWishlist && r.expected_date ? r.expected_date : "—"}</td>
                               <td className="px-3 py-2">
                                 {r.image
                                   ? <img src={r.image} alt="" className="w-8 h-8 rounded object-cover border border-slate-200" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                                  : <span className="text-slate-300 italic">no img</span>
+                                  : <span className="text-slate-300 italic">—</span>
                                 }
                               </td>
                             </tr>
@@ -1412,7 +1869,10 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                     disabled={csvLoading}
                     className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {csvLoading ? <><Loader2 size={16} className="animate-spin" /> Importing...</> : <>Import {Object.keys(groupCsvByName(csvRows)).length} Article(s)</>}
+                    {csvLoading
+                      ? <><Loader2 size={16} className="animate-spin" /> Importing...</>
+                      : <>Import {Object.keys(groupCsvByNameAndStage(csvRows)).filter(k => !csvConflicts.find(c => c.key === k && c.resolution === "skip")).length} Group(s)</>
+                    }
                   </button>
                 </div>
               )}
@@ -1487,25 +1947,39 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                       </select>
                     </Field>
 
-                    <Field
-                      label="MRP (per pair)"
-                      required
-                      icon={<ShoppingBag size={12} />}
-                    >
-                      <input
-                        type="number"
-                        min={0}
-                        required
-                        placeholder="0"
-                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-indigo-600 placeholder:text-slate-300"
-                        value={formData.mrp === 0 ? "" : String(formData.mrp)}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          const val = raw === "" ? 0 : Number(raw) || 0;
-                          setFormData((p) => ({ ...p, mrp: val }));
-                        }}
-                      />
-                    </Field>
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">MRP (per pair)</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <p className="text-[10px] text-indigo-500 font-bold mb-1">Online MRP</p>
+                          <input
+                            type="number"
+                            min={0}
+                            placeholder="0"
+                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold text-indigo-600 placeholder:text-slate-300 text-sm"
+                            value={formData.onlineMrp === 0 ? "" : String(formData.onlineMrp)}
+                            onChange={(e) => {
+                              const val = e.target.value === "" ? 0 : Number(e.target.value) || 0;
+                              setFormData((p) => ({ ...p, onlineMrp: val }));
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-amber-500 font-bold mb-1">Offline MRP</p>
+                          <input
+                            type="number"
+                            min={0}
+                            placeholder="0"
+                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-amber-500/20 font-bold text-amber-600 placeholder:text-slate-300 text-sm"
+                            value={formData.offlineMrp === 0 ? "" : String(formData.offlineMrp)}
+                            onChange={(e) => {
+                              const val = e.target.value === "" ? 0 : Number(e.target.value) || 0;
+                              setFormData((p) => ({ ...p, offlineMrp: val }));
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <Field

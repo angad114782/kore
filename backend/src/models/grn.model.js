@@ -34,6 +34,20 @@ const GRNDraftSchema = new mongoose.Schema(
     vendorName: { type: String, default: "" },
     articleName: { type: String, default: "" },
     totalPairs: { type: Number, default: 0 },
+
+    // GRN form fields
+    grnDate: { type: Date, default: null },
+    vendorInvoiceNos: { type: [String], default: [] },
+    vendorChallanNos: { type: [String], default: [] },
+    vehicleNo: { type: String, default: "" },
+    eWayBillNo: { type: String, default: "" },
+    receivedBy: { type: String, default: "" },
+    receivedByMobile: { type: String, default: "" },
+    warehouse: { type: String, default: "" },
+    remarks: { type: String, default: "" },
+
+    // linked PO support (many-to-many)
+    poIds: { type: [String], default: [] },
   },
   { timestamps: true }
 );

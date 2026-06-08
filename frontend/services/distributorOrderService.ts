@@ -100,6 +100,15 @@ class DistributorOrderService {
       adminNote?: string;
       stockStatus?: 'DISPATCH_READY' | 'BLOCK_HOLD' | 'NO_STOCK';
       blockReason?: string;
+      // Dispatch details (BOOKED → PFD)
+      vehicleNo?: string;
+      lrNo?: string;
+      transporterName?: string;
+      eWayBillNo?: string;
+      driverName?: string;
+      driverMobile?: string;
+      grossWeightKg?: number;
+      outScannedCartons?: string[];
     } = {}
   ): Promise<Order | undefined> {
     const formData = new FormData();
@@ -117,6 +126,15 @@ class DistributorOrderService {
     if (options.adminNote !== undefined) formData.append("adminNote", options.adminNote ?? "");
     if (options.stockStatus)          formData.append("stockStatus",          options.stockStatus);
     if (options.blockReason !== undefined) formData.append("blockReason", options.blockReason ?? "");
+    // Dispatch fields
+    if (options.vehicleNo)       formData.append("vehicleNo",       options.vehicleNo);
+    if (options.lrNo)            formData.append("lrNo",            options.lrNo);
+    if (options.transporterName) formData.append("transporterName", options.transporterName);
+    if (options.eWayBillNo)      formData.append("eWayBillNo",      options.eWayBillNo);
+    if (options.driverName)      formData.append("driverName",      options.driverName);
+    if (options.driverMobile)    formData.append("driverMobile",    options.driverMobile);
+    if (options.grossWeightKg)   formData.append("grossWeightKg",   String(options.grossWeightKg));
+    if (options.outScannedCartons) formData.append("outScannedCartons", JSON.stringify(options.outScannedCartons));
 
     if (options.files) {
       Object.entries(options.files).forEach(([key, file]) => {

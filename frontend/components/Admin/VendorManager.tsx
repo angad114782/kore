@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import {
   Truck,
@@ -20,7 +20,9 @@ import {
   CheckCircle2,
   FileText,
   Loader2,
+  Percent,
 } from "lucide-react";
+import { apiFetch } from "../../services/api";
 import {
   Vendor,
   VendorAddress,
@@ -81,7 +83,7 @@ const emptyVendor = (): Vendor => ({
   msmeRegistered: false,
   currency: "INR- Indian Rupee",
   paymentTerms: "Due on Receipt",
-  tds: "",
+  tds: "5%",
   enablePortal: false,
   isActive: true,
   billingAddress: emptyAddress(),
@@ -134,6 +136,13 @@ const VendorManager: React.FC = () => {
     fetchVendors(page);
   }, [page, pageSize]);
 
+  // Real-time: refresh when vendor created/updated/deleted
+  useEffect(() => {
+    const handler = () => fetchVendors(1);
+    window.addEventListener("vendorRefetch", handler);
+    return () => window.removeEventListener("vendorRefetch", handler);
+  }, []);
+
   // ── Draft Persistence ──
   const savedDraftStr = localStorage.getItem("kore_vendor_draft");
   const savedDraft = savedDraftStr ? JSON.parse(savedDraftStr) : null;
@@ -152,6 +161,43 @@ const VendorManager: React.FC = () => {
   );
   const [search, setSearch] = useState("");
   const [confirmAccountNumber, setConfirmAccountNumber] = useState("");
+  const displayNameTouched = useRef(false);
+
+  // ── TDS Rates ──
+  const [tdsRates, setTdsRates] = useState<{ _id: string; name: string; rate: number }[]>([]);
+  const [addingTds, setAddingTds] = useState(false);
+  const [newTdsInput, setNewTdsInput] = useState("");
+  const [savingTds, setSavingTds] = useState(false);
+
+  const fetchTdsRates = async () => {
+    try {
+      const res = await apiFetch("/tds-rates");
+      setTdsRates(res.data || []);
+    } catch { /* silent */ }
+  };
+
+  useEffect(() => { fetchTdsRates(); }, []);
+
+  const handleAddTdsRate = async () => {
+    const num = parseFloat(newTdsInput);
+    if (!newTdsInput || isNaN(num) || num <= 0) {
+      toast.error("Valid rate daalo (e.g. 2, 10)");
+      return;
+    }
+    setSavingTds(true);
+    try {
+      await apiFetch("/tds-rates", { method: "POST", body: JSON.stringify({ rate: num }) });
+      await fetchTdsRates();
+      updateField("tds", `${num}%`);
+      setNewTdsInput("");
+      setAddingTds(false);
+      toast.success(`${num}% TDS rate add ho gaya`);
+    } catch (e: any) {
+      toast.error(e?.message || "Rate add nahi hua");
+    } finally {
+      setSavingTds(false);
+    }
+  };
 
   useEffect(() => {
     if (view === "form") {
@@ -175,6 +221,7 @@ const VendorManager: React.FC = () => {
     setEditingVendor(null);
     setActiveFormTab("other");
     setConfirmAccountNumber("");
+    displayNameTouched.current = false;
     setView("form");
   };
 
@@ -183,6 +230,7 @@ const VendorManager: React.FC = () => {
     setEditingVendor(vendor);
     setActiveFormTab("other");
     setConfirmAccountNumber("");
+    displayNameTouched.current = true; // existing vendor — don't override
     setView("form");
   };
 
@@ -618,7 +666,13 @@ const VendorManager: React.FC = () => {
                 type="text"
                 className={inputClass}
                 value={formData.companyName}
-                onChange={(e) => updateField("companyName", e.target.value)}
+                placeholder="Company Name"
+                onChange={(e) => {
+                  updateField("companyName", e.target.value);
+                  if (!displayNameTouched.current) {
+                    updateField("displayName", e.target.value);
+                  }
+                }}
               />
             </div>
 
@@ -634,12 +688,16 @@ const VendorManager: React.FC = () => {
                   required
                   className={inputClass}
                   value={formData.displayName}
-                  onChange={(e) => updateField("displayName", e.target.value)}
+                  placeholder="Display Name"
+                  onChange={(e) => {
+                    displayNameTouched.current = true;
+                    updateField("displayName", e.target.value);
+                  }}
                 />
                 <input
                   disabled={loading}
                   type="text"
-                  placeholder="Code"
+                  placeholder="VendorCode"
                   className={inputClass}
                   value={formData.vendorCode}
                   onChange={(e) =>
@@ -662,6 +720,7 @@ const VendorManager: React.FC = () => {
                   type="email"
                   className={`${inputClass} pl-10`}
                   value={formData.email}
+                  placeholder="Email Address"
                   onChange={(e) => updateField("email", e.target.value)}
                 />
               </div>
@@ -774,23 +833,6 @@ const VendorManager: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <label className={labelClass + " mb-0"}>MSME Registered?</label>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    checked={formData.msmeRegistered}
-                    onChange={(e) =>
-                      updateField("msmeRegistered", e.target.checked)
-                    }
-                  />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:ring-2 peer-focus:ring-indigo-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-                  <span className="ml-2 text-sm font-semibold text-slate-600">
-                    {formData.msmeRegistered ? "Yes" : "No"}
-                  </span>
-                </label>
-              </div>
 
               <div>
                 <label className={labelClass}>Currency</label>
@@ -801,8 +843,8 @@ const VendorManager: React.FC = () => {
                 >
                   <option>INR- Indian Rupee</option>
                   <option>USD- US Dollar</option>
-                  <option>EUR- Euro</option>
-                  <option>GBP- British Pound</option>
+                  {/* <option>EUR- Euro</option>
+                  <option>GBP- British Pound</option> */}
                 </select>
               </div>
 
@@ -824,37 +866,93 @@ const VendorManager: React.FC = () => {
               </div>
 
               <div>
-                <label className={labelClass}>TDS</label>
-                <select
-                  className={selectClass}
-                  value={formData.tds}
-                  onChange={(e) => updateField("tds", e.target.value)}
-                >
-                  <option value="">Select a Tax</option>
-                  <option>TDS - 194C - 1%</option>
-                  <option>TDS - 194C - 2%</option>
-                  <option>TDS - 194J - 10%</option>
-                  <option>TDS - 194H - 5%</option>
-                  <option>TDS - 194I - 10%</option>
-                </select>
-              </div>
+                <label className={labelClass}>GST Rate</label>
+                <div className="flex gap-2 items-center">
+                  <select
+                    className={selectClass}
+                    value={formData.tds}
+                    onChange={(e) => updateField("tds", e.target.value)}
+                  >
+                    <option value="">Select GST Rate</option>
+                    {tdsRates.map((r) => (
+                      <option key={r._id} value={r.name}>{r.name}</option>
+                    ))}
+                  </select>
+                  {!addingTds ? (
+                    <button
+                      type="button"
+                      onClick={() => setAddingTds(true)}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all whitespace-nowrap"
+                    >
+                      <Plus size={13} /> Add New
+                    </button>
+                  ) : (
+                    <div className="shrink-0 flex items-center gap-1.5">
+                      <div className="relative">
+                        <Percent size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="e.g. 18"
+                          value={newTdsInput}
+                          onChange={(e) => setNewTdsInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleAddTdsRate();
+                            if (e.key === "Escape") { setAddingTds(false); setNewTdsInput(""); }
+                          }}
+                          autoFocus
+                          className="w-24 pl-7 pr-2 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 text-sm font-medium text-slate-800"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddTdsRate}
+                        disabled={savingTds}
+                        className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50"
+                      >
+                        {savingTds ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setAddingTds(false); setNewTdsInput(""); }}
+                        className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+                </div>
 
-              <div className="flex items-center gap-3">
-                <label className={labelClass + " mb-0"}>Enable Portal?</label>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    checked={formData.enablePortal}
-                    onChange={(e) =>
-                      updateField("enablePortal", e.target.checked)
-                    }
-                  />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:ring-2 peer-focus:ring-indigo-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-                  <span className="ml-2 text-sm font-semibold text-slate-600">
-                    Allow portal access for this vendor
-                  </span>
-                </label>
+                {/* Existing rates as deletable chips */}
+                {tdsRates.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {tdsRates.map((r) => (
+                      <span
+                        key={r._id}
+                        className="inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 bg-slate-100 border border-slate-200 rounded-full text-xs font-semibold text-slate-600"
+                      >
+                        {r.name}
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await apiFetch(`/tds-rates/${r._id}`, { method: "DELETE" });
+                              if (formData.tds === r.name) updateField("tds", "");
+                              await fetchTdsRates();
+                            } catch (e: any) {
+                              toast.error(e?.message || "Delete nahi hua");
+                            }
+                          }}
+                          className="p-0.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-all"
+                          title={`Delete ${r.name}`}
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

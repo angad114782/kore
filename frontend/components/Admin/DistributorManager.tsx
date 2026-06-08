@@ -28,6 +28,7 @@ import {
   RotateCcw,
   IndianRupee,
   Clock,
+  Tag,
 } from "lucide-react";
 import { apiFetch } from "../../services/api";
 import Switch from "../ui/Switch";
@@ -481,6 +482,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
       paymentTerms: "30 days",
       discountPercentage: 0,
       creditLimit: 0,
+      tag: "online",
       loginEmail: "",
       loginPassword: "",
       loginEnabled: true,
@@ -537,6 +539,24 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
     fetchDistributors();
   }, [searchQuery, page, pageSize]);
 
+  // Real-time: refresh distributor list when any distributor is updated/toggled
+  React.useEffect(() => {
+    const handler = () => {
+      const fetchDistributors = async () => {
+        try {
+          const response = await distributorService.listDistributors({ search: searchQuery || undefined, page, limit: pageSize });
+          const mapped = (response.items || []).map((d: any) => ({ ...d, id: d._id || d.id }));
+          setDistributors(mapped);
+          setTotalPages((response.meta as any)?.pages || (response.meta as any)?.totalPages || 1);
+          setTotal(response.meta?.total || 0);
+        } catch {}
+      };
+      fetchDistributors();
+    };
+    window.addEventListener("distributorRefetch", handler);
+    return () => window.removeEventListener("distributorRefetch", handler);
+  }, [searchQuery, page, pageSize]);
+
   const handleCreateDistributor = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -586,6 +606,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
         paymentTerms: formData.paymentTerms || "30 days",
         discountPercentage: Number(formData.discountPercentage) || 0,
         creditLimit: Number(formData.creditLimit) || 0,
+        tag: formData.tag || "online",
         loginEmail: formData.loginEmail || "",
         loginEnabled: editingId ? formData.loginEnabled : !!(formData.loginEmail && formData.loginPassword),
         isActive: true,
@@ -643,6 +664,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
         paymentTerms: "30 days",
         discountPercentage: 0,
         creditLimit: 0,
+        tag: "online",
         loginEmail: "",
         loginPassword: "",
         loginEnabled: true,
@@ -686,6 +708,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
 
   const handleRowClick = (dist: User) => {
     setSelectedDistributor(dist);
+    setShowPasswordEdit(false);
     setView("DETAILS");
   };
 
@@ -709,6 +732,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
       paymentTerms: dist.paymentTerms,
       discountPercentage: dist.discountPercentage,
       creditLimit: dist.creditLimit,
+      tag: dist.tag || "online",
       loginEmail: dist.loginEmail,
       // password is stored only on the User model; show blank so admin must
       // re-enter if they want to change it
@@ -783,6 +807,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                   paymentTerms: "30 days",
                   discountPercentage: 0,
                   creditLimit: 0,
+                  tag: "online",
                   loginEmail: "",
                   loginPassword: "",
                   loginEnabled: true,
@@ -951,6 +976,26 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                   Financial Setup
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <Field label="Channel" icon={<Tag size={14} />}>
+                    <div className="flex gap-2">
+                      {(["online", "offline"] as const).map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, tag: opt })}
+                          className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all border ${
+                            formData.tag === opt
+                              ? opt === "online"
+                                ? "bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100"
+                                : "bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-100"
+                              : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          {opt === "online" ? "Online" : "Offline"}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
                   <Field label="Payment Terms" icon={<CreditCard size={14} />}>
                     <div className="flex gap-2">
                       <select
@@ -1099,6 +1144,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                     paymentTerms: "30 days",
                     discountPercentage: 0,
                     creditLimit: 0,
+                    tag: "online",
                     loginEmail: "",
                     loginPassword: "",
                     loginEnabled: true,
@@ -1225,11 +1271,24 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                     label="Login Email"
                     value={d.loginEmail || "—"}
                   />
-                  <InfoRow
-                    icon={<Wallet size={16} />}
-                    label="Login Password"
-                    value="••••••••"
-                  />
+                  <div className="flex gap-3">
+                    <div className="mt-0.5 text-slate-400"><Wallet size={16} /></div>
+                    <div className="flex-1">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Login Password</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-sm text-slate-800 font-mono font-medium">
+                          {showPasswordEdit ? (d.loginPasswordPlain || "—") : "••••••••"}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowPasswordEdit((v) => !v)}
+                          className="text-slate-400 hover:text-indigo-600 transition-colors"
+                        >
+                          {showPasswordEdit ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                   <div className="flex items-center justify-between py-3 px-3 bg-slate-50 rounded-lg">
                     <div className="flex items-center gap-3">
                       <Shield size={16} className="text-slate-400" />
@@ -1256,13 +1315,22 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                   </h3>
 
                   <div className="space-y-5">
-                    <div>
-                      <p className="text-indigo-200 text-xs font-medium mb-1 flex items-center gap-1.5">
-                        <CreditCard size={14} /> Payment Terms
-                      </p>
-                      <p className="text-lg font-bold">
-                        {d.paymentTerms || "30 days"}
-                      </p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-indigo-200 text-xs font-medium mb-1 flex items-center gap-1.5">
+                          <CreditCard size={14} /> Payment Terms
+                        </p>
+                        <p className="text-lg font-bold">
+                          {d.paymentTerms || "30 days"}
+                        </p>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+                        d.tag === "offline"
+                          ? "bg-amber-400 text-amber-900"
+                          : "bg-blue-400 text-blue-900"
+                      }`}>
+                        {d.tag || "online"}
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 pt-4 border-t border-indigo-500/50">
@@ -1424,6 +1492,7 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                 paymentTerms: "30 days",
                 discountPercentage: 0,
                 creditLimit: 0,
+                tag: "online",
                 loginEmail: "",
                 loginPassword: "",
                 loginEnabled: true,
@@ -1491,9 +1560,18 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                           className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
                         >
                           <td className="px-6 py-4">
-                            <p className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
-                              {dist.companyName || dist.name}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                                {dist.companyName || dist.name}
+                              </p>
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                dist.tag === "offline"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-blue-100 text-blue-700"
+                              }`}>
+                                {dist.tag || "online"}
+                              </span>
+                            </div>
                             <p className="text-xs text-slate-500 mt-0.5">
                               {dist.name} • {dist.phone || dist.email}
                             </p>

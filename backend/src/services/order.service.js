@@ -343,6 +343,15 @@ const updateOrderStatus = async (orderId, status, {
   adminNote = null,
   stockStatus = null,
   blockReason = null,
+  // Dispatch fields — filled at BOOKED → PFD (CTN out-scan step)
+  vehicleNo = null,
+  lrNo = null,
+  transporterName = null,
+  eWayBillNo = null,
+  driverName = null,
+  driverMobile = null,
+  grossWeightKg = null,
+  outScannedCartons = null,
 } = {}) => {
   try {
     const validStatuses = [
@@ -371,6 +380,19 @@ const updateOrderStatus = async (orderId, status, {
     if (deliveryAgentName)   updateData.deliveryAgentName   = deliveryAgentName;
     if (deliveryAgentMobile) updateData.deliveryAgentMobile = deliveryAgentMobile;
     if (deliveryNote)        updateData.deliveryNote        = deliveryNote;
+
+    // Dispatch fields — saved when BOOKED → PFD
+    if (status === "PFD") {
+      if (vehicleNo)            updateData.vehicleNo            = vehicleNo;
+      if (lrNo)                 updateData.lrNo                 = lrNo;
+      if (transporterName)      updateData.transporterName      = transporterName;
+      if (eWayBillNo)           updateData.eWayBillNo           = eWayBillNo;
+      if (driverName)           updateData.driverName           = driverName;
+      if (driverMobile)         updateData.driverMobile         = driverMobile;
+      if (grossWeightKg)        updateData.grossWeightKg        = grossWeightKg;
+      if (outScannedCartons)    updateData.outScannedCartons    = outScannedCartons;
+      updateData.dispatchedAt = new Date();
+    }
 
     // Booking commitment fields — saved when admin confirms (PENDING → BOOKED)
     if (status === "BOOKED") {

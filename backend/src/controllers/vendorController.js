@@ -1,4 +1,5 @@
 const vendorService = require("../services/vendorService");
+const { emitVendorUpdated } = require("../socket");
 
 const sendError = (res, err) => {
   const code = err.statusCode || 500;
@@ -8,6 +9,7 @@ const sendError = (res, err) => {
 exports.createVendor = async (req, res) => {
   try {
     const doc = await vendorService.create(req.body);
+    emitVendorUpdated("created", doc._id);
     return res.status(201).json({ message: "Vendor created", data: doc });
   } catch (err) {
     return sendError(res, err);
@@ -46,6 +48,7 @@ exports.getVendorById = async (req, res) => {
 exports.updateVendor = async (req, res) => {
   try {
     const doc = await vendorService.update(req.params.id, req.body);
+    emitVendorUpdated("updated", doc._id);
     return res.json({ message: "Vendor updated", data: doc });
   } catch (err) {
     return sendError(res, err);
@@ -55,6 +58,7 @@ exports.updateVendor = async (req, res) => {
 exports.toggleVendorStatus = async (req, res) => {
   try {
     const doc = await vendorService.toggleActive(req.params.id);
+    emitVendorUpdated("updated", doc._id);
     return res.json({
       message: `Vendor ${doc.isActive ? "activated" : "deactivated"} successfully`,
       data: doc,
@@ -67,6 +71,7 @@ exports.toggleVendorStatus = async (req, res) => {
 exports.deleteVendor = async (req, res) => {
   try {
     await vendorService.softDelete(req.params.id);
+    emitVendorUpdated("deleted", req.params.id);
     return res.json({ message: "Vendor deleted" });
   } catch (err) {
     return sendError(res, err);

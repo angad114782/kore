@@ -51,6 +51,13 @@ const ReturnReport: React.FC = () => {
 
   useEffect(() => { fetch(); }, [fetch]);
 
+  // Real-time: refresh when a new return is created
+  useEffect(() => {
+    const handler = () => fetch();
+    window.addEventListener("returnRefetch", handler);
+    return () => window.removeEventListener("returnRefetch", handler);
+  }, [fetch]);
+
   const handleFilter = () => { setPage(1); fetch(); };
 
   const exportCsv = () => {

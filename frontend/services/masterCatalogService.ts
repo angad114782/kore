@@ -148,4 +148,11 @@ export const masterCatalogService = {
       body: JSON.stringify(payload),
     });
   },
+
+  async updateVariantSku(variantId: string, sku: string) {
+    return apiFetch(`/master-catalog/variants/${variantId}/sku`, {
+      method: "PATCH",
+      body: JSON.stringify({ sku }),
+    });
+  },
 };

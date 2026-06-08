@@ -128,23 +128,62 @@ const normalizeVariants = (variantsRaw) => {
       });
     }
 
+    const tag = ["online", "offline"].includes(v.tag) ? v.tag : "online";
+    const onlineMrp  = Number(v.onlineMrp  || 0);
+    const offlineMrp = Number(v.offlineMrp || 0);
+    // Backward-compat: mrp = max(online, offline) or explicit mrp
+    const mrp = Number(v.mrp || 0) || Math.max(onlineMrp, offlineMrp);
+
+    // Auto-generate sizeSkus from carton-level sku + sizeRange if sku provided
+    const ctnSku     = (v.sku || "").trim();
+    const sizeRange  = (v.sizeRange || "").trim();
+    const derivedSizeSkus = autoGenerateSizeSkus(ctnSku, sizeRange, Object.keys(sizeQuantities));
+    // Merge: explicit sizeSkus take priority over derived ones
+    const finalSizeSkus = { ...derivedSizeSkus, ...sizeSkus };
+
     return {
       _id: v._id || v.id || undefined,
       itemName: v.itemName,
       color: v.color || "",
-      sizeRange: v.sizeRange || "",
+      sizeRange,
       sizeRangeId: v.sizeRangeId || "",
       costPrice: Number(v.costPrice || 0),
       sellingPrice: Number(v.sellingPrice || 0),
-      mrp: Number(v.mrp || 0),
+      mrp,
       hsnCode: v.hsnCode || "",
       sizeMap,
       sizeQuantities,
-      sizeSkus,
+      sizeSkus: finalSizeSkus,
       isActive: parseBoolean(v.isActive, true),
+      tag,
+      onlineMrp,
+      offlineMrp,
+      sku: ctnSku,
     };
   });
 };
+
+// Auto-generate per-size SKUs from carton SKU (e.g. slk-blk-5-9 → {5:slk-blk-5, 6:slk-blk-6 ...})
+function autoGenerateSizeSkus(ctnSku, sizeRange, sizeKeys) {
+  if (!ctnSku || !sizeKeys.length) return {};
+  const result = {};
+  let base = null;
+  // Strategy 1: exact sizeRange suffix (e.g. "amr-gry-7-11" ends with "7-11")
+  if (sizeRange && ctnSku.endsWith(sizeRange)) {
+    base = ctnSku.slice(0, ctnSku.length - sizeRange.length);
+  }
+  // Strategy 2: regex — strip trailing -startSize-endSize regardless of stored sizeRange
+  if (base === null) {
+    const m = ctnSku.match(/^(.*)-\d+-\d+$/);
+    if (m) base = m[1] + "-";
+  }
+  if (base !== null) {
+    sizeKeys.forEach(sz => { result[sz] = `${base}${sz}`; });
+  } else {
+    sizeKeys.forEach(sz => { result[sz] = `${ctnSku}-${sz}`; });
+  }
+  return result;
+}
 
 const makeCompositeKey = (v) => {
   return `${(v.color || "").trim().toLowerCase()}|${(v.sizeRange || "")
@@ -327,6 +366,27 @@ exports.update = async (req, id) => {
     if (patch[k] !== undefined) doc[k] = patch[k];
   });
 
+  // Propagate article-level onlineMrp/offlineMrp to all matching variants
+  const newOnlineMrp = body.onlineMrp !== undefined ? Number(body.onlineMrp) : null;
+  const newOfflineMrp = body.offlineMrp !== undefined ? Number(body.offlineMrp) : null;
+  if (newOnlineMrp !== null || newOfflineMrp !== null) {
+    (doc.variants || []).forEach((v) => {
+      const tag = (v.tag || "").toLowerCase();
+      if (newOnlineMrp !== null && tag === "online") {
+        v.onlineMrp = newOnlineMrp;
+        v.mrp = newOnlineMrp;
+      } else if (newOfflineMrp !== null && tag === "offline") {
+        v.offlineMrp = newOfflineMrp;
+        v.mrp = newOfflineMrp;
+      } else if (newOnlineMrp !== null && !tag) {
+        // Untagged variant — use the higher of the two as default mrp
+        v.onlineMrp = newOnlineMrp;
+        if (newOfflineMrp !== null) v.offlineMrp = newOfflineMrp;
+        v.mrp = Math.max(newOnlineMrp, newOfflineMrp ?? newOnlineMrp);
+      }
+    });
+  }
+
   if (body.productColors !== undefined) {
     const productColors = parseMaybeJson(body.productColors, []);
     doc.productColors = Array.isArray(productColors) ? productColors : [];
@@ -392,6 +452,11 @@ exports.update = async (req, id) => {
         matched.sizeQuantities = v.sizeQuantities;
         matched.sizeSkus = v.sizeSkus;
         matched.isActive = v.isActive;
+        if (v.tag) matched.tag = v.tag;
+        if (v.onlineMrp !== undefined) matched.onlineMrp = v.onlineMrp;
+        if (v.offlineMrp !== undefined) matched.offlineMrp = v.offlineMrp;
+        // sku + sizeSkus: only update if new sku provided (preserve manual edits otherwise)
+        if (v.sku) { matched.sku = v.sku; matched.sizeSkus = v.sizeSkus; }
 
         existingById.delete(matched._id.toString());
         existingByComposite.delete(makeCompositeKey(matched));
@@ -863,4 +928,21 @@ exports.stockMovement = async (variantIdStr, { type, cartons, reason, note, user
   });
 
   return { variantId: variantIdStr, articleId: String(catalog._id), type, cartons, totalPairs, delta };
+};
+
+exports.updateVariantSku = async (variantId, sku) => {
+  const catalog = await MasterCatalog.findOne({ "variants._id": variantId });
+  if (!catalog) { const err = new Error("Variant not found"); err.statusCode = 404; throw err; }
+  const variant = catalog.variants.id(variantId);
+  if (!variant) { const err = new Error("Variant not found in catalog"); err.statusCode = 404; throw err; }
+  const ctnSku = (sku || "").trim();
+  variant.sku = ctnSku;
+  // Regenerate sizeSkus from new carton SKU
+  const sizeKeys = variant.sizeQuantities ? Array.from(variant.sizeQuantities.keys()) : [];
+  const newSizeSkus = autoGenerateSizeSkus(ctnSku, variant.sizeRange || "", sizeKeys);
+  sizeKeys.forEach(sz => { variant.sizeSkus.set(sz, newSizeSkus[sz] || ""); });
+  catalog.markModified("variants");
+  await catalog.save();
+  const sizeSkusObj = Object.fromEntries(variant.sizeSkus || []);
+  return { variantId, sku: variant.sku, sizeSkus: sizeSkusObj };
 };
