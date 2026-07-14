@@ -11,6 +11,10 @@ export const settingsService = {
     const res = await axios.get(`${API_BASE}/settings/${key}`, { headers: headers() });
     return res.data?.data?.value || "";
   },
+  getRaw: async (key: string): Promise<{ value: string; configured?: boolean }> => {
+    const res = await axios.get(`${API_BASE}/settings/${key}`, { headers: headers() });
+    return res.data?.data || { value: "" };
+  },
   save: async (key: string, value: string): Promise<void> => {
     await axios.put(`${API_BASE}/settings/${key}`, { value }, { headers: headers() });
   },

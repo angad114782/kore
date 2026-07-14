@@ -54,6 +54,7 @@ import AccountantPage from "./components/Admin/AccountantPage";
 import PreOrderManager from "./components/Admin/PreOrderManager";
 import TermsPage from "./components/Admin/TermsPage";
 import NotificationSettings from "./components/Admin/NotificationSettings";
+import IntegrationsPage from "./components/Admin/IntegrationsPage";
 import { masterCatalogService } from "./services/masterCatalogService";
 import OverduePayments from "./components/shared/OverduePayments";
 
@@ -1138,6 +1139,10 @@ const App: React.FC = () => {
 
         {activeTab === "notification_settings" && user.role === UserRole.SUPERADMIN && (
           <NotificationSettings />
+        )}
+
+        {activeTab === "integrations" && user.role === UserRole.SUPERADMIN && (
+          <IntegrationsPage />
         )}
       </main>
       <Toaster position="top-right" richColors />

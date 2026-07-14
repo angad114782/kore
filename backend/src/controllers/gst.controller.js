@@ -1,4 +1,5 @@
 const axios = require("axios");
+const Settings = require("../models/Settings");
 
 const GST_STATE_MAP = {
   "01": "Jammu & Kashmir",       "02": "Himachal Pradesh",    "03": "Punjab",
@@ -18,76 +19,56 @@ const GST_STATE_MAP = {
 
 const GST_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
-// ── Surepass GST API ────────────────────────────────────────────────────────
-// Docs: https://docs.surepass.io/
-// Endpoint: POST https://kyc-api.surepass.io/api/v1/corporate/gstin-advance
-// Header:   Authorization: Bearer YOUR_TOKEN
-// Body:     { "id": "GSTIN" }
-async function callSurepassGSTAPI(gstin) {
-  const token = process.env.SUREPASS_TOKEN;
-  if (!token) return null;
 
-  const res = await axios.post(
-    "https://kyc-api.surepass.io/api/v1/corporate/gstin-advance",
-    { id: gstin },
+// ── GSTVerify.co.in API ───────────────────────────────────────────────────────
+// GET https://gstverify.co.in/api/v1/verify/:gstin
+// Header: x-api-key
+function buildGSTVerifyAddress(data) {
+  // Raw address has em-dash before pincode: "..., Rajasthan — 301411"
+  const rawAddr = (data.address || "").replace(/\s*[—–-]\s*\d{6}\s*$/, "").trim();
+  const parts = rawAddr.split(",").map(s => s.trim()).filter(Boolean);
+  // Drop trailing part if it duplicates the state name
+  const stateName = (data.state || "").trim().toLowerCase();
+  if (parts.length > 1 && parts[parts.length - 1].toLowerCase() === stateName) parts.pop();
+  return {
+    address1: parts.slice(0, 2).join(", "),
+    address2: parts.slice(2).join(", "),
+    city:     data.district  || "",
+    state:    data.state     || "",
+    pinCode:  data.pincode   || "",
+  };
+}
+
+async function callGSTVerifyAPI(gstin, apiKey) {
+  if (!apiKey) return null;
+
+  const res = await axios.get(
+    `https://gstverify.co.in/api/v1/verify/${gstin}`,
     {
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "x-api-key": apiKey },
       timeout: 12000,
     }
   );
 
-  const d = res.data?.data || {};
-  if (!d.gstin && !d.business_name && !d.legal_name) {
-    throw new Error(res.data?.message || "No data returned");
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "GSTVerify API error");
   }
 
-  // Build address from principal_place_of_business string or address object
-  let address = null;
-  const ppob = d.principal_place_of_business_fields || d.principal_address || {};
-  const ppobStr = d.principal_place_of_business || "";
-
-  if (ppob && (ppob.BuildingName || ppob.Street || ppob.City || ppob.StateName)) {
-    address = {
-      address1: [ppob.BuildingName, ppob.BuildingNumber, ppob.Street].filter(Boolean).join(", "),
-      address2: ppob.Location || "",
-      city:     ppob.City || ppob.District || "",
-      state:    ppob.StateName || ppob.State || "",
-      pincode:  String(ppob.PinCode || ppob.pincode || ""),
-    };
-  } else if (ppobStr) {
-    // Fallback: parse from comma-separated string
-    const parts = ppobStr.split(",").map(s => s.trim()).filter(Boolean);
-    address = {
-      address1: parts.slice(0, 2).join(", "),
-      address2: "",
-      city:     parts[parts.length - 3] || "",
-      state:    d.state || "",
-      pincode:  parts[parts.length - 1]?.match(/\d{6}/)?.[0] || "",
-    };
-  }
-
-  // Fill state from our map if not provided
-  const stateCode = gstin.slice(0, 2);
-  if (address && !address.state) {
-    address.state = GST_STATE_MAP[stateCode] || "";
-  }
-
+  const d = res.data.data || {};
   return {
-    legalName:    (d.legal_name || d.business_name || "").trim(),
-    tradeName:    (d.trade_name || d.business_name || d.legal_name || "").trim(),
-    gstStatus:    (d.gst_in_status || d.status || "").trim(),
-    constitution: (d.constitution_of_business || "").trim(),
+    pan:          (d.pan          || gstin.slice(2, 12)).trim(),
+    legalName:    (d.legal_name   || "").trim(),
+    tradeName:    (d.trade_name   || d.legal_name || "").trim(),
+    gstStatus:    (d.status       || "").trim(),
+    constitution: (d.constitution || "").trim(),
     dealerType:   (d.taxpayer_type || "").trim(),
-    regDate:      (d.date_of_registration || d.registration_date || "").trim(),
-    address,
-    stateCode,
+    regDate:      (d.registration_date || "").trim(),
+    address:      buildGSTVerifyAddress(d),
+    stateCode:    (d.state_code   || gstin.slice(0, 2)).trim(),
   };
 }
 
-// ── Main verify handler ───────────────────────────────────────────────────
+// ── Main verify handler ───────────────────────────────────────────────────────
 const verifyGST = async (req, res) => {
   try {
     const gstin = (req.params.gstin || "").trim().toUpperCase();
@@ -95,7 +76,7 @@ const verifyGST = async (req, res) => {
     if (!GST_REGEX.test(gstin)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid GSTIN format (15 chars: 2-digit state + PAN + entity + Z + checksum)",
+        message: "Invalid GSTIN format",
       });
     }
 
@@ -103,7 +84,10 @@ const verifyGST = async (req, res) => {
     const pan       = gstin.slice(2, 12);
     const state     = GST_STATE_MAP[stateCode] || null;
 
-    if (!process.env.SUREPASS_TOKEN) {
+    const keyDoc = await Settings.findOne({ key: "gstverify_api_key" }).lean();
+    const apiKey = keyDoc?.value || process.env.GSTVERIFY_API_KEY || "";
+
+    if (!apiKey) {
       return res.json({
         success: true,
         data: {
@@ -119,7 +103,7 @@ const verifyGST = async (req, res) => {
 
     let apiData = null;
     try {
-      apiData = await callSurepassGSTAPI(gstin);
+      apiData = await callGSTVerifyAPI(gstin, apiKey);
     } catch (e) {
       const msg = e.response?.data?.message || e.message;
       return res.status(400).json({ success: false, message: msg });
@@ -129,9 +113,9 @@ const verifyGST = async (req, res) => {
       success: true,
       data: {
         gstin,
-        pan,
-        stateCode: apiData.stateCode || stateCode,
-        state:     apiData.address?.state || state,
+        pan:          apiData.pan          || pan,
+        stateCode:    apiData.stateCode    || stateCode,
+        state:        apiData.address?.state || state,
         legalName:    apiData.legalName    || null,
         tradeName:    apiData.tradeName    || null,
         gstStatus:    apiData.gstStatus    || null,

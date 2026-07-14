@@ -33,6 +33,7 @@ import {
   IndianRupee,
   ScrollText,
   Bell,
+  Plug,
 } from "lucide-react";
 
 import { type User as Usertype, UserRole } from "../../types";
@@ -432,6 +433,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                       label="Notifications"
                       active={activeTab === "notification_settings"}
                       onClick={() => go("notification_settings")}
+                      isCollapsed={isCollapsed}
+                    />
+                  </div>
+                )}
+                {user.role === UserRole.SUPERADMIN && (
+                  <div className="pt-2">
+                    <NavItem
+                      icon={<Plug size={20} />}
+                      label="Integrations"
+                      active={activeTab === "integrations"}
+                      onClick={() => go("integrations")}
                       isCollapsed={isCollapsed}
                     />
                   </div>

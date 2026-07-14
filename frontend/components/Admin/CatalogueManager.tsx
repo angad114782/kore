@@ -1622,7 +1622,7 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                   <div className="bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-5 text-center">
                     <FileSpreadsheet size={36} className="mx-auto text-emerald-500 mb-2" />
                     <p className="text-sm font-semibold text-slate-700 mb-1">Upload CSV file or paste CSV text</p>
-                    <p className="text-xs text-slate-400 mb-3">Columns (koi bhi order): <code className="bg-slate-100 px-1 rounded">name, sku_ctn, color, size, online_mrp, offline_mrp, tag, cost_price, hsn, gender, category, brand, manufacturer, unit, image, sole_color, listing_status, expected_date, size_5 ... size_13, size_01, size_02 ...</code></p>
+                    <p className="text-xs text-slate-400 mb-3">Columns: <code className="bg-slate-100 px-1 rounded">name, sku_ctn, color, size, online_mrp, offline_mrp, tag, cost_price, hsn, gender, category, brand, manufacturer, unit, image, sole_color, listing_status, expected_date, size_5 ... size_13, size_01, size_02 ...</code></p>
                     <a
                       href="/sample_catalog.csv"
                       download="sample_catalog.csv"
@@ -1636,23 +1636,11 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
                     </label>
                   </div>
 
-                  <div>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Or paste CSV content:</p>
-                    <textarea
-                      rows={7}
-                      placeholder={"name,sku_ctn,color,size,online_mrp,offline_mrp,tag,cost_price,hsn,gender,category,brand,manufacturer,unit,image,sole_color,listing_status,expected_date,size_5,size_6,size_7,size_8,size_9,size_10\nUrban Runner,urb-red-5-10,Red,5-10,1999,1799,online,1200,6403,MEN,Sports,Nike,Nike Factory,PAIR,https://img.com/red.jpg,White,available,,6,8,10,8,4,2\nKids Sneaker,kid-pnk-11-03,Pink,11-03,999,899,online,600,6403,KIDS,Sports,Nike,Nike Factory,PAIR,,White,available,,,,4,4,2 (size_11,size_12,size_13 ke liye)"}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 resize-none"
-                      value={csvText}
-                      onChange={e => setCsvText(e.target.value)}
-                    />
-                  </div>
-
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 space-y-1">
-                    <p><b>Format:</b> First row = header. Same <code>name</code> ke multiple rows = same article, alag color variants.</p>
-                    <p><b>sku_ctn</b> = carton-level SKU (e.g. <code>slk-blk-5-9</code> or <code>kid-pnk-11-03</code>). Per-size SKUs auto-generate honge. <b>tag</b> = <code>online</code> ya <code>offline</code>. <b>online_mrp</b> + <b>offline_mrp</b> alag-alag.</p>
-                    <p><b>Kids sizes</b>: size range jaise <code>11-03</code> (11→12→13→01→02→03). CSV columns: <code>size_11</code>, <code>size_12</code>, <code>size_13</code>, <code>size_01</code>, <code>size_02</code>, <code>size_03</code>.</p>
-                    <p><b>listing_status</b> = <code>available</code> ya <code>wishlist</code> ya <code>preorder</code>. <b>expected_date</b> = any format (DD/MM/YYYY, YYYY-MM-DD, etc.). Columns ki order koi bhi ho sakti hai.</p>
-                    <p><b>category/brand/manufacturer/unit</b> exact match hona chahiye system me.</p>
+                    <p><b>Format:</b> First row = header. Same <code>name</code> ke multiple rows = same article, Different color variants.</p>
+                    <p><b>sku_ctn</b> = carton-level SKU (e.g. <code>slk-blk-5-9</code> or <code>kid-pnk-11-03</code>). Per-size SKUs auto-generate honge. <b>tag</b> = <code>online</code> ya <code>offline</code>. <b>online_mrp</b> + <b>offline_mrp</b>.</p>
+                    <p><b>Kids sizes</b>: <code>11-03</code> (11→12→13→01→02→03). CSV columns: <code>size_11</code>, <code>size_12</code>, <code>size_13</code>, <code>size_01</code>, <code>size_02</code>, <code>size_03</code>.</p>
+                    <p><b>listing_status</b> = <code>available</code> ya <code>wishlist</code> ya <code>preorder</code>. <b>expected_date</b> = any format (DD/MM/YYYY, YYYY-MM-DD, etc.).</p>
                   </div>
 
                   <button

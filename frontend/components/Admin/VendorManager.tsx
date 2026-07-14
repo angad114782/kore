@@ -30,6 +30,7 @@ import {
   VendorBankDetail,
 } from "../../types";
 import { vendorService } from "../../services/vendorService";
+import GSTVerifyInput, { type GSTVerifyResult } from "../shared/GSTVerifyInput";
 import Switch from "../ui/Switch";
 import Pagination from "../ui/Pagination";
 import { usePageSize } from "../../utils/usePageSize";
@@ -790,11 +791,28 @@ const VendorManager: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass}>GST Number</label>
-                  <input
-                    type="text"
-                    className={inputClass}
+                  <GSTVerifyInput
                     value={formData.gstNumber}
-                    onChange={(e) => updateField("gstNumber", e.target.value.toUpperCase())}
+                    onChange={(val) => updateField("gstNumber", val)}
+                    inputClass={inputClass}
+                    onVerified={(data: GSTVerifyResult) => {
+                      if (data.pan) updateField("pan", data.pan);
+                      if (data.tradeName || data.legalName) {
+                        const name = data.tradeName || data.legalName || "";
+                        if (!formData.companyName) updateField("companyName", name);
+                        if (!formData.displayName)  updateField("displayName",  name);
+                      }
+                      if (data.address) {
+                        updateField("billingAddress", {
+                          ...formData.billingAddress,
+                          address1: data.address.address1,
+                          address2: data.address.address2,
+                          city:     data.address.city,
+                          state:    data.address.state,
+                          pinCode:  data.address.pinCode,
+                        } as VendorAddress);
+                      }
+                    }}
                   />
                 </div>
                 <div>

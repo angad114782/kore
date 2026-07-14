@@ -31,6 +31,7 @@ import {
   Tag,
 } from "lucide-react";
 import { apiFetch } from "../../services/api";
+import GSTVerifyInput, { type GSTVerifyResult } from "../shared/GSTVerifyInput";
 import Switch from "../ui/Switch";
 import ConfirmDialog, { useConfirm } from "../ui/ConfirmDialog";
 import distributorService from "../../services/distributorService";
@@ -905,11 +906,28 @@ const DistributorManager: React.FC<DistributorManagerProps> = ({ orders }) => {
                     />
                   </Field>
                   <Field label="GST Number" icon={<FileText size={14} />}>
-                    <input
-                      type="text"
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none uppercase"
+                    <GSTVerifyInput
                       value={formData.gstNumber || ""}
-                      onChange={(e) => setFormData({ ...formData, gstNumber: e.target.value.toUpperCase() })}
+                      onChange={(val) => setFormData({ ...formData, gstNumber: val })}
+                      onVerified={(data: GSTVerifyResult) => {
+                        setFormData((prev) => {
+                          const addr = data.address
+                            ? {
+                                ...(prev.billingAddress as DistributorAddress),
+                                address1: data.address.address1,
+                                address2: data.address.address2,
+                                city:     data.address.city,
+                                state:    data.address.state,
+                                pinCode:  data.address.pinCode,
+                              } as DistributorAddress
+                            : prev.billingAddress;
+                          return {
+                            ...prev,
+                            companyName: prev.companyName || data.tradeName || data.legalName || "",
+                            billingAddress: addr,
+                          };
+                        });
+                      }}
                     />
                   </Field>
                 </div>
