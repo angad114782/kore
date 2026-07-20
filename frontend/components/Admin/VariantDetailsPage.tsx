@@ -735,7 +735,7 @@ const VariantDetailsPage: React.FC<VariantDetailsPageProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-black text-orange-600 uppercase tracking-wider flex items-center gap-1.5">
-                    <ShoppingBag size={14} /> PO Quantity
+                    <ShoppingBag size={14} /> PO Quantity (pending)
                   </h4>
                   <span className="text-[10px] font-bold text-slate-400">
                     per size
