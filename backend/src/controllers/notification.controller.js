@@ -1,4 +1,5 @@
 const NotificationConfig = require("../models/NotificationConfig");
+const User = require("../models/User");
 const emailSvc = require("../services/email.service");
 const waSvc = require("../services/whatsapp.service");
 
@@ -46,13 +47,18 @@ const testEmail = async (req, res) => {
       });
     }
     await emailSvc.testConnection(cfg);
+    // req.user is just the decoded JWT (id/role/etc, no email) — look up the actual user
+    const requester = await User.findById(req.user.id).select("email").lean();
+    if (!requester?.email) {
+      return res.status(400).json({ success: false, message: "Could not resolve your account email" });
+    }
     // Send a test mail to the requesting user
     await emailSvc.sendMail(cfg, {
-      to: req.user.email,
+      to: requester.email,
       subject: "[Kore] Test Email",
       html: "<p>Test email from Kore Kollective notification system. If you see this, SMTP is working!</p>",
     });
-    res.json({ success: true, message: `Test email sent to ${req.user.email}` });
+    res.json({ success: true, message: `Test email sent to ${requester.email}` });
   } catch (e) {
     res.status(500).json({ success: false, message: `SMTP Error: ${e.message}` });
   }
