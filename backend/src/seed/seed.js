@@ -50,32 +50,8 @@ const User = require("../models/User");
       console.log("✅ Super Admin already exists:", superEmail);
     }
 
-    // 2️⃣ Seed Admin
-    const adminEmail = process.env.ADMIN_EMAIL;
-    const adminPassword = process.env.ADMIN_PASSWORD;
-
-    if (adminEmail && adminPassword) {
-      const adminExists = await User.findOne({ email: adminEmail });
-      if (!adminExists) {
-        const hashedAdmin = await bcrypt.hash(adminPassword, 10);
-        await User.create({
-          name: "Admin",
-          email: adminEmail,
-          password: hashedAdmin,
-          role: "admin",
-        });
-        console.log("🔥 Admin seeded successfully:", adminEmail);
-      } else {
-        console.log("✅ Admin already exists:", adminEmail);
-      }
-    } else {
-      console.log(
-        "⚠️  Skipping admin seed — set ADMIN_EMAIL and ADMIN_PASSWORD in .env to enable it."
-      );
-    }
-
-    // 3️⃣ / 4️⃣ Seed Distributor + Vendor ("Toucan Toes / Amit Singh") —
-    // disabled, only Admin is seeded right now.
+    // 2️⃣ / 3️⃣ Seed Distributor + Vendor ("Toucan Toes / Amit Singh") —
+    // disabled, only Super Admin is seeded right now.
     /*
     // Shared contact/address for the "Toucan Toes / Amit Singh" seed data —
     // company name isn't given explicitly; inferred from the toucantoes.com
