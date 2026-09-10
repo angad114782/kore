@@ -8,9 +8,10 @@ require("dotenv").config({
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const User = require("../models/User");
-const Distributor = require("../models/Distributor");
-const distributorService = require("../services/distributor.service");
-const Vendor = require("../models/Vendor");
+// Only used by the disabled Distributor/Vendor seed sections below.
+// const Distributor = require("../models/Distributor");
+// const distributorService = require("../services/distributor.service");
+// const Vendor = require("../models/Vendor");
 
 (async () => {
   try {
@@ -41,6 +42,10 @@ const Vendor = require("../models/Vendor");
         role: "superadmin",
       });
       console.log("🔥 Super Admin seeded successfully:", superEmail);
+    } else if (superExists.role !== "superadmin") {
+      superExists.role = "superadmin";
+      await superExists.save();
+      console.log("🔧 Fixed role back to superadmin for:", superEmail);
     } else {
       console.log("✅ Super Admin already exists:", superEmail);
     }
@@ -63,8 +68,15 @@ const Vendor = require("../models/Vendor");
       } else {
         console.log("✅ Admin already exists:", adminEmail);
       }
+    } else {
+      console.log(
+        "⚠️  Skipping admin seed — set ADMIN_EMAIL and ADMIN_PASSWORD in .env to enable it."
+      );
     }
 
+    // 3️⃣ / 4️⃣ Seed Distributor + Vendor ("Toucan Toes / Amit Singh") —
+    // disabled, only Admin is seeded right now.
+    /*
     // Shared contact/address for the "Toucan Toes / Amit Singh" seed data —
     // company name isn't given explicitly; inferred from the toucantoes.com
     // email domain (matches the "Toucan Toes" brand already used elsewhere
@@ -135,6 +147,7 @@ const Vendor = require("../models/Vendor");
     } else {
       console.log("✅ Vendor already exists:", toucanCompanyName);
     }
+    */
 
     process.exit(0);
   } catch (e) {

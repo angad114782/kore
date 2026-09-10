@@ -39,7 +39,12 @@ const saveConfig = async (req, res) => {
 const testEmail = async (req, res) => {
   try {
     const cfg = await NotificationConfig.findOne().lean();
-    if (!cfg) return res.status(400).json({ success: false, message: "Email not configured" });
+    if (!cfg || !cfg.emailEnabled || !cfg.smtpHost || !cfg.smtpUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Email not configured. Set SMTP host, user and enable email notifications first.",
+      });
+    }
     await emailSvc.testConnection(cfg);
     // Send a test mail to the requesting user
     await emailSvc.sendMail(cfg, {

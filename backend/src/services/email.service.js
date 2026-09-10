@@ -9,6 +9,9 @@ const buildTransporter = (cfg) => {
     port: cfg.smtpPort || 587,
     secure: cfg.smtpSecure || false,
     auth: { user: cfg.smtpUser, pass: cfg.smtpPass },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 };
 
