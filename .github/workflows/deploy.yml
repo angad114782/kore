@@ -1,13 +1,50 @@
-name: Network Test
+name: Deploy TTCart
 
 on:
+  push:
+    branches:
+      - main
+
   workflow_dispatch:
 
 jobs:
-  test:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Test Port 22
-        run: |
-          nc -vz ${{ secrets.HOST }} ${{ secrets.PORT }}
+      - name: Deploy to TTCart VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+
+          script: |
+            set -e
+
+            echo "==> Updating repository"
+            cd /var/www/ttcart
+
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "==> Installing backend dependencies"
+            cd /var/www/ttcart/backend
+            npm ci
+
+            echo "==> Restarting backend"
+            pm2 restart ttcart-backend --update-env
+
+            echo "==> Building frontend"
+            cd /var/www/ttcart/frontend
+            npm ci
+            npm run build
+
+            echo "==> Testing Nginx"
+            nginx -t
+
+            echo "==> Reloading Nginx"
+            systemctl reload nginx
+
+            echo "==> Deployment completed successfully"
