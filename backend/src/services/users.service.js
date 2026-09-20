@@ -322,6 +322,24 @@ exports.changePassword = async (userId, { oldPassword, newPassword }) => {
   return true;
 };
 
+// Bump the token version so every JWT issued before this point is rejected.
+// The caller is responsible for notifying connected devices over Socket.IO.
+exports.invalidateAllSessions = async (userId) => {
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { $inc: { tokenVersion: 1 } },
+    { returnDocument: "after" }
+  );
+
+  if (!user) {
+    const err = new Error("User not found");
+    err.status = 404;
+    throw err;
+  }
+
+  return true;
+};
+
 // Admin resets password WITHOUT requiring old password → increments tokenVersion (auto-logout all sessions)
 exports.adminResetPassword = async (targetUserId, newPassword) => {
   if (!newPassword || String(newPassword).length < 6) {

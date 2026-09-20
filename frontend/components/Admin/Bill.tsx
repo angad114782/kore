@@ -398,7 +398,8 @@ const Bill: React.FC<BillPageProps> = ({ articles }) => {
                             }
                             await exportOrderToExcel(
                               { ...bill, items: enrichItemsWithCatalogMrp(bill.items, articles) },
-                              v
+                              v,
+                              { isBill: true }
                             );
                           }}
                           className="p-2 text-emerald-600 hover:bg-emerald-100 rounded-xl transition-all inline-flex items-center gap-1 font-semibold text-xs"

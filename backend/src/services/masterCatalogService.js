@@ -1,7 +1,9 @@
 const mongoose = require("mongoose");
 const MasterCatalog = require("../models/MasterCatalog");
 
-const ALLOWED_PAGE_LIMITS = [1, 2, 5, 10, 12, 20, 24, 30, 50, 100, 200, 500, 1000];
+const ALLOWED_PAGE_LIMITS = [
+  1, 2, 5, 10, 12, 20, 24, 30, 50, 100, 200, 500, 1000,
+];
 
 const parseMaybeJson = (val, fallback) => {
   if (val === undefined || val === null) return fallback;
@@ -47,10 +49,18 @@ const makeFileUrl = (req, filePath) => {
 
 const buildColorMediaFromUrls = (colorImageUrlsRaw, productColors = []) => {
   let urlMap = {};
-  try { urlMap = typeof colorImageUrlsRaw === "string" ? JSON.parse(colorImageUrlsRaw) : (colorImageUrlsRaw || {}); } catch {}
+  try {
+    urlMap =
+      typeof colorImageUrlsRaw === "string"
+        ? JSON.parse(colorImageUrlsRaw)
+        : colorImageUrlsRaw || {};
+  } catch {}
   return productColors
     .filter((color) => urlMap[color])
-    .map((color) => ({ color, images: [{ url: urlMap[color], key: "", isCover: true }] }));
+    .map((color) => ({
+      color,
+      images: [{ url: urlMap[color], key: "", isCover: true }],
+    }));
 };
 
 const buildColorMediaPayload = (req, productColors = []) => {
@@ -101,7 +111,8 @@ const buildFlatImagesFromColorMedia = (colorMedia = []) => {
 // point every variant write passes through, so normalizing the key here
 // guarantees it regardless of which caller (frontend form, import script,
 // direct API call) sent a zero-padded key.
-const normalizeSizeKey = (size) => (/^\d+$/.test(size) ? String(Number(size)) : size);
+const normalizeSizeKey = (size) =>
+  /^\d+$/.test(size) ? String(Number(size)) : size;
 
 const normalizeVariants = (variantsRaw) => {
   const variants = Array.isArray(variantsRaw) ? variantsRaw : [];
@@ -139,15 +150,19 @@ const normalizeVariants = (variantsRaw) => {
       });
     }
 
-    const onlineMrp  = Number(v.onlineMrp  || 0);
+    const onlineMrp = Number(v.onlineMrp || 0);
     const offlineMrp = Number(v.offlineMrp || 0);
     // Backward-compat: mrp = max(online, offline) or explicit mrp
     const mrp = Number(v.mrp || 0) || Math.max(onlineMrp, offlineMrp);
 
     // Auto-generate sizeSkus from carton-level sku + sizeRange if sku provided
-    const ctnSku     = (v.sku || "").trim();
-    const sizeRange  = (v.sizeRange || "").trim();
-    const derivedSizeSkus = autoGenerateSizeSkus(ctnSku, sizeRange, Object.keys(sizeQuantities));
+    const ctnSku = (v.sku || "").trim();
+    const sizeRange = (v.sizeRange || "").trim();
+    const derivedSizeSkus = autoGenerateSizeSkus(
+      ctnSku,
+      sizeRange,
+      Object.keys(sizeQuantities),
+    );
     // Derived (gender-stripped) SKUs win whenever a carton SKU is present —
     // otherwise a stale/incorrectly-formatted value sent by the client would
     // silently override the correct auto-generated one. Falls back to the
@@ -212,9 +227,13 @@ function autoGenerateSizeSkus(ctnSku, sizeRange, sizeKeys) {
   }
   if (base !== null) {
     base = stripGenderFromBase(base);
-    sizeKeys.forEach(sz => { result[sz] = `${base}${sz}`; });
+    sizeKeys.forEach((sz) => {
+      result[sz] = `${base}${sz}`;
+    });
   } else {
-    sizeKeys.forEach(sz => { result[sz] = `${ctnSku}-${sz}`; });
+    sizeKeys.forEach((sz) => {
+      result[sz] = `${ctnSku}-${sz}`;
+    });
   }
   return result;
 }
@@ -237,15 +256,25 @@ const getVariantReferenceCounts = async (variantIds) => {
   const Return = require("../models/Return");
   const GRNDraft = require("../models/grn.model");
 
-  return Promise.all(variantIds.map(async (variantId) => {
-    const [orders, purchaseOrders, returns, grns] = await Promise.all([
-      Order.countDocuments({ $or: [{ "items.variantId": variantId }, { "fulfillmentHistory.items.variantId": variantId }] }),
-      PurchaseOrder.countDocuments({ isDeleted: false, "items.variantId": String(variantId) }),
-      Return.countDocuments({ "items.variantId": variantId }),
-      GRNDraft.countDocuments({ "cartons.variantId": String(variantId) }),
-    ]);
-    return { orders, purchaseOrders, returns, grns };
-  }));
+  return Promise.all(
+    variantIds.map(async (variantId) => {
+      const [orders, purchaseOrders, returns, grns] = await Promise.all([
+        Order.countDocuments({
+          $or: [
+            { "items.variantId": variantId },
+            { "fulfillmentHistory.items.variantId": variantId },
+          ],
+        }),
+        PurchaseOrder.countDocuments({
+          isDeleted: false,
+          "items.variantId": String(variantId),
+        }),
+        Return.countDocuments({ "items.variantId": variantId }),
+        GRNDraft.countDocuments({ "cartons.variantId": String(variantId) }),
+      ]);
+      return { orders, purchaseOrders, returns, grns };
+    }),
+  );
 };
 
 exports.create = async (req) => {
@@ -259,8 +288,14 @@ exports.create = async (req) => {
 
   const colorImageUrls = body.colorImageUrls;
   const colorMedia = colorImageUrls
-    ? buildColorMediaFromUrls(colorImageUrls, Array.isArray(productColors) ? productColors : [])
-    : buildColorMediaPayload(req, Array.isArray(productColors) ? productColors : []);
+    ? buildColorMediaFromUrls(
+        colorImageUrls,
+        Array.isArray(productColors) ? productColors : [],
+      )
+    : buildColorMediaPayload(
+        req,
+        Array.isArray(productColors) ? productColors : [],
+      );
 
   const { primaryImage, secondaryImages } =
     buildFlatImagesFromColorMedia(colorMedia);
@@ -373,7 +408,7 @@ exports.list = async (query) => {
         // signal RFD/PREORDER classification is computed from.
         v.poPendingPairs = Math.max(
           0,
-          (plannedMap.totals[key] || 0) - (grnReceivedMap.totals[key] || 0)
+          (plannedMap.totals[key] || 0) - (grnReceivedMap.totals[key] || 0),
         );
       });
     });
@@ -444,8 +479,8 @@ exports.list = async (query) => {
     (doc.variants || []).some(
       (v) =>
         exports.classifyVariantAvailability(v, v.poPendingPairs || 0) ===
-        availabilityFilter
-    )
+        availabilityFilter,
+    ),
   );
 
   const total = matched.length;
@@ -475,7 +510,9 @@ exports.list = async (query) => {
 // whole company. Returns { bySize: {variantId: {size: pairs}}, totals: {variantId: pairs} }.
 exports.getPoPlannedQtyMap = async (articleIds) => {
   const PurchaseOrder = require("../models/PurchaseOrder");
-  const ids = (articleIds || []).map((id) => new mongoose.Types.ObjectId(String(id)));
+  const ids = (articleIds || []).map(
+    (id) => new mongoose.Types.ObjectId(String(id)),
+  );
   if (articleIds && !ids.length) return { bySize: {}, totals: {} };
 
   const filter = {
@@ -485,7 +522,9 @@ exports.getPoPlannedQtyMap = async (articleIds) => {
   if (ids.length) filter["items.articleId"] = { $in: ids };
 
   const pos = await PurchaseOrder.find(filter)
-    .select("items.articleId items.variantId items.cartonCount items.quantity items.sizeMap")
+    .select(
+      "items.articleId items.variantId items.cartonCount items.quantity items.sizeMap",
+    )
     .lean();
 
   const idSet = ids.length ? new Set(ids.map(String)) : null;
@@ -494,7 +533,8 @@ exports.getPoPlannedQtyMap = async (articleIds) => {
 
   pos.forEach((po) => {
     (po.items || []).forEach((item) => {
-      if (idSet && (!item.articleId || !idSet.has(String(item.articleId)))) return;
+      if (idSet && (!item.articleId || !idSet.has(String(item.articleId))))
+        return;
       if (!item.variantId) return;
       const key = String(item.variantId);
       const cartons = Math.max(0, Number(item.cartonCount || 0)) || 1;
@@ -511,7 +551,8 @@ exports.getPoPlannedQtyMap = async (articleIds) => {
         });
       } else {
         // No size breakup on the PO item — fall back to its total quantity
-        totals[key] = (totals[key] || 0) + Math.max(0, Number(item.quantity || 0));
+        totals[key] =
+          (totals[key] || 0) + Math.max(0, Number(item.quantity || 0));
       }
     });
   });
@@ -552,7 +593,7 @@ exports.getVariantLiveStock = (variant) => {
       : variant?.sizeMap || {};
   return Object.values(sizeMap).reduce(
     (s, cell) => s + Math.max(0, Number(cell?.qty || 0)),
-    0
+    0,
   );
 };
 
@@ -599,7 +640,9 @@ exports.getPreBookedQtyMap = async (articleIds) => {
     items: { $elemMatch: { bookingType: "PREORDER" } },
   };
   if (articleIds && articleIds.length) {
-    q["items.articleId"] = { $in: articleIds.map((id) => new mongoose.Types.ObjectId(String(id))) };
+    q["items.articleId"] = {
+      $in: articleIds.map((id) => new mongoose.Types.ObjectId(String(id))),
+    };
   }
   const orders = await Order.find(q).select("items").lean();
 
@@ -624,7 +667,8 @@ exports.getPreBookedQtyMap = async (articleIds) => {
           totals[key] = (totals[key] || 0) + pairs;
         });
       } else {
-        totals[key] = (totals[key] || 0) + Math.max(0, Number(item.pairCount || 0));
+        totals[key] =
+          (totals[key] || 0) + Math.max(0, Number(item.pairCount || 0));
       }
     });
   });
@@ -641,12 +685,25 @@ exports.getStockTotals = async (filterParam) => {
   const [liveRow] = await MasterCatalog.aggregate([
     { $match: { isDeleted: false } },
     { $unwind: { path: "$variants", preserveNullAndEmptyArrays: false } },
-    { $project: { sizeCells: { $objectToArray: { $ifNull: ["$variants.sizeMap", {}] } } } },
+    {
+      $project: {
+        sizeCells: { $objectToArray: { $ifNull: ["$variants.sizeMap", {}] } },
+      },
+    },
     { $unwind: { path: "$sizeCells", preserveNullAndEmptyArrays: false } },
     {
       $group: {
         _id: null,
-        total: { $sum: { $convert: { input: "$sizeCells.v.qty", to: "double", onError: 0, onNull: 0 } } },
+        total: {
+          $sum: {
+            $convert: {
+              input: "$sizeCells.v.qty",
+              to: "double",
+              onError: 0,
+              onNull: 0,
+            },
+          },
+        },
       },
     },
   ]);
@@ -659,12 +716,13 @@ exports.getStockTotals = async (filterParam) => {
     .select("variants._id variants.sizeMap")
     .lean();
 
-  const [allPlannedMap, grnReceivedMap, bookedMap, preBookedMap] = await Promise.all([
-    exports.getPoPlannedQtyMap(),
-    exports.getGrnReceivedQtyMap(),
-    exports.getBookedQuantityMap(),
-    exports.getPreBookedQtyMap(),
-  ]);
+  const [allPlannedMap, grnReceivedMap, bookedMap, preBookedMap] =
+    await Promise.all([
+      exports.getPoPlannedQtyMap(),
+      exports.getGrnReceivedQtyMap(),
+      exports.getBookedQuantityMap(),
+      exports.getPreBookedQtyMap(),
+    ]);
 
   const classificationByVariant = {};
   allDocs.forEach((doc) => {
@@ -672,9 +730,12 @@ exports.getStockTotals = async (filterParam) => {
       const vid = String(v._id);
       const poPending = Math.max(
         0,
-        (allPlannedMap.totals[vid] || 0) - (grnReceivedMap.totals[vid] || 0)
+        (allPlannedMap.totals[vid] || 0) - (grnReceivedMap.totals[vid] || 0),
       );
-      classificationByVariant[vid] = exports.classifyVariantAvailability(v, poPending);
+      classificationByVariant[vid] = exports.classifyVariantAvailability(
+        v,
+        poPending,
+      );
     });
   });
 
@@ -686,7 +747,7 @@ exports.getStockTotals = async (filterParam) => {
     const preorderVariantIds = new Set(
       Object.entries(classificationByVariant)
         .filter(([, c]) => c === "PREORDER")
-        .map(([vid]) => vid)
+        .map(([vid]) => vid),
     );
 
     Object.entries(allPlannedMap.totals).forEach(([variantId, pairs]) => {
@@ -709,17 +770,24 @@ exports.getStockTotals = async (filterParam) => {
   let totalPoPendingPairs = 0;
   Object.entries(allPlannedMap.totals).forEach(([variantId, pairs]) => {
     if (scoped && classificationByVariant[variantId] !== filterParam) return;
-    totalPoPendingPairs += Math.max(0, pairs - (grnReceivedMap.totals[variantId] || 0));
+    totalPoPendingPairs += Math.max(
+      0,
+      pairs - (grnReceivedMap.totals[variantId] || 0),
+    );
   });
 
   // "Booked" scoped to variants matching this tab's filter.
   let totalBookedPairs = 0;
   if (scoped) {
     Object.entries(bookedMap.totals).forEach(([variantId, pairs]) => {
-      if (classificationByVariant[variantId] === filterParam) totalBookedPairs += pairs;
+      if (classificationByVariant[variantId] === filterParam)
+        totalBookedPairs += pairs;
     });
   } else {
-    totalBookedPairs = Object.values(bookedMap.totals).reduce((s, p) => s + p, 0);
+    totalBookedPairs = Object.values(bookedMap.totals).reduce(
+      (s, p) => s + p,
+      0,
+    );
   }
 
   return {
@@ -751,7 +819,9 @@ exports.getStockTotals = async (filterParam) => {
 // BOOKED/PARTIAL orders have ALREADY been deducted from sizeMap at booking
 // time, while PENDING ones have not — callers computing "free stock from
 // sizeMap" must subtract only the PENDING portion (pass ["PENDING"]).
-exports.getBookedQuantityMap = async (statuses = ["BOOKED", "PENDING", "PARTIAL"]) => {
+exports.getBookedQuantityMap = async (
+  statuses = ["BOOKED", "PENDING", "PARTIAL"],
+) => {
   const Order = require("../models/Order");
   const orders = await Order.find({
     status: { $in: statuses },
@@ -770,9 +840,10 @@ exports.getBookedQuantityMap = async (statuses = ["BOOKED", "PENDING", "PARTIAL"
     (order.items || []).forEach((item) => {
       if (!item.variantId) return;
       const key = item.variantId.toString();
-      const fulfilledSizeQuantities = item.fulfilledSizeQuantities instanceof Map
-        ? Object.fromEntries(item.fulfilledSizeQuantities)
-        : (item.fulfilledSizeQuantities || {});
+      const fulfilledSizeQuantities =
+        item.fulfilledSizeQuantities instanceof Map
+          ? Object.fromEntries(item.fulfilledSizeQuantities)
+          : item.fulfilledSizeQuantities || {};
 
       // "Booked" = ordered minus already-dispatched, uniformly for REGULAR
       // and still-PREORDER items alike. A still-PREORDER item's un-scanned
@@ -782,9 +853,10 @@ exports.getBookedQuantityMap = async (statuses = ["BOOKED", "PENDING", "PARTIAL"
       const sizeQuantities =
         item.sizeQuantities instanceof Map
           ? Object.fromEntries(item.sizeQuantities)
-          : (item.sizeQuantities || {});
+          : item.sizeQuantities || {};
 
-      const bookingType = item.bookingType === "PREORDER" ? "PREORDER" : "REGULAR";
+      const bookingType =
+        item.bookingType === "PREORDER" ? "PREORDER" : "REGULAR";
       if (!bySize[key]) bySize[key] = {};
       if (!byBookingType[key]) byBookingType[key] = { REGULAR: 0, PREORDER: 0 };
       Object.entries(sizeQuantities).forEach(([size, qty]) => {
@@ -823,7 +895,12 @@ exports.getById = async (id) => {
 exports.update = async (req, id) => {
   const body = req.body || {};
   const variantChanges = {
-    created: [], retained: [], updated: [], removed: [], removedLabels: {}, autoDeactivated: [],
+    created: [],
+    retained: [],
+    updated: [],
+    removed: [],
+    removedLabels: {},
+    autoDeactivated: [],
   };
 
   const doc = await MasterCatalog.findOne({ _id: id, isDeleted: false });
@@ -853,15 +930,17 @@ exports.update = async (req, id) => {
   // variant carries both prices; which one a distributor sees is picked by
   // their own tag at read time (see catalogAvailability/getVariantPricePerPair),
   // never stored on the variant itself.
-  const newOnlineMrp = body.onlineMrp !== undefined ? Number(body.onlineMrp) : null;
-  const newOfflineMrp = body.offlineMrp !== undefined ? Number(body.offlineMrp) : null;
+  const newOnlineMrp =
+    body.onlineMrp !== undefined ? Number(body.onlineMrp) : null;
+  const newOfflineMrp =
+    body.offlineMrp !== undefined ? Number(body.offlineMrp) : null;
   if (newOnlineMrp !== null || newOfflineMrp !== null) {
     (doc.variants || []).forEach((v) => {
       if (newOnlineMrp !== null) v.onlineMrp = newOnlineMrp;
       if (newOfflineMrp !== null) v.offlineMrp = newOfflineMrp;
       v.mrp = Math.max(
         newOnlineMrp ?? v.onlineMrp ?? 0,
-        newOfflineMrp ?? v.offlineMrp ?? 0
+        newOfflineMrp ?? v.offlineMrp ?? 0,
       );
     });
   }
@@ -881,15 +960,15 @@ exports.update = async (req, id) => {
     const normalized = normalizeVariants(variantsRaw);
 
     const existingById = new Map(
-      doc.variants.map((v) => [v._id.toString(), v])
+      doc.variants.map((v) => [v._id.toString(), v]),
     );
 
     const existingByComposite = new Map(
-      doc.variants.map((v) => [makeCompositeKey(v), v])
+      doc.variants.map((v) => [makeCompositeKey(v), v]),
     );
 
     const existingByLegacyFallback = new Map(
-      doc.variants.map((v) => [makeLegacyFallbackKey(v), v])
+      doc.variants.map((v) => [makeLegacyFallbackKey(v), v]),
     );
 
     const newVariants = [];
@@ -897,8 +976,14 @@ exports.update = async (req, id) => {
     normalized.forEach((v) => {
       let matched = null;
 
-      if (v._id && mongoose.Types.ObjectId.isValid(v._id) && !existingById.has(v._id.toString())) {
-        const err = new Error("A submitted variant does not belong to this catalog article.");
+      if (
+        v._id &&
+        mongoose.Types.ObjectId.isValid(v._id) &&
+        !existingById.has(v._id.toString())
+      ) {
+        const err = new Error(
+          "A submitted variant does not belong to this catalog article.",
+        );
         err.statusCode = 400;
         throw err;
       }
@@ -945,7 +1030,10 @@ exports.update = async (req, id) => {
         // sku + sizeSkus: only update if new sku provided (preserve manual edits otherwise).
         // v.sizeSkus/v.sizeMap are already correctly derived (gender stripped) and kept
         // in sync by normalizeVariants() above, so just apply them as-is here.
-        if (v.sku) { matched.sku = v.sku; matched.sizeSkus = v.sizeSkus; }
+        if (v.sku) {
+          matched.sku = v.sku;
+          matched.sizeSkus = v.sizeSkus;
+        }
 
         existingById.delete(matched._id.toString());
         existingByComposite.delete(makeCompositeKey(matched));
@@ -960,20 +1048,28 @@ exports.update = async (req, id) => {
     });
 
     const retainedIds = new Set(
-      newVariants.filter((v) => v._id).map((v) => v._id.toString())
+      newVariants.filter((v) => v._id).map((v) => v._id.toString()),
     );
     const removedVariants = doc.variants.filter(
-      (v) => !retainedIds.has(v._id.toString())
+      (v) => !retainedIds.has(v._id.toString()),
     );
     if (removedVariants.length > 0) {
-      const referenceCounts = await getVariantReferenceCounts(removedVariants.map((v) => v._id));
-      const blockedVariants = removedVariants.map((variant, index) => ({
-        variantId: variant._id.toString(),
-        label: `${variant.color || "Variant"} (${variant.sizeRange || "no size range"})`,
-        references: referenceCounts[index],
-      })).filter((entry) => Object.values(entry.references).some((count) => count > 0));
+      const referenceCounts = await getVariantReferenceCounts(
+        removedVariants.map((v) => v._id),
+      );
+      const blockedVariants = removedVariants
+        .map((variant, index) => ({
+          variantId: variant._id.toString(),
+          label: `${variant.color || "Variant"} (${variant.sizeRange || "no size range"})`,
+          references: referenceCounts[index],
+        }))
+        .filter((entry) =>
+          Object.values(entry.references).some((count) => count > 0),
+        );
 
-      const blockedIds = new Set(blockedVariants.map((entry) => entry.variantId));
+      const blockedIds = new Set(
+        blockedVariants.map((entry) => entry.variantId),
+      );
       // A referenced variant is historical/operational data. Treat the admin's
       // remove action as a deactivation instead, so existing order workflows
       // remain valid while distributors can no longer place new orders for it.
@@ -993,14 +1089,14 @@ exports.update = async (req, id) => {
       variantChanges.autoDeactivated = blockedVariants;
 
       const removableVariants = removedVariants.filter(
-        (variant) => !blockedIds.has(variant._id.toString())
+        (variant) => !blockedIds.has(variant._id.toString()),
       );
       variantChanges.removed = removableVariants.map((v) => v._id.toString());
       variantChanges.removedLabels = Object.fromEntries(
         removableVariants.map((v) => [
           v._id.toString(),
           `${v.color || "Variant"} (${v.sizeRange || "no size range"})`,
-        ])
+        ]),
       );
     }
 
@@ -1056,7 +1152,7 @@ exports.update = async (req, id) => {
     });
 
     const nextColorMedia = new Map(
-      (doc.colorMedia || []).map((cm) => [cm.color, cm.images || []])
+      (doc.colorMedia || []).map((cm) => [cm.color, cm.images || []]),
     );
 
     // existingImagesByColor is the authoritative full list (and order) of
@@ -1070,10 +1166,10 @@ exports.update = async (req, id) => {
     // paste and gets `key: ""`.
     Object.keys(existingImagesByColor).forEach((color) => {
       const priorByUrl = new Map(
-        (nextColorMedia.get(color) || []).map((img) => [img.url, img])
+        (nextColorMedia.get(color) || []).map((img) => [img.url, img]),
       );
       const kept = (existingImagesByColor[color] || []).map(
-        (url) => priorByUrl.get(url) || { url, key: "" }
+        (url) => priorByUrl.get(url) || { url, key: "" },
       );
       nextColorMedia.set(color, kept);
     });
@@ -1094,7 +1190,7 @@ exports.update = async (req, id) => {
       }));
 
     const { primaryImage, secondaryImages } = buildFlatImagesFromColorMedia(
-      doc.colorMedia
+      doc.colorMedia,
     );
     doc.primaryImage = primaryImage;
     doc.secondaryImages = secondaryImages;
@@ -1122,7 +1218,9 @@ exports.update = async (req, id) => {
       pricePerPair = Number(body.mrp);
     } else if (body.variants !== undefined) {
       // Variant sellingPrice changed — use first active variant's price
-      const activeVariant = (doc.variants || []).find(v => v.isActive !== false);
+      const activeVariant = (doc.variants || []).find(
+        (v) => v.isActive !== false,
+      );
       if (activeVariant && activeVariant.sellingPrice > 0) {
         pricePerPair = activeVariant.sellingPrice;
       }
@@ -1192,10 +1290,16 @@ exports.getVariantStock = async (variantId) => {
   // 1. Build SKU-to-Size mapping for the variant
   const skuToSize = {};
   const variantSizes = [];
-  
+
   // Robust Map to JSON conversion for Mongoose
-  const sizeMapData = variant.sizeMap && typeof variant.sizeMap.toJSON === 'function' ? variant.sizeMap.toJSON() : (variant.sizeMap || {});
-  const sizeSkusData = variant.sizeSkus && typeof variant.sizeSkus.toJSON === 'function' ? variant.sizeSkus.toJSON() : (variant.sizeSkus || {});
+  const sizeMapData =
+    variant.sizeMap && typeof variant.sizeMap.toJSON === "function"
+      ? variant.sizeMap.toJSON()
+      : variant.sizeMap || {};
+  const sizeSkusData =
+    variant.sizeSkus && typeof variant.sizeSkus.toJSON === "function"
+      ? variant.sizeSkus.toJSON()
+      : variant.sizeSkus || {};
 
   // Seed totalReceived from sizeMap.qty — this reflects manual Stock Inward/Outward
   // movements AND direct order-booking deductions (see adjustVariantStock).
@@ -1235,37 +1339,57 @@ exports.getVariantStock = async (variantId) => {
   console.log(`[DEBUG DYNAMIC] Valid Variant Sizes:`, variantSizes);
 
   // 2. DYNAMIC CALCULATION: Total Received from GRNs
-  const submittedGRNs = await GRNDraft.find({ 
+  const submittedGRNs = await GRNDraft.find({
     "cartons.variantId": variantId.toString(),
-    status: "SUBMITTED" 
+    status: "SUBMITTED",
   }).lean();
 
-  console.log(`[LIVE-STOCK-DEBUG] Found ${submittedGRNs.length} submitted GRNs for variant "${variant.itemName}" (ID: ${variantId})`);
+  console.log(
+    `[LIVE-STOCK-DEBUG] Found ${submittedGRNs.length} submitted GRNs for variant "${variant.itemName}" (ID: ${variantId})`,
+  );
 
   // Fetch unique POs to get their SKU maps and quantity breakups
-  const poNumbers = [...new Set(submittedGRNs.filter(g => g.refType === 'PO').map(g => g.refId))];
-  const poDocs = await PurchaseOrder.find({ poNumber: { $in: poNumbers } }).lean();
-  const poLookup = poDocs.reduce((acc, p) => { acc[p.poNumber] = p; return acc; }, {});
+  const poNumbers = [
+    ...new Set(
+      submittedGRNs.filter((g) => g.refType === "PO").map((g) => g.refId),
+    ),
+  ];
+  const poDocs = await PurchaseOrder.find({
+    poNumber: { $in: poNumbers },
+  }).lean();
+  const poLookup = poDocs.reduce((acc, p) => {
+    acc[p.poNumber] = p;
+    return acc;
+  }, {});
 
-  console.log(`[LIVE-STOCK-DEBUG] Fetched ${poDocs.length} unique POs: ${poNumbers.join(", ")}`);
+  console.log(
+    `[LIVE-STOCK-DEBUG] Fetched ${poDocs.length} unique POs: ${poNumbers.join(", ")}`,
+  );
 
   // Expand skuToSize with SKUs from all relevant POs
-  poDocs.forEach(po => {
-    const poItem = po.items.find(it => 
-      (it.variantId && String(it.variantId) === variantId.toString())
+  poDocs.forEach((po) => {
+    const poItem = po.items.find(
+      (it) => it.variantId && String(it.variantId) === variantId.toString(),
     );
     if (poItem && poItem.sizeMap) {
-      const poSizeMap = poItem.sizeMap && typeof poItem.sizeMap.toJSON === 'function' ? poItem.sizeMap.toJSON() : poItem.sizeMap;
-      const skusCount = Object.values(poSizeMap).filter(v => v.sku).length;
-      console.log(`[LIVE-STOCK-DEBUG] PO "${po.poNumber}" item match found. SKUs in PO: ${skusCount}`);
-      
+      const poSizeMap =
+        poItem.sizeMap && typeof poItem.sizeMap.toJSON === "function"
+          ? poItem.sizeMap.toJSON()
+          : poItem.sizeMap;
+      const skusCount = Object.values(poSizeMap).filter((v) => v.sku).length;
+      console.log(
+        `[LIVE-STOCK-DEBUG] PO "${po.poNumber}" item match found. SKUs in PO: ${skusCount}`,
+      );
+
       Object.entries(poSizeMap).forEach(([size, cell]) => {
         if (cell && cell.sku) {
           skuToSize[String(cell.sku).trim().toLowerCase()] = size.trim();
         }
       });
     } else {
-      console.log(`[LIVE-STOCK-DEBUG] PO "${po.poNumber}" - No matching item found for variant "${variant.itemName}"`);
+      console.log(
+        `[LIVE-STOCK-DEBUG] PO "${po.poNumber}" - No matching item found for variant "${variant.itemName}"`,
+      );
     }
   });
 
@@ -1275,20 +1399,24 @@ exports.getVariantStock = async (variantId) => {
   let totalMatchesFound = 0;
 
   // ── PRIMARY: SKU-based barcode matching (using Master + all PO SKUs) ──
-  submittedGRNs.forEach(grn => {
-    (grn.cartons || []).forEach(carton => {
-      const isMatch = (carton.variantId && String(carton.variantId) === variantId.toString());
+  submittedGRNs.forEach((grn) => {
+    (grn.cartons || []).forEach((carton) => {
+      const isMatch =
+        carton.variantId && String(carton.variantId) === variantId.toString();
       if (!isMatch) return;
 
-      (carton.pairBarcodes || []).forEach(barcode => {
+      (carton.pairBarcodes || []).forEach((barcode) => {
         totalBarcodesProcessed++;
         const cleanBar = String(barcode).trim().toLowerCase();
         let sz = skuToSize[cleanBar];
 
         if (!sz) {
-          const matchedSize = variantSizes.find(vSize => {
+          const matchedSize = variantSizes.find((vSize) => {
             const lowVSize = String(vSize).toLowerCase();
-            return cleanBar.endsWith("-" + lowVSize) || cleanBar.endsWith(" " + lowVSize);
+            return (
+              cleanBar.endsWith("-" + lowVSize) ||
+              cleanBar.endsWith(" " + lowVSize)
+            );
           });
           if (matchedSize) {
             sz = matchedSize;
@@ -1300,7 +1428,7 @@ exports.getVariantStock = async (variantId) => {
           totalMatchesFound++;
           totalReceived[sz] = (totalReceived[sz] || 0) + 1;
 
-          if (grn.refType === 'PO') {
+          if (grn.refType === "PO") {
             const poNum = grn.refId;
             if (!receivedPerPO[poNum]) receivedPerPO[poNum] = {};
             receivedPerPO[poNum][sz] = (receivedPerPO[poNum][sz] || 0) + 1;
@@ -1310,55 +1438,82 @@ exports.getVariantStock = async (variantId) => {
     });
   });
 
-  console.log(`[LIVE-STOCK-DEBUG] SKU Matching: Processed ${totalBarcodesProcessed} barcodes, Found ${totalMatchesFound} matches`);
+  console.log(
+    `[LIVE-STOCK-DEBUG] SKU Matching: Processed ${totalBarcodesProcessed} barcodes, Found ${totalMatchesFound} matches`,
+  );
 
   // ── FALLBACK: Use PO quantity breakup if SKU matching found nothing ──
-  const skuMatchedTotal = Object.values(totalReceived).reduce((s, v) => s + v, 0);
+  const skuMatchedTotal = Object.values(totalReceived).reduce(
+    (s, v) => s + v,
+    0,
+  );
 
   if (skuMatchedTotal === 0 && submittedGRNs.length > 0) {
-    console.log(`[LIVE-STOCK-DEBUG] ⚡ NO matches found via SKUs. Triggering PO-based fallback logic...`);
-    
-    submittedGRNs.forEach(grn => {
+    console.log(
+      `[LIVE-STOCK-DEBUG] ⚡ NO matches found via SKUs. Triggering PO-based fallback logic...`,
+    );
+
+    submittedGRNs.forEach((grn) => {
       const po = poLookup[grn.refId];
-      const poItem = po ? po.items.find(it => 
-        (it.variantId && String(it.variantId) === variantId.toString())
-      ) : null;
-      
-      const poSizeMap = poItem ? (poItem.sizeMap && typeof poItem.sizeMap.toJSON === 'function' ? poItem.sizeMap.toJSON() : (poItem.sizeMap || {})) : {};
+      const poItem = po
+        ? po.items.find(
+            (it) =>
+              it.variantId && String(it.variantId) === variantId.toString(),
+          )
+        : null;
+
+      const poSizeMap = poItem
+        ? poItem.sizeMap && typeof poItem.sizeMap.toJSON === "function"
+          ? poItem.sizeMap.toJSON()
+          : poItem.sizeMap || {}
+        : {};
       const hasPOSizes = Object.keys(poSizeMap).length > 0;
 
       // Count matching cartons for THIS specific GRN
       let cartonCount = 0;
-      (grn.cartons || []).forEach(carton => {
-        const isMatch = (carton.variantId && String(carton.variantId) === variantId.toString());
+      (grn.cartons || []).forEach((carton) => {
+        const isMatch =
+          carton.variantId && String(carton.variantId) === variantId.toString();
         if (isMatch) cartonCount++;
       });
 
       if (cartonCount === 0) {
-        console.log(`[LIVE-STOCK-DEBUG] GRN ${grn.grnNo}: 0 cartons match this variant.`);
+        console.log(
+          `[LIVE-STOCK-DEBUG] GRN ${grn.grnNo}: 0 cartons match this variant.`,
+        );
         return;
       }
 
       if (hasPOSizes) {
-        console.log(`[LIVE-STOCK-DEBUG] GRN ${grn.grnNo}: Applying PO "${po.poNumber}" quantity breakup for ${cartonCount} cartons`);
+        console.log(
+          `[LIVE-STOCK-DEBUG] GRN ${grn.grnNo}: Applying PO "${po.poNumber}" quantity breakup for ${cartonCount} cartons`,
+        );
         Object.entries(poSizeMap).forEach(([size, cell]) => {
           const cleanSize = size.trim();
-          const added = (cartonCount * (Number(cell?.qty) || 0));
+          const added = cartonCount * (Number(cell?.qty) || 0);
           totalReceived[cleanSize] = (totalReceived[cleanSize] || 0) + added;
 
-          if (grn.refType === 'PO') {
+          if (grn.refType === "PO") {
             const poNum = grn.refId;
             if (!receivedPerPO[poNum]) receivedPerPO[poNum] = {};
-            receivedPerPO[poNum][cleanSize] = (receivedPerPO[poNum][cleanSize] || 0) + added;
+            receivedPerPO[poNum][cleanSize] =
+              (receivedPerPO[poNum][cleanSize] || 0) + added;
           }
         });
       } else {
-        console.log(`[LIVE-STOCK-DEBUG] GRN ${grn.grnNo}: PO data missing, falling back to Master Catalog assortment for ${cartonCount} cartons`);
-        const sizeQuantitiesData = variant.sizeQuantities && typeof variant.sizeQuantities.toJSON === 'function' 
-          ? variant.sizeQuantities.toJSON() : (variant.sizeQuantities || {});
+        console.log(
+          `[LIVE-STOCK-DEBUG] GRN ${grn.grnNo}: PO data missing, falling back to Master Catalog assortment for ${cartonCount} cartons`,
+        );
+        const sizeQuantitiesData =
+          variant.sizeQuantities &&
+          typeof variant.sizeQuantities.toJSON === "function"
+            ? variant.sizeQuantities.toJSON()
+            : variant.sizeQuantities || {};
         Object.entries(sizeQuantitiesData).forEach(([size, qtyPerCarton]) => {
           const cleanSize = size.trim();
-          totalReceived[cleanSize] = (totalReceived[cleanSize] || 0) + (cartonCount * (Number(qtyPerCarton) || 0));
+          totalReceived[cleanSize] =
+            (totalReceived[cleanSize] || 0) +
+            cartonCount * (Number(qtyPerCarton) || 0);
         });
       }
     });
@@ -1372,20 +1527,24 @@ exports.getVariantStock = async (variantId) => {
 
   // 4. DYNAMIC CALCULATION: Total Returned from Returns
   const returnRecords = await Return.find({
-    "items.variantId": variantId
+    "items.variantId": variantId,
   }).lean();
 
   const totalReturned = {};
-  returnRecords.forEach(ret => {
-    const item = (ret.items || []).find(i => i.variantId && i.variantId.toString() === variantId.toString());
+  returnRecords.forEach((ret) => {
+    const item = (ret.items || []).find(
+      (i) => i.variantId && i.variantId.toString() === variantId.toString(),
+    );
     if (item && item.sizeQuantities) {
-      const entries = item.sizeQuantities instanceof Map 
-        ? Array.from(item.sizeQuantities.entries()) 
-        : Object.entries(item.sizeQuantities);
-      
+      const entries =
+        item.sizeQuantities instanceof Map
+          ? Array.from(item.sizeQuantities.entries())
+          : Object.entries(item.sizeQuantities);
+
       entries.forEach(([size, qty]) => {
         const cleanSz = size.trim();
-        totalReturned[cleanSz] = (totalReturned[cleanSz] || 0) + Number(qty || 0);
+        totalReturned[cleanSz] =
+          (totalReturned[cleanSz] || 0) + Number(qty || 0);
       });
     }
   });
@@ -1398,12 +1557,14 @@ exports.getVariantStock = async (variantId) => {
   // (remaining = ordered − fulfilled, same formula as getBookedQuantityMap).
   const bookedOrders = await Order.find({
     "items.variantId": variantId,
-    status: { $in: ["BOOKED", "PENDING", "PARTIAL"] }
+    status: { $in: ["BOOKED", "PENDING", "PARTIAL"] },
   }).lean();
 
   const blockedStockMap = {};
-  bookedOrders.forEach(order => {
-    const item = (order.items || []).find(i => i.variantId && i.variantId.toString() === variantId.toString());
+  bookedOrders.forEach((order) => {
+    const item = (order.items || []).find(
+      (i) => i.variantId && i.variantId.toString() === variantId.toString(),
+    );
     if (!item) return;
     // Ordered minus already-dispatched, uniformly for REGULAR and still-
     // PREORDER items — a still-PREORDER item's un-scanned remainder is
@@ -1411,12 +1572,14 @@ exports.getVariantStock = async (variantId) => {
     // (see scanCarton), so it counts here just like any other remainder.
     const sizeSource = item.sizeQuantities;
     if (sizeSource) {
-      const entries = sizeSource instanceof Map
-        ? Array.from(sizeSource.entries())
-        : Object.entries(sizeSource);
-      const fulfilledEntries = item.fulfilledSizeQuantities instanceof Map
-        ? Object.fromEntries(item.fulfilledSizeQuantities)
-        : (item.fulfilledSizeQuantities || {});
+      const entries =
+        sizeSource instanceof Map
+          ? Array.from(sizeSource.entries())
+          : Object.entries(sizeSource);
+      const fulfilledEntries =
+        item.fulfilledSizeQuantities instanceof Map
+          ? Object.fromEntries(item.fulfilledSizeQuantities)
+          : item.fulfilledSizeQuantities || {};
       entries.forEach(([size, qty]) => {
         const cleanSz = size.trim();
         const ordered = Number(qty || 0);
@@ -1428,7 +1591,10 @@ exports.getVariantStock = async (variantId) => {
     }
   });
 
-  console.log(`[DEBUG DYNAMIC] Blocked per size (BOOKED/PENDING/PARTIAL remaining):`, blockedStockMap);
+  console.log(
+    `[DEBUG DYNAMIC] Blocked per size (BOOKED/PENDING/PARTIAL remaining):`,
+    blockedStockMap,
+  );
 
   // 5. Combine: Live Stock = sizeMap.qty (canonical) + Returned
   // sizeMap.qty is written by GRN submit ($inc), manual stockMovement, AND now
@@ -1436,11 +1602,13 @@ exports.getVariantStock = async (variantId) => {
   // order.service.js) — so it already excludes booked and dispatched orders.
   // Dispatched pairs are NOT subtracted again here (that used to double-count
   // once booking started deducting stock immediately instead of at dispatch).
-  variantSizes.forEach(sz => {
+  variantSizes.forEach((sz) => {
     // Use sizeMap.qty whenever the size has an entry at all — including a
     // genuine 0 (fully booked out). Only fall back to GRN-derived totalReceived
     // for old variants where sizeMap truly has no entry for that size.
-    const received = sizeMapHasEntry[sz] ? sizeMapBaseStock[sz] : (totalReceived[sz] || 0);
+    const received = sizeMapHasEntry[sz]
+      ? sizeMapBaseStock[sz]
+      : totalReceived[sz] || 0;
     liveStockMap[sz] = Math.max(0, received + (totalReturned[sz] || 0));
   });
 
@@ -1467,7 +1635,7 @@ exports.resetVariantStock = async (variantIdStr) => {
   const Order = require("../models/Order");
 
   console.log(`[DEBUG RESET] Starting reset for variant ID: ${variantIdStr}`);
-  
+
   let variantId;
   try {
     variantId = new mongoose.Types.ObjectId(variantIdStr);
@@ -1478,31 +1646,33 @@ exports.resetVariantStock = async (variantIdStr) => {
   // 1. Delete all SUBMITTED GRNs that contain this variantId
   const grnResult = await GRNDraft.deleteMany({
     "cartons.variantId": variantIdStr, // GRN model uses String for variantId
-    status: "SUBMITTED"
+    status: "SUBMITTED",
   });
   console.log(`[DEBUG RESET] Deleted ${grnResult.deletedCount} GRN documents.`);
 
   // 2. Surgical Reset of all Order fulfillment data for this variant
   const orderResult = await Order.updateMany(
     { "items.variantId": variantId },
-    { 
-      $set: { 
+    {
+      $set: {
         "items.$[elem].fulfilledSizeQuantities": {},
         "items.$[elem].fulfilledCartonCount": 0,
-        "items.$[elem].fulfilledPairCount": 0
-      } 
+        "items.$[elem].fulfilledPairCount": 0,
+      },
     },
-    { 
+    {
       arrayFilters: [{ "elem.variantId": variantId }],
-      multi: true 
-    }
+      multi: true,
+    },
   );
-  
-  console.log(`[DEBUG RESET] Modified ${orderResult.modifiedCount} Order documents.`);
 
-  return { 
-    success: true, 
-    message: `Reset complete. ${grnResult.deletedCount} GRNs removed, ${orderResult.modifiedCount} Orders cleaned.` 
+  console.log(
+    `[DEBUG RESET] Modified ${orderResult.modifiedCount} Order documents.`,
+  );
+
+  return {
+    success: true,
+    message: `Reset complete. ${grnResult.deletedCount} GRNs removed, ${orderResult.modifiedCount} Orders cleaned.`,
   };
 };
 // Stock Movement — manually adjust a variant's real stock (sizeMap.qty).
@@ -1511,21 +1681,29 @@ exports.resetVariantStock = async (variantIdStr) => {
 // gates what actions are allowed. A PREORDER-classified variant (0 stock,
 // PO still pending) can still receive manual Inward same as any other —
 // e.g. loading existing physical stock that predates the PO/GRN flow.
-exports.stockMovement = async (variantIdStr, { type, cartons, reason, note, user }) => {
+exports.stockMovement = async (
+  variantIdStr,
+  { type, cartons, reason, note, user },
+) => {
   const MasterCatalog = require("../models/MasterCatalog");
   const activityLog = require("./activityLog.service");
 
   const catalog = await MasterCatalog.findOne({ "variants._id": variantIdStr });
   if (!catalog) {
-    const err = new Error("Variant not found"); err.statusCode = 404; throw err;
+    const err = new Error("Variant not found");
+    err.statusCode = 404;
+    throw err;
   }
   const variant = catalog.variants.id(variantIdStr);
   if (!variant) {
-    const err = new Error("Variant not found in catalog"); err.statusCode = 404; throw err;
+    const err = new Error("Variant not found in catalog");
+    err.statusCode = 404;
+    throw err;
   }
 
   const sizeQuantitiesData =
-    variant.sizeQuantities && typeof variant.sizeQuantities.toJSON === "function"
+    variant.sizeQuantities &&
+    typeof variant.sizeQuantities.toJSON === "function"
       ? variant.sizeQuantities.toJSON()
       : Object.fromEntries(variant.sizeQuantities || []);
 
@@ -1555,15 +1733,19 @@ exports.stockMovement = async (variantIdStr, { type, cartons, reason, note, user
     const counter = await Counter.findOneAndUpdate(
       { id: `carton-serial-${variantIdStr}` },
       { $inc: { seq: cartons } },
-      { new: true, upsert: true }
+      { new: true, upsert: true },
     );
     const lastSerial = counter.seq;
     const firstSerial = lastSerial - cartons + 1;
-    cartonBarcodes = Array.from({ length: cartons }, (_, i) =>
-      `${cartonSku}-CT${firstSerial + i}`
+    cartonBarcodes = Array.from(
+      { length: cartons },
+      (_, i) => `${cartonSku}-CT${firstSerial + i}`,
     );
     // Register in variant's available pool so dispatch scan can show and validate them
-    variant.availableCartons = [...(variant.availableCartons || []), ...cartonBarcodes];
+    variant.availableCartons = [
+      ...(variant.availableCartons || []),
+      ...cartonBarcodes,
+    ];
   }
 
   catalog.markModified("variants");
@@ -1574,11 +1756,29 @@ exports.stockMovement = async (variantIdStr, { type, cartons, reason, note, user
     entityType: "STOCK",
     entityId: String(variantIdStr),
     description: `Stock ${dirLabel}: ${cartons} carton(s) / ${totalPairs} pairs for "${variant.itemName || variant.color}" — ${reason}${note ? `: ${note}` : ""}`,
-    metadata: { variantId: variantIdStr, articleId: String(catalog._id), cartons, totalPairs, delta, reason, note, type, cartonBarcodes },
+    metadata: {
+      variantId: variantIdStr,
+      articleId: String(catalog._id),
+      cartons,
+      totalPairs,
+      delta,
+      reason,
+      note,
+      type,
+      cartonBarcodes,
+    },
     user,
   });
 
-  return { variantId: variantIdStr, articleId: String(catalog._id), type, cartons, totalPairs, delta, cartonBarcodes };
+  return {
+    variantId: variantIdStr,
+    articleId: String(catalog._id),
+    type,
+    cartons,
+    totalPairs,
+    delta,
+    cartonBarcodes,
+  };
 };
 
 // Extracts the trailing serial from a carton barcode ("SKU-CT23" -> 23),
@@ -1615,17 +1815,30 @@ exports.bulkStockMovementBySku = async (rows, user) => {
   rows.forEach((r, i) => {
     const rowNo = i + 2; // header is row 1
     const sku = (r.sku || "").trim();
-    if (!sku) { invalidRows.push({ row: rowNo, sku: r.sku || "", error: "SKU is blank" }); return; }
+    if (!sku) {
+      invalidRows.push({ row: rowNo, sku: r.sku || "", error: "SKU is blank" });
+      return;
+    }
     if (!["INWARD", "OUTWARD"].includes(r.type)) {
-      invalidRows.push({ row: rowNo, sku, error: "Fill exactly one of Inward/Outward Cartons" });
+      invalidRows.push({
+        row: rowNo,
+        sku,
+        error: "Fill exactly one of Inward/Outward Cartons",
+      });
       return;
     }
     if (!r.cartons || Number(r.cartons) < 1) {
-      invalidRows.push({ row: rowNo, sku, error: "Cartons must be at least 1" });
+      invalidRows.push({
+        row: rowNo,
+        sku,
+        error: "Cartons must be at least 1",
+      });
     }
   });
   if (invalidRows.length) {
-    const err = new Error(`${invalidRows.length} row(s) have invalid data — fix the CSV and re-upload. Nothing was updated.`);
+    const err = new Error(
+      `${invalidRows.length} row(s) have invalid data — fix the CSV and re-upload. Nothing was updated.`,
+    );
     err.statusCode = 400;
     err.details = { invalidRows };
     throw err;
@@ -1645,7 +1858,11 @@ exports.bulkStockMovementBySku = async (rows, user) => {
       const sku = (v.sku || "").trim().toUpperCase();
       if (!sku) return;
       if (!skuToMatches.has(sku)) skuToMatches.set(sku, []);
-      skuToMatches.get(sku).push({ catalog, variantId: String(v._id), itemName: v.itemName || "" });
+      skuToMatches.get(sku).push({
+        catalog,
+        variantId: String(v._id),
+        itemName: v.itemName || "",
+      });
     });
   });
 
@@ -1663,7 +1880,9 @@ exports.bulkStockMovementBySku = async (rows, user) => {
     if (candidates.length > 1) {
       const variantLabel = (r.variant || "").trim().toLowerCase();
       const found = variantLabel
-        ? candidates.find((c) => c.itemName.trim().toLowerCase() === variantLabel)
+        ? candidates.find(
+            (c) => c.itemName.trim().toLowerCase() === variantLabel,
+          )
         : null;
       if (!found) {
         ambiguous.push({
@@ -1688,13 +1907,17 @@ exports.bulkStockMovementBySku = async (rows, user) => {
     };
   });
   if (unmatched.length) {
-    const err = new Error(`${unmatched.length} row(s) have a SKU that doesn't match any catalog variant — fix the CSV and re-upload. Nothing was updated.`);
+    const err = new Error(
+      `${unmatched.length} row(s) have a SKU that doesn't match any catalog variant — fix the CSV and re-upload. Nothing was updated.`,
+    );
     err.statusCode = 400;
     err.details = { unmatched };
     throw err;
   }
   if (ambiguous.length) {
-    const err = new Error(`${ambiguous.length} row(s) have a SKU shared by more than one variant — fill the Variant column with the exact variant name to pick one. Nothing was updated.`);
+    const err = new Error(
+      `${ambiguous.length} row(s) have a SKU shared by more than one variant — fill the Variant column with the exact variant name to pick one. Nothing was updated.`,
+    );
     err.statusCode = 400;
     err.details = { ambiguous };
     throw err;
@@ -1709,11 +1932,18 @@ exports.bulkStockMovementBySku = async (rows, user) => {
     const variant = catalog.variants.id(r.variantId);
     const available = (variant.availableCartons || []).length;
     if (r.cartons > available) {
-      insufficientStock.push({ row: r.row, sku: r.sku, requested: r.cartons, available });
+      insufficientStock.push({
+        row: r.row,
+        sku: r.sku,
+        requested: r.cartons,
+        available,
+      });
     }
   });
   if (insufficientStock.length) {
-    const err = new Error(`${insufficientStock.length} row(s) request more Outward cartons than are currently in stock — fix the CSV and re-upload. Nothing was updated.`);
+    const err = new Error(
+      `${insufficientStock.length} row(s) request more Outward cartons than are currently in stock — fix the CSV and re-upload. Nothing was updated.`,
+    );
     err.statusCode = 400;
     err.details = { insufficientStock };
     throw err;
@@ -1723,7 +1953,10 @@ exports.bulkStockMovementBySku = async (rows, user) => {
   const rowsByCatalog = new Map();
   resolved.forEach((r) => {
     if (!rowsByCatalog.has(r.catalogId)) {
-      rowsByCatalog.set(r.catalogId, { catalog: catalogById.get(r.catalogId), rows: [] });
+      rowsByCatalog.set(r.catalogId, {
+        catalog: catalogById.get(r.catalogId),
+        rows: [],
+      });
     }
     rowsByCatalog.get(r.catalogId).rows.push(r);
   });
@@ -1733,7 +1966,8 @@ exports.bulkStockMovementBySku = async (rows, user) => {
     for (const row of catalogRows) {
       const variant = catalog.variants.id(row.variantId);
       const sizeQuantitiesData =
-        variant.sizeQuantities && typeof variant.sizeQuantities.toJSON === "function"
+        variant.sizeQuantities &&
+        typeof variant.sizeQuantities.toJSON === "function"
           ? variant.sizeQuantities.toJSON()
           : Object.fromEntries(variant.sizeQuantities || []);
 
@@ -1756,18 +1990,26 @@ exports.bulkStockMovementBySku = async (rows, user) => {
         const counter = await Counter.findOneAndUpdate(
           { id: `carton-serial-${row.variantId}` },
           { $inc: { seq: row.cartons } },
-          { new: true, upsert: true }
+          { new: true, upsert: true },
         );
         const firstSerial = counter.seq - row.cartons + 1;
-        cartonBarcodes = Array.from({ length: row.cartons }, (_, i) => `${cartonSku}-CT${firstSerial + i}`);
-        variant.availableCartons = [...(variant.availableCartons || []), ...cartonBarcodes];
+        cartonBarcodes = Array.from(
+          { length: row.cartons },
+          (_, i) => `${cartonSku}-CT${firstSerial + i}`,
+        );
+        variant.availableCartons = [
+          ...(variant.availableCartons || []),
+          ...cartonBarcodes,
+        ];
       } else {
         const sorted = [...(variant.availableCartons || [])].sort(
-          (a, b) => parseCartonSerial(a) - parseCartonSerial(b)
+          (a, b) => parseCartonSerial(a) - parseCartonSerial(b),
         );
         removedCartons = sorted.slice(0, row.cartons);
         const removedSet = new Set(removedCartons);
-        variant.availableCartons = (variant.availableCartons || []).filter((c) => !removedSet.has(c));
+        variant.availableCartons = (variant.availableCartons || []).filter(
+          (c) => !removedSet.has(c),
+        );
       }
 
       results.push({
@@ -1786,8 +2028,24 @@ exports.bulkStockMovementBySku = async (rows, user) => {
         entityType: "STOCK",
         entityId: row.variantId,
         description: `Stock ${row.type === "INWARD" ? "Inward" : "Outward"} (CSV): ${row.cartons} carton(s) / ${totalPairs} pairs for "${variant.itemName || variant.color}" — ${row.reason}${row.note ? `: ${row.note}` : ""}`,
-        metadata: { variantId: row.variantId, articleId: row.catalogId, cartons: row.cartons, totalPairs, delta, reason: row.reason, note: row.note, type: row.type, cartonBarcodes, removedCartons },
+        metadata: {
+          variantId: row.variantId,
+          articleId: row.catalogId,
+          cartons: row.cartons,
+          totalPairs,
+          delta,
+          reason: row.reason,
+          note: row.note,
+          type: row.type,
+          cartonBarcodes,
+          removedCartons,
+        },
         user,
+        // The upload already owns one toast for the whole batch. Keep the
+        // per-row audit records, but don't emit one realtime activity toast
+        // for every CSV row (the catalogue bulk importer follows the same
+        // silent-per-item pattern).
+        emitRealtime: false,
       });
     }
     catalog.markModified("variants");
@@ -1814,16 +2072,22 @@ exports.bulkImageUpdateBySku = async (rows) => {
     .filter((r) => r.sku && r.imageUrl);
 
   if (!candidates.length) {
-    const err = new Error("No rows with both a SKU and an Image URL were found.");
+    const err = new Error(
+      "No rows with both a SKU and an Image URL were found.",
+    );
     err.statusCode = 400;
     throw err;
   }
 
   // Only accept http(s) URLs — a local file path or stray text would
   // otherwise get stored as a broken image reference.
-  const invalidUrl = candidates.filter((r) => !/^https?:\/\//i.test(r.imageUrl));
+  const invalidUrl = candidates.filter(
+    (r) => !/^https?:\/\//i.test(r.imageUrl),
+  );
   if (invalidUrl.length) {
-    const err = new Error(`${invalidUrl.length} row(s) have an Image URL that isn't a valid http(s) link — fix the CSV and re-upload. Nothing was updated.`);
+    const err = new Error(
+      `${invalidUrl.length} row(s) have an Image URL that isn't a valid http(s) link — fix the CSV and re-upload. Nothing was updated.`,
+    );
     err.statusCode = 400;
     err.details = { invalidUrl };
     throw err;
@@ -1834,7 +2098,8 @@ exports.bulkImageUpdateBySku = async (rows) => {
   catalogs.forEach((catalog) => {
     catalog.variants.forEach((v) => {
       const sku = (v.sku || "").trim().toUpperCase();
-      if (sku && !skuToMatch.has(sku)) skuToMatch.set(sku, { catalog, variant: v });
+      if (sku && !skuToMatch.has(sku))
+        skuToMatch.set(sku, { catalog, variant: v });
     });
   });
 
@@ -1852,7 +2117,7 @@ exports.bulkImageUpdateBySku = async (rows) => {
     const color = variant.color || "";
 
     const colorEntry = (catalog.colorMedia || []).find(
-      (cm) => (cm.color || "").toLowerCase() === color.toLowerCase()
+      (cm) => (cm.color || "").toLowerCase() === color.toLowerCase(),
     );
     if (colorEntry) {
       colorEntry.images = [{ url: r.imageUrl, key: "", isCover: true }];
@@ -1867,14 +2132,21 @@ exports.bulkImageUpdateBySku = async (rows) => {
     }
 
     touchedCatalogIds.add(String(catalog._id));
-    updated.push({ row: r.row, sku: r.sku, articleId: String(catalog._id), color });
+    updated.push({
+      row: r.row,
+      sku: r.sku,
+      articleId: String(catalog._id),
+      color,
+    });
   });
 
   // Unlike stock movements, an unmatched SKU here isn't dangerous to leave
   // partially applied — reported back, but doesn't block the rows that DID
   // match (whether that's 1 row or all of them).
   if (!updated.length) {
-    const err = new Error("None of the SKUs in this CSV matched a catalog variant.");
+    const err = new Error(
+      "None of the SKUs in this CSV matched a catalog variant.",
+    );
     err.statusCode = 400;
     err.details = { unmatched };
     throw err;
@@ -1897,14 +2169,30 @@ exports.updateVariantSku = async (variantId, sku) => {
     throw err;
   }
   const catalog = await MasterCatalog.findOne({ "variants._id": variantId });
-  if (!catalog) { const err = new Error("Variant not found"); err.statusCode = 404; throw err; }
+  if (!catalog) {
+    const err = new Error("Variant not found");
+    err.statusCode = 404;
+    throw err;
+  }
   const variant = catalog.variants.id(variantId);
-  if (!variant) { const err = new Error("Variant not found in catalog"); err.statusCode = 404; throw err; }
+  if (!variant) {
+    const err = new Error("Variant not found in catalog");
+    err.statusCode = 404;
+    throw err;
+  }
   variant.sku = ctnSku;
   // Regenerate sizeSkus from new carton SKU
-  const sizeKeys = variant.sizeQuantities ? Array.from(variant.sizeQuantities.keys()) : [];
-  const newSizeSkus = autoGenerateSizeSkus(ctnSku, variant.sizeRange || "", sizeKeys);
-  sizeKeys.forEach(sz => { variant.sizeSkus.set(sz, newSizeSkus[sz] || ""); });
+  const sizeKeys = variant.sizeQuantities
+    ? Array.from(variant.sizeQuantities.keys())
+    : [];
+  const newSizeSkus = autoGenerateSizeSkus(
+    ctnSku,
+    variant.sizeRange || "",
+    sizeKeys,
+  );
+  sizeKeys.forEach((sz) => {
+    variant.sizeSkus.set(sz, newSizeSkus[sz] || "");
+  });
   catalog.markModified("variants");
   await catalog.save();
   const sizeSkusObj = Object.fromEntries(variant.sizeSkus || []);

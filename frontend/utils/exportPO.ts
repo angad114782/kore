@@ -218,7 +218,9 @@ export const exportPOToPDF = async (
   vendor?: Vendor,
   opts?: { isBill?: boolean }
 ) => {
-  const isBill = opts?.isBill ?? !!(po as any).billStatus;
+  // Document type comes from the screen that initiated the export. A sent PO
+  // can also have billStatus, so inferring from that field mislabels PO files.
+  const isBill = opts?.isBill ?? false;
   const doc = new jsPDF("portrait", "pt", "a4");
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -408,8 +410,12 @@ export const exportPOToPDF = async (
 };
 
 // ---------- Excel export ----------
-export const exportOrderToExcel = async (po: PurchaseOrder, vendor?: Vendor) => {
-  const isBill = !!(po as any).billStatus;
+export const exportOrderToExcel = async (
+  po: PurchaseOrder,
+  vendor?: Vendor,
+  opts?: { isBill?: boolean }
+) => {
+  const isBill = opts?.isBill ?? false;
   const gstLabel = resolveGstLabel(po);
   const lineItems = buildPOLineItems(po);
   const totals = summarizeLineItems(lineItems);

@@ -1330,7 +1330,7 @@ const GRN: React.FC = () => {
             <SectionCard
               icon={<Hash size={18} className="text-indigo-600" />}
               title="1. Select Purchase Order"
-              className="z-60" // For dropdown visibility
+              className="z-10" // Keep the PO picker above nearby content, below app overlays
               action={
                 selectedPOId ? (
                   <button

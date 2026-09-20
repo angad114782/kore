@@ -12,6 +12,7 @@ const usersController = require("../controllers/users.controller");
 router.get("/me", auth, usersController.me);
 router.patch("/me", auth, usersController.updateMe);
 router.patch("/me/password", auth, usersController.changePassword);
+router.post("/me/logout-all", auth, usersController.logoutAllSessions);
 
 /* --------------------------------------------------
    👑 ADMIN MANAGEMENT ROUTES

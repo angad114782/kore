@@ -1907,7 +1907,9 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => removeVariant(v.id)}
-                                      className="p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-all opacity-0 group-hover:opacity-100"
+                                      aria-label={`Remove ${v.itemName || "variant"}`}
+                                      title="Remove variant"
+                                      className="variant-delete-action inline-flex min-h-11 min-w-11 items-center justify-center p-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 focus-visible:text-rose-500 focus-visible:bg-rose-50 rounded transition-all"
                                     >
                                       <Trash2 size={14} />
                                     </button>

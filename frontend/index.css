@@ -27,4 +27,21 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: #cbd5e1;
   }
+
+  /* Variant-row actions must stay discoverable on touch devices, where hover
+     is unavailable. Fine-pointer desktop users still get the quieter reveal. */
+  .variant-delete-action {
+    opacity: 1;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .variant-delete-action {
+      opacity: 0;
+    }
+
+    .group:hover .variant-delete-action,
+    .variant-delete-action:focus-visible {
+      opacity: 1;
+    }
+  }
 }

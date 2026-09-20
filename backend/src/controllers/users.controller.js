@@ -1,7 +1,11 @@
 const usersService = require("../services/users.service");
 const { created, ok, fail } = require("../utils/apiResponse");
 const mongoose = require("mongoose");
-const { emitUserUpdated, emitUserProfileUpdated } = require("../socket");
+const {
+  emitUserUpdated,
+  emitUserProfileUpdated,
+  emitSessionInvalidated,
+} = require("../socket");
 
 /* --------------------------------------------------
    👤 CREATE USER (Superadmin / Admin as per route middleware)
@@ -104,6 +108,30 @@ exports.changePassword = async (req, res, next) => {
 
     return ok(res, {
       message: "Password updated successfully",
+      data: null,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/* --------------------------------------------------
+   🚪 LOG OUT ALL DEVICES (self-service)
+   The current device is included and must sign in again.
+-------------------------------------------------- */
+exports.logoutAllSessions = async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return fail(res, { status: 401, message: "Not authorized" });
+    }
+
+    await usersService.invalidateAllSessions(userId);
+    emitSessionInvalidated(userId);
+
+    return ok(res, {
+      message: "All active sessions have been logged out",
       data: null,
     });
   } catch (err) {

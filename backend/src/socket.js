@@ -205,10 +205,10 @@ const emitCatalogUpdated = (action, articleId) => {
 // ──────────────────────────────────────────────
 const emitSessionInvalidated = (userId) => {
   if (!io) return;
-  // Emit to personal room; also emit globally as fallback for unauthenticated sockets
+  // Every authenticated device joins this room. Keeping the event scoped to
+  // it prevents duplicate notifications and avoids exposing user ids to
+  // unrelated clients.
   io.to(userRoom(String(userId))).emit("sessionInvalidated", { userId: String(userId) });
-  // Fallback: emit globally too so sockets that haven't authenticated still get it
-  io.emit("sessionInvalidated", { userId: String(userId) });
 };
 
 // ──────────────────────────────────────────────

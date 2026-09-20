@@ -1672,6 +1672,8 @@ const CatalogueManager: React.FC<CatalogueManagerProps> = ({
         );
       }
       fetchLocalArticles(1, debouncedSearch.current, false, genderFilter, sortOption);
+      onSuccess?.();
+      window.dispatchEvent(new CustomEvent("catalogRefetch"));
     } catch (err: any) {
       toast.error(err?.message || "Failed to update images");
     } finally {

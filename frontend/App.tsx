@@ -599,8 +599,7 @@ const App: React.FC = () => {
       if (String(data.userId) !== String(u.id)) return;
       store.logout();
       toast.error("Session expired", {
-        description:
-          "Admin ne aapka password change kar diya. Please login karein.",
+        description: "All active sessions have been signed out. Please log in again.",
         duration: 6000,
       });
     };
@@ -1547,6 +1546,7 @@ const App: React.FC = () => {
             onProfileUpdate={(updatedUser) => {
               store.setCurrentUser(updatedUser);
             }}
+            onLogout={handleLogout}
           />
         )}
 

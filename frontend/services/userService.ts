@@ -1,5 +1,4 @@
 import { apiFetch } from "./api";
-import { User } from "../types";
 
 export const userService = {
   createUser: async (userData: {
@@ -21,7 +20,7 @@ export const userService = {
       limit?: number;
       search?: string;
       role?: string;
-    } = {}
+    } = {},
   ) => {
     const query = new URLSearchParams();
     if (params.page) query.append("page", params.page.toString());
@@ -40,7 +39,7 @@ export const userService = {
       email: string;
       role: string;
       isActive: boolean;
-    }>
+    }>,
   ) => {
     const response = await apiFetch(`/users/${userId}`, {
       method: "PATCH",
@@ -82,6 +81,13 @@ export const userService = {
     return response.data;
   },
 
+  logoutAllSessions: async () => {
+    const response = await apiFetch("/users/me/logout-all", {
+      method: "POST",
+    });
+    return response.data;
+  },
+
   adminResetPassword: async (userId: string, newPassword: string) => {
     const response = await apiFetch(`/users/${userId}/reset-password`, {
       method: "PATCH",
@@ -92,12 +98,19 @@ export const userService = {
 };
 
 export const roleService = {
-  list: async (): Promise<{ name: string; label: string; base: boolean; id?: string }[]> => {
+  list: async (): Promise<
+    { name: string; label: string; base: boolean; id?: string }[]
+  > => {
     const res = await apiFetch("/roles");
     return res.data || [];
   },
-  create: async (label: string): Promise<{ name: string; label: string; base: boolean; id: string }> => {
-    const res = await apiFetch("/roles", { method: "POST", body: JSON.stringify({ label }) });
+  create: async (
+    label: string,
+  ): Promise<{ name: string; label: string; base: boolean; id: string }> => {
+    const res = await apiFetch("/roles", {
+      method: "POST",
+      body: JSON.stringify({ label }),
+    });
     return res.data;
   },
   remove: async (name: string): Promise<void> => {

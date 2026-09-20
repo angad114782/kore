@@ -175,7 +175,7 @@ const BillDetails: React.FC<BillDetailsProps> = ({
                 } catch {
                   v = undefined;
                 }
-                await exportOrderToExcel(po, v);
+                await exportOrderToExcel(po, v, { isBill: true });
               }}
               className="flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-semibold hover:bg-emerald-100 transition-all"
             >

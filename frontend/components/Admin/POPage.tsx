@@ -49,6 +49,22 @@ const selectClass =
 const labelClass =
   "block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2";
 
+const inrFormatter = new Intl.NumberFormat("en-IN", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const inrOneDecimalFormatter = new Intl.NumberFormat("en-IN", {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+const formatINR = (value: number, fractionDigits: 1 | 2 = 2) => {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  return (fractionDigits === 1 ? inrOneDecimalFormatter : inrFormatter).format(
+    safeValue
+  );
+};
+
 // ─── Empty PO Item ─────────────────────────────────────
 const emptyItem = (): PurchaseOrderItem => ({
   id: `poi-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -978,6 +994,7 @@ const POPage: React.FC<POPageProps> = ({ articles, onSyncSuccess }) => {
     openUp: false,
   });
   const [itemPickerSearch, setItemPickerSearch] = useState("");
+  const [poItemSearch, setPoItemSearch] = useState("");
   const itemPickerTriggerRef = useRef<HTMLDivElement>(null);
 const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -1154,9 +1171,33 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
       ? items.some(it => it.variantId === option.variantId)
       : items.some(it => it.articleId === option.articleId && !it.variantId);
 
+  // Keep the original row index so filtered rows still open the correct picker.
+  const visiblePOItems = useMemo(() => {
+    const query = poItemSearch.trim().toLowerCase();
+    const rows = items.map((item, index) => ({ item, index }));
+
+    if (!query) return rows;
+
+    return rows.filter(({ item }) =>
+      [
+        item.itemName,
+        item.sku,
+        item.skuCompany,
+        item.itemTaxCode,
+        item.gender,
+        item.color,
+        item.assortment,
+      ].some((value) => String(value || "").toLowerCase().includes(query))
+    );
+  }, [items, poItemSearch]);
+
   // subTotal = sum of all row unitTotals (each is cartons × 24 × unitPrice)
   const subTotal = items.reduce(
     (sum, it) => sum + it.unitTotal,
+    0
+  );
+  const totalCartons = items.reduce(
+    (sum, it) => sum + (it.articleId ? Number(it.cartonCount || 0) : 0),
     0
   );
   const discountAmount =
@@ -1184,6 +1225,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
     setDiscountPercent(0);
     setActiveItemPickerIdx(null);
     setItemPickerSearch("");
+    setPoItemSearch("");
     setEditingPOId(null);
   };
 
@@ -1236,11 +1278,20 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
       )
     );
     setDiscountPercent(po.discountPercent || 0);
+    setPoItemSearch("");
     setEditingPOId(po.id);
     setView("form");
   };
 
+  // Keep an open PO aligned with catalogue image changes (including CSV
+  // image updates) without requiring the row to be re-selected.
+  useEffect(() => {
+    if (view !== "form" || articles.length === 0) return;
+    setItems((currentItems) => enrichItemsWithCatalogMrp(currentItems, articles));
+  }, [articles, view]);
+
   const addNewRow = () => {
+    setPoItemSearch("");
     setItems((prev) => [...prev, emptyItem()]);
   };
 
@@ -2130,25 +2181,66 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
 
         {/* ── Item Table ── */}
         <div className="p-6 md:p-8 border-b border-slate-100">
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <Package size={16} className="text-indigo-500" />
-              Item Details
-              <span className="ml-1 px-2 py-0.5 bg-indigo-100 text-indigo-600 rounded-full text-[10px] font-black">
-                {items.filter(it => it.articleId).length}
-              </span>
-            </h3>
-            {!isApprovedPO && (
-              <button
-                type="button"
-                onClick={addNewRow}
-                className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-all border border-indigo-200"
-              >
-                <Plus size={13} />
-                Add Row
-              </button>
-            )}
+          <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Package size={16} className="text-indigo-500" />
+                Item Details
+                <span className="ml-1 px-2 py-0.5 bg-indigo-100 text-indigo-600 rounded-full text-[10px] font-black">
+                  {items.filter(it => it.articleId).length}
+                </span>
+              </h3>
+              <p className="mt-1 text-xs text-slate-400">
+                Review and update the items in this purchase order.
+              </p>
+            </div>
+
+            <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto lg:items-center">
+              <div className="relative w-full sm:w-72">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  type="text"
+                  value={poItemSearch}
+                  onChange={(e) => setPoItemSearch(e.target.value)}
+                  placeholder="Search current PO items"
+                  aria-label="Search items in the current purchase order"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-9 text-sm font-medium text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
+                />
+                {poItemSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setPoItemSearch("")}
+                    aria-label="Clear item search"
+                    className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+              {!isApprovedPO && (
+                <button
+                  type="button"
+                  onClick={addNewRow}
+                  className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-xs font-bold text-indigo-600 transition-colors hover:bg-indigo-100 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                >
+                  <Plus size={13} />
+                  Add Row
+                </button>
+              )}
+            </div>
           </div>
+
+          {poItemSearch && (
+            <div className="mb-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500" role="status">
+              <span>
+                Showing <strong className="text-slate-700">{visiblePOItems.length}</strong> of {items.length} rows
+              </span>
+              <span className="max-w-[55%] truncate font-medium text-indigo-600">“{poItemSearch.trim()}”</span>
+            </div>
+          )}
 
           {/* ── Desktop Table (Google-Sheets style: bordered grid, flat inputs) ── */}
           <div className="hidden md:block border border-slate-200 rounded-2xl overflow-hidden">
@@ -2230,7 +2322,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item, idx) => (
+                  {visiblePOItems.map(({ item, index: idx }) => (
                     <tr key={item.id} className={`group transition-colors ${item.articleId ? "hover:bg-indigo-50/30" : "bg-slate-50/60 hover:bg-slate-50"}`}>
 
                       {/* Row # */}
@@ -2376,9 +2468,9 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                       {/* Total ex.GST */}
                       <td className="border border-slate-200 px-2 py-1.5 text-right overflow-hidden">
                         <div className="flex flex-col items-end min-w-0">
-                          <span className="text-xs font-bold text-slate-700 truncate max-w-full">₹{item.unitTotal.toFixed(2)}</span>
+                          <span className="text-xs font-bold text-slate-700 truncate max-w-full">₹{formatINR(item.unitTotal)}</span>
                           {item.taxPerItem > 0 && (
-                            <span className="text-[9px] text-amber-500 font-medium truncate max-w-full">+₹{item.taxPerItem.toFixed(2)} tax</span>
+                            <span className="text-[9px] text-amber-500 font-medium truncate max-w-full">+₹{formatINR(item.taxPerItem)} tax</span>
                           )}
                         </div>
                       </td>
@@ -2386,7 +2478,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                       {/* Total incl.GST */}
                       <td className="border border-slate-200 px-2 py-1.5 text-right overflow-hidden">
                         <span className={`block text-xs font-black truncate ${item.articleId ? "text-indigo-700" : "text-slate-300"}`}>
-                          ₹{(item.unitTotal + item.taxPerItem).toFixed(2)}
+                          ₹{formatINR(item.unitTotal + item.taxPerItem)}
                         </span>
                       </td>
 
@@ -2404,22 +2496,44 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                       </td>
                     </tr>
                   ))}
+                  {visiblePOItems.length === 0 && (
+                    <tr>
+                      <td colSpan={11} className="px-6 py-12 text-center">
+                        <Search size={22} className="mx-auto mb-2 text-slate-300" />
+                        <p className="text-sm font-semibold text-slate-600">No PO items found</p>
+                        <p className="mt-1 text-xs text-slate-400">Try searching by item name, SKU, HSN, color, or assortment.</p>
+                        <button
+                          type="button"
+                          onClick={() => setPoItemSearch("")}
+                          className="mt-3 text-xs font-bold text-indigo-600 hover:text-indigo-700"
+                        >
+                          Clear search
+                        </button>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
                 {/* Totals footer */}
                 {items.some(it => it.articleId) && (
                   <tfoot>
                     <tr className="bg-gradient-to-r from-indigo-50 to-violet-50">
-                      <td colSpan={8} className="border border-slate-200 px-3 py-2 text-xs font-bold text-slate-500 text-right">
+                      <td colSpan={3} className="border border-slate-200 px-3 py-2 text-xs font-bold text-slate-500 text-right">
                         Totals
                       </td>
+                      <td className="border border-slate-200 px-2 py-2 text-center">
+                        <span className="text-sm font-black text-indigo-700">
+                          {totalCartons}
+                        </span>
+                      </td>
+                      <td colSpan={4} className="border border-slate-200" />
                       <td className="border border-slate-200 px-2 py-2 text-right">
                         <span className="text-xs font-bold text-slate-700">
-                          ₹{items.reduce((s, it) => s + it.unitTotal, 0).toFixed(2)}
+                          ₹{formatINR(items.reduce((s, it) => s + it.unitTotal, 0))}
                         </span>
                       </td>
                       <td className="border border-slate-200 px-2 py-2 text-right">
                         <span className="text-sm font-black text-indigo-700">
-                          ₹{items.reduce((s, it) => s + it.unitTotal + it.taxPerItem, 0).toFixed(2)}
+                          ₹{formatINR(items.reduce((s, it) => s + it.unitTotal + it.taxPerItem, 0))}
                         </span>
                       </td>
                       <td className="border border-slate-200" />
@@ -2432,7 +2546,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
 
           {/* ── Mobile Card View ── */}
           <div className="md:hidden space-y-3">
-            {items.map((item, idx) => (
+            {visiblePOItems.map(({ item, index: idx }) => (
               <div key={item.id} className={`border rounded-2xl overflow-hidden ${item.articleId ? "border-slate-200 bg-white" : "border-dashed border-slate-300 bg-slate-50"}`}>
                 {/* Card header */}
                 <div className="flex items-center gap-3 p-3 border-b border-slate-100">
@@ -2507,16 +2621,36 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                   <div>
                     <p className="text-[9px] font-bold text-violet-600 uppercase mb-1">Costing/Pair (₹)</p>
                     <input type="number" min={0} className="w-full px-2 py-1.5 bg-violet-50 border border-violet-200 rounded-lg text-[11px] font-bold text-right outline-none text-violet-700" value={item.basePrice ? item.basePrice / 24 : ""} disabled={isApprovedPO} onChange={(e) => updateItem(item.id, "basePrice", (parseFloat(e.target.value) || 0) * 24)} />
-                    {item.basePrice > 0 && <p className="text-[9px] text-violet-400 text-right mt-0.5">₹{item.basePrice.toFixed(1)}/ctn</p>}
+                    {item.basePrice > 0 && <p className="text-[9px] text-violet-400 text-right mt-0.5">₹{formatINR(item.basePrice, 1)}/ctn</p>}
                   </div>
                   <div className="flex flex-col justify-end">
                     <p className="text-[9px] font-bold text-indigo-500 uppercase mb-1">Total (incl.GST)</p>
-                    <p className="text-sm font-black text-indigo-700 text-right">₹{(item.unitTotal + item.taxPerItem).toFixed(2)}</p>
-                    <p className="text-[10px] text-slate-400 text-right">ex. ₹{item.unitTotal.toFixed(2)}</p>
+                    <p className="text-sm font-black text-indigo-700 text-right">₹{formatINR(item.unitTotal + item.taxPerItem)}</p>
+                    <p className="text-[10px] text-slate-400 text-right">ex. ₹{formatINR(item.unitTotal)}</p>
                   </div>
                 </div>
               </div>
             ))}
+            {visiblePOItems.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center">
+                <Search size={22} className="mx-auto mb-2 text-slate-300" />
+                <p className="text-sm font-semibold text-slate-600">No PO items found</p>
+                <p className="mt-1 text-xs text-slate-400">Try searching by item name, SKU, HSN, color, or assortment.</p>
+                <button
+                  type="button"
+                  onClick={() => setPoItemSearch("")}
+                  className="mt-3 text-xs font-bold text-indigo-600 hover:text-indigo-700"
+                >
+                  Clear search
+                </button>
+              </div>
+            )}
+            {items.some(it => it.articleId) && (
+              <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 rounded-2xl">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Qty (Ctn)</span>
+                <span className="text-sm font-black text-indigo-700">{totalCartons}</span>
+              </div>
+            )}
             {!isApprovedPO && (
               <button type="button" onClick={addNewRow} className="w-full py-3 border-2 border-dashed border-indigo-200 rounded-2xl text-sm font-bold text-indigo-500 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2">
                 <Plus size={15} />
@@ -2624,7 +2758,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                                   {option.assortment && <span className="text-[9px] px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded font-bold border border-indigo-100">{option.assortment}</span>}
                                 </div>
                               </div>
-                              <span className={`ml-auto text-xs font-bold shrink-0 ${selected ? "text-indigo-600" : "text-slate-500"}`}>₹{option.basePrice}</span>
+                              <span className={`ml-auto text-xs font-bold shrink-0 ${selected ? "text-indigo-600" : "text-slate-500"}`}>₹{formatINR(option.basePrice)}</span>
                             </button>
                           );
                         })}
@@ -2672,7 +2806,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-600">Sub Total</span>
                 <span className="text-sm font-bold text-slate-900">
-                  ₹{subTotal.toFixed(2)}
+                  ₹{formatINR(subTotal)}
                 </span>
               </div>
 
@@ -2692,7 +2826,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                   />
                   <span className="text-xs text-slate-500">%</span>
                   <span className="text-sm font-bold text-slate-700">
-                    -₹{discountAmount.toFixed(2)}
+                    -₹{formatINR(discountAmount)}
                   </span>
                 </div>
               </div>
@@ -2700,7 +2834,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-600">Total Tax</span>
                 <span className="text-sm font-bold text-slate-700">
-                  ₹{totalTax.toFixed(2)}
+                  ₹{formatINR(totalTax)}
                 </span>
               </div>
 
@@ -2709,7 +2843,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
                   Total
                 </span>
                 <span className="text-lg font-black text-indigo-600">
-                  ₹{total.toFixed(2)}
+                  ₹{formatINR(total)}
                 </span>
               </div>
             </div>

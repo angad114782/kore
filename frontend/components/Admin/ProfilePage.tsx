@@ -1,17 +1,69 @@
 import React, { useState } from "react";
 import { toast } from "sonner";
 import { Mail, User, Lock, Eye, EyeOff, Loader2, Save } from "lucide-react";
-import { User as UserType } from "../../types";
+import { User as UserType, UserRole } from "../../types";
 import { userService } from "../../services/userService";
+import { useConfirm } from "../ui/ConfirmDialog";
 
 interface ProfilePageProps {
   user: UserType;
   onProfileUpdate: (updatedUser: UserType) => void;
+  onLogout: () => void;
 }
 
-const ProfilePage: React.FC<ProfilePageProps> = ({ user, onProfileUpdate }) => {
+const ProfilePage: React.FC<ProfilePageProps> = ({
+  user,
+  onProfileUpdate,
+  onLogout,
+}) => {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"profile" | "password">("profile");
+  const { confirm, dialog: sessionDialog } = useConfirm();
+
+  const canManageSessions = [
+    UserRole.ADMIN,
+    UserRole.SUPERADMIN,
+    UserRole.DISTRIBUTOR,
+  ].includes(user.role);
+
+  const askToLogoutAllDevices = async (changeType: "email" | "password") => {
+    if (!canManageSessions) return;
+
+    const shouldLogoutAll = await confirm({
+      title: "Sign out from all devices?",
+      description: (
+        <div className="space-y-2">
+          <p>
+            Your {changeType} was updated successfully. Do you want to log out
+            of all devices where this account is signed in?
+          </p>
+          <p className="font-medium text-amber-700">
+            This will also sign you out on this device, and you will need to
+            sign in again.
+          </p>
+        </div>
+      ),
+      confirmText: "Log out all devices",
+      cancelText: "Keep other sessions",
+    });
+
+    if (!shouldLogoutAll) return;
+
+    const logoutPromise = userService.logoutAllSessions();
+    toast.promise(logoutPromise, {
+      loading: "Signing out all devices...",
+      success: "All devices have been signed out",
+      error: (err: any) => err.message || "Failed to sign out all devices",
+    });
+
+    try {
+      await logoutPromise;
+      onLogout();
+    } catch {
+      // toast.promise displays the failure while keeping the current session
+      // available for the user to retry.
+    }
+  };
 
   // Profile form state
   const [profileForm, setProfileForm] = useState({
@@ -45,6 +97,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onProfileUpdate }) => {
       return;
     }
 
+    const emailChanged =
+      profileForm.email.trim().toLowerCase() !== user.email.trim().toLowerCase();
+
     setLoading(true);
     const updatePromise = userService.updateProfile({
       name: profileForm.name,
@@ -58,9 +113,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onProfileUpdate }) => {
     });
 
     updatePromise
-      .then((updatedUser) => {
+      .then(async (updatedUser) => {
         onProfileUpdate(updatedUser);
         setLoading(false);
+        if (emailChanged) await askToLogoutAllDevices("email");
       })
       .catch(() => {
         setLoading(false);
@@ -103,13 +159,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onProfileUpdate }) => {
     });
 
     changePromise
-      .then(() => {
+      .then(async () => {
         setPasswordForm({
           oldPassword: "",
           newPassword: "",
           confirmPassword: "",
         });
         setLoading(false);
+        await askToLogoutAllDevices("password");
       })
       .catch(() => {
         setLoading(false);
@@ -117,7 +174,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onProfileUpdate }) => {
   };
 
   return (
-    <div className="space-y-8 pb-10">
+    <>
+      {sessionDialog}
+      <div className="space-y-8 pb-10">
       {/* Header */}
       <div className="flex items-center justify-between px-6 md:px-8">
         <div>
@@ -337,7 +396,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onProfileUpdate }) => {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 
