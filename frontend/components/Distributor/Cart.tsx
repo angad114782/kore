@@ -38,8 +38,8 @@ const getMaxCartonsForVariant = (variant: any): number => {
   if (!variant) return 0;
   const isPreOrder = getVariantAvailability(variant) === "PREORDER";
   const breakdown = variant.sizeQuantities || {};
-  const totalPairsPerCarton = Object.values(breakdown).reduce(
-    (a: number, b: any) => a + (Number(b) || 0), 0
+  const totalPairsPerCarton: number = (Object.values(breakdown) as unknown[]).reduce<number>(
+    (a, b) => a + (Number(b) || 0), 0
   );
 
   const remainingPlannedCartons = () => {
