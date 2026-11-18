@@ -3,10 +3,12 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5005
 export const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
   const token = localStorage.getItem('kore_token');
 
-  const headers = {
-    'Content-Type': 'application/json',
+  const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const headers: Record<string, any> = {
+    // A file upload must let the browser set its own multipart boundary.
+    ...(isForm ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...options.headers,
+    ...(options.headers as Record<string, any>),
   };
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {

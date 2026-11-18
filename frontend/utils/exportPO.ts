@@ -216,8 +216,8 @@ const resolveRowImages = async (rows: POLineItem[]): Promise<(ResolvedImage | nu
 export const exportPOToPDF = async (
   po: PurchaseOrder,
   vendor?: Vendor,
-  opts?: { isBill?: boolean }
-) => {
+  opts?: { isBill?: boolean; asBlob?: boolean }
+): Promise<Blob | void> => {
   // Document type comes from the screen that initiated the export. A sent PO
   // can also have billStatus, so inferring from that field mislabels PO files.
   const isBill = opts?.isBill ?? false;
@@ -406,7 +406,38 @@ export const exportPOToPDF = async (
     });
   }
 
+  if (opts?.asBlob) return doc.output("blob");
   doc.save(`${exportFileBase(po)}.pdf`);
+};
+
+// ---------- CSV export (one row per size/SKU line, same figures as the PDF) ----------
+export const exportPOToCsv = (
+  po: PurchaseOrder,
+  vendor?: Vendor,
+  opts?: { asBlob?: boolean }
+): Blob | void => {
+  const gstLabel = resolveGstLabel(po);
+  const rows = buildPOLineItems(po);
+  const q = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const num = (n: number) => (Math.round((n || 0) * 100) / 100).toString();
+  const lines: string[] = [
+    [
+      "SI No.", "Product Code", "HSN", "Description of Goods", "Gender", "Color", "QTY",
+      "Online MRP", "Offline MRP", "Rate", "Taxable Value", `${gstLabel} (%)`, `${gstLabel} Amount`, "Amount",
+    ].map(q).join(","),
+    ...rows.map((r) =>
+      [
+        r.siNo, r.productCode, r.hsn, r.description, r.gender, r.color, r.qty,
+        num(r.onlineMrp), num(r.offlineMrp), num(r.rate), num(r.taxableValue), r.taxRatePct, num(r.taxAmount), num(r.amount),
+      ].map(q).join(",")
+    ),
+  ];
+  const t = summarizeLineItems(rows);
+  lines.push(["", "", "", "TOTAL", "", "", t.totalQty, "", "", "", num(t.totalTaxable), "", num(t.totalTax), num(t.totalAmount)].map(q).join(","));
+  // BOM so Excel reads ₹ / non-ASCII text correctly
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  if (opts?.asBlob) return blob;
+  saveAs(blob, `${exportFileBase(po)}.csv`);
 };
 
 // ---------- Excel export ----------

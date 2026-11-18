@@ -19,6 +19,15 @@ export const poService = {
     });
   },
 
+  /** Email a PO. `pdf` / `csv` are files generated in the browser. */
+  async sendEmail(id: string, payload: { to: string[]; pdf?: Blob; csv?: Blob }) {
+    const form = new FormData();
+    form.append("to", JSON.stringify(payload.to));
+    if (payload.pdf) form.append("pdf", payload.pdf, "po.pdf");
+    if (payload.csv) form.append("csv", payload.csv, "po.csv");
+    return apiFetch(`/purchase-orders/${id}/send-email`, { method: "POST", body: form });
+  },
+
   async getPOById(id: string) {
     return apiFetch(`/purchase-orders/${id}`);
   },

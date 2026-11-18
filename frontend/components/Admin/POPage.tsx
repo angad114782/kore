@@ -35,7 +35,7 @@ import {
 import { getImageUrl } from "../../utils/imageUtils";
 import { poService } from "../../services/poService";
 import { vendorService } from "../../services/vendorService";
-import { exportPOToPDF, exportOrderToExcel } from "../../utils/exportPO";
+import { exportPOToPDF, exportOrderToExcel, exportPOToCsv } from "../../utils/exportPO";
 import { formatAssortment } from "../../utils/assortmentUtils";
 import { enrichItemsWithCatalogMrp } from "../../utils/poItemEnrichment";
 import Pagination from "../ui/Pagination";
@@ -1034,6 +1034,50 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
   // ── Selected vendor object ──
   const selectedVendor = vendors.find((v) => v.id === selectedVendorId);
 
+  // ── "Save and Send" → choose who gets the PO by email ──
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [pickedEmails, setPickedEmails] = useState<string[]>([]);
+  const [extraEmail, setExtraEmail] = useState("");
+  const [extraEmails, setExtraEmails] = useState<string[]>([]);
+  const [attachPdf, setAttachPdf] = useState(true);
+  const [attachCsv, setAttachCsv] = useState(true);
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  // Emails already known for this vendor: main email + contact persons
+  const vendorEmailChoices: { email: string; label: string }[] = (() => {
+    const out: { email: string; label: string }[] = [];
+    const seen = new Set<string>();
+    const add = (email?: string, label = "") => {
+      const e = (email || "").trim().toLowerCase();
+      if (!e || seen.has(e)) return;
+      seen.add(e);
+      out.push({ email: e, label });
+    };
+    add(selectedVendor?.email, selectedVendor?.displayName || "Vendor");
+    (selectedVendor?.contactPersons || []).forEach((c) =>
+      add(c.email, `${c.firstName || ""} ${c.lastName || ""}`.trim() || "Contact")
+    );
+    return out;
+  })();
+
+  const openSendModal = () => {
+    if (!selectedVendorId) return toast.error("Please select a vendor.");
+    if (items.every((it) => !it.articleId))
+      return toast.error("Please add at least one item.");
+    setPickedEmails(vendorEmailChoices.slice(0, 1).map((c) => c.email));
+    setExtraEmails([]);
+    setExtraEmail("");
+    setShowSendModal(true);
+  };
+
+  const addExtraEmail = () => {
+    const e = extraEmail.trim().toLowerCase();
+    if (!e) return;
+    if (!EMAIL_RE.test(e)) return toast.error("Enter a valid email address.");
+    if (![...pickedEmails, ...extraEmails].includes(e)) setExtraEmails((p) => [...p, e]);
+    setExtraEmail("");
+  };
+
   // ── Filtered vendors for dropdown ──
   const filteredVendors = vendors.filter(
     (v) =>
@@ -1515,7 +1559,10 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
     }, 0);
   };
 
-  const savePO = async (status: POStatus) => {
+  const savePO = async (
+    status: POStatus,
+    email?: { to: string[]; pdf: boolean; csv: boolean }
+  ) => {
     if (!selectedVendorId) return toast.error("Please select a vendor.");
     if (items.every((it) => !it.articleId))
       return toast.error("Please add at least one item.");
@@ -1575,6 +1622,18 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
             ? prev.map((p) => (p.id === editingPOId ? normalized : p))
             : [normalized, ...prev]
         );
+
+        // The PO is already saved at this point; a mail problem must not undo it.
+        if (email && email.to.length) {
+          try {
+            const pdf = email.pdf ? ((await exportPOToPDF(normalized, selectedVendor, { asBlob: true })) as Blob) : undefined;
+            const csv = email.csv ? (exportPOToCsv(normalized, selectedVendor, { asBlob: true }) as Blob) : undefined;
+            await poService.sendEmail(normalized.id, { to: email.to, pdf, csv });
+            toast.success(`PO emailed to ${email.to.join(", ")}`);
+          } catch (mailErr: any) {
+            toast.error(`PO saved, but the email was not sent: ${mailErr?.message || "unknown error"}`);
+          }
+        }
       }
 
       setView("list");
@@ -2867,7 +2926,7 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
           </button>
           <button
             type="button"
-            onClick={() => savePO("SENT")}
+            onClick={openSendModal}
             disabled={loading}
             className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-md shadow-indigo-600/20 disabled:opacity-50"
           >
@@ -2887,6 +2946,97 @@ const itemPickerDropdownRef = useRef<HTMLDivElement>(null);
           </button>
         </div>
       </div>
+
+      {showSendModal &&
+        createPortal(
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <div className="p-5 border-b border-slate-100">
+                <h3 className="text-lg font-black text-slate-900">Send Purchase Order</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  The PO is saved as Sent, and the files you tick are emailed to the people you choose.
+                </p>
+              </div>
+              <div className="p-5 space-y-5">
+                <div>
+                  <p className="text-xs font-bold text-slate-700 mb-2">Send to</p>
+                  {vendorEmailChoices.length === 0 && (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-2">
+                      This vendor has no email saved. Add one below, or save it in the vendor's profile.
+                    </p>
+                  )}
+                  <div className="space-y-1.5">
+                    {vendorEmailChoices.map((c) => (
+                      <label key={c.email} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                        <input type="checkbox" className="w-4 h-4 accent-indigo-600"
+                          checked={pickedEmails.includes(c.email)}
+                          onChange={(e) =>
+                            setPickedEmails((p) => e.target.checked ? [...p, c.email] : p.filter((x) => x !== c.email))
+                          } />
+                        <span><b>{c.label}</b> <span className="text-slate-500">{c.email}</span></span>
+                      </label>
+                    ))}
+                    {extraEmails.map((e) => (
+                      <label key={e} className="flex items-center gap-2 text-sm text-slate-700">
+                        <input type="checkbox" className="w-4 h-4 accent-indigo-600" checked readOnly />
+                        <span className="flex-1">{e}</span>
+                        <button type="button" className="text-xs text-red-500 font-bold"
+                          onClick={() => setExtraEmails((p) => p.filter((x) => x !== e))}>Remove</button>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <input type="email" value={extraEmail} placeholder="Add another email"
+                      onChange={(e) => setExtraEmail(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addExtraEmail(); } }}
+                      className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    <button type="button" onClick={addExtraEmail}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-bold text-slate-700">Add</button>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold text-slate-700 mb-2">Attach</p>
+                  <div className="space-y-1.5">
+                    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                      <input type="checkbox" className="w-4 h-4 accent-indigo-600" checked={attachPdf}
+                        onChange={(e) => setAttachPdf(e.target.checked)} /> PDF
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                      <input type="checkbox" className="w-4 h-4 accent-indigo-600" checked={attachCsv}
+                        onChange={(e) => setAttachCsv(e.target.checked)} /> CSV
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div className="p-5 border-t border-slate-100 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+                <button type="button" onClick={() => setShowSendModal(false)}
+                  className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl">Cancel</button>
+                <button type="button"
+                  onClick={() => {
+                    setShowSendModal(false);
+                    savePO("SENT");
+                  }}
+                  className="px-5 py-2.5 border-2 border-slate-200 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl">
+                  Send without email
+                </button>
+                <button type="button"
+                  disabled={loading}
+                  onClick={() => {
+                    const to = [...pickedEmails, ...extraEmails];
+                    if (!to.length) return toast.error("Tick at least one email, or choose 'Send without email'.");
+                    if (!attachPdf && !attachCsv) return toast.error("Attach a PDF or a CSV.");
+                    setShowSendModal(false);
+                    savePO("SENT", { to, pdf: attachPdf, csv: attachCsv });
+                  }}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md shadow-indigo-600/20 disabled:opacity-50">
+                  Save, Send &amp; Email
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       <QuantityGridModal
   key={`${qtyModalRowId}-${

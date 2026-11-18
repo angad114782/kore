@@ -9,7 +9,7 @@ const activityLogSchema = new mongoose.Schema(
       type: String,
       enum: [
         "LOGIN",
-        "PO_CREATED", "PO_UPDATED", "PO_APPROVED", "PO_REJECTED", "PO_DELETED",
+        "PO_CREATED", "PO_UPDATED", "PO_APPROVED", "PO_REJECTED", "PO_DELETED", "PO_EMAILED",
         "ORDER_CREATED", "ORDER_STATUS_UPDATED",
         "PREORDER_RELEASED",
         "GRN_SUBMITTED",
