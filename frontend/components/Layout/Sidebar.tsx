@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 
 import { type User as Usertype, UserRole } from "../../types";
+import { canOpenTab } from "../../utils/permissions";
 
 type SidebarProps = {
   user: Usertype;
@@ -65,6 +66,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   isCollapsed,
   setIsCollapsed,
 }) => {
+  // Menu items appear only for pages this user has been given access to.
+  const show = (tab: string) => canOpenTab(user, tab);
+  const GROUP_TABS: Record<string, string[]> = {
+    purchases: ["po", "grn", "vendors"],
+    inventory: ["catalogue", "master_inventory"],
+    sales: ["distributors", "orders", "returns"],
+    reports: ["report_stock", "report_dispatch", "report_return"],
+    accounts: ["vendor_invoice", "distributor_invoice", "overdue_payments", "accounts"],
+  };
+
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>({
     purchases: true,
     inventory: true,
@@ -102,6 +113,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     label: string;
     groupKey: string;
   }> = ({ icon, label, groupKey }) => {
+    if (!(GROUP_TABS[groupKey] || []).some(show)) return null;
     const handleGroupClick = () => {
       if (isCollapsed) {
         setOpenGroups((previous) => ({ ...previous, [groupKey]: true }));
@@ -250,7 +262,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               {user.role !== UserRole.DISTRIBUTOR ? (
                 <>
                   {/* Manufacturing — hidden for accountant */}
-                  {user.role !== UserRole.ACCOUNTANT && (
+                  {GROUP_TABS.purchases.some(show) && (
                     <div className="pt-2">
                       <GroupHeader
                         icon={<Factory size={16} />}
@@ -292,7 +304,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   )}
 
                   {/* Inventory — hidden for accountant */}
-                  {user.role !== UserRole.ACCOUNTANT && (
+                  {GROUP_TABS.inventory.some(show) && (
                     <div className="pt-2">
                       <GroupHeader
                         icon={<Boxes size={16} />}
@@ -435,8 +447,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </div>
 
                   {/* Top-level Users tab for Superadmin */}
-                  {(user.role === UserRole.SUPERADMIN ||
-                    user.role === UserRole.ADMIN) && (
+                  {show("users") && (
                     <div className="pt-2">
                       <NavItem
                         icon={<Shield size={20} />}
@@ -449,8 +460,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   )}
 
                   {/* Activity Log — visible to superadmin & admin */}
-                  {(user.role === UserRole.SUPERADMIN ||
-                    user.role === UserRole.ADMIN) && (
+                  {show("activity_log") && (
                     <div className="pt-2">
                       <NavItem
                         icon={<Activity size={20} />}
@@ -503,8 +513,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </div>
 
                   {/* Terms & Conditions — admin editable */}
-                  {(user.role === UserRole.SUPERADMIN ||
-                    user.role === UserRole.ADMIN) && (
+                  {show("terms_page") && (
                     <div className="pt-2">
                       <NavItem
                         icon={<ScrollText size={20} />}
@@ -515,7 +524,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       />
                     </div>
                   )}
-                  {user.role === UserRole.SUPERADMIN && (
+                  {show("notification_settings") && (
                     <div className="pt-2">
                       <NavItem
                         icon={<Bell size={20} />}
@@ -526,7 +535,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       />
                     </div>
                   )}
-                  {user.role === UserRole.SUPERADMIN && (
+                  {show("integrations") && (
                     <div className="pt-2">
                       <NavItem
                         icon={<Plug size={20} />}

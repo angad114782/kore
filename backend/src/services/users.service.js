@@ -2,11 +2,15 @@ const User = require("../models/User");
 const CustomRole = require("../models/CustomRole");
 const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
+const { cleanPermissions, restrictToActor } = require("../config/permissions");
 
-const BASE_ALLOWED_ROLES = ["admin", "manager", "supervisor", "accountant", "staff", "investor", "distributor"];
+// Any spelling of "super admin" (superadmin, super_admin, super-admin, "Super Admin")
+const isSuperadminLike = (role) =>
+  String(role || "").toLowerCase().replace(/[\s_-]+/g, "") === "superadmin";
 
+// Roles are not hardcoded: a role is valid only if it exists in the database.
 const isRoleAllowed = async (role) => {
-  if (BASE_ALLOWED_ROLES.includes(role)) return true;
+  if (isSuperadminLike(role)) return false;
   const custom = await CustomRole.findOne({ name: role }).lean();
   return !!custom;
 };
@@ -24,7 +28,7 @@ const sanitizeUser = (userDoc) => {
   return obj;
 };
 
-exports.createUser = async ({ name, email, password, role, phone }) => {
+exports.createUser = async ({ name, email, password, role, phone, permissions }) => {
   // ✅ Basic validation (service level safety)
   if (!name || String(name).trim().length < 2) {
     const err = new Error("Name is required (min 2 characters)");
@@ -46,9 +50,13 @@ exports.createUser = async ({ name, email, password, role, phone }) => {
   }
 
   // ✅ Role safety: superadmin create disabled, custom roles allowed
-  const cleanRole = role ? String(role).toLowerCase().trim() : "staff";
+  const cleanRole = role ? String(role).toLowerCase().trim() : "";
   if (!(await isRoleAllowed(cleanRole))) {
-    const err = new Error(`Invalid role: "${cleanRole}"`);
+    const err = new Error(
+      isSuperadminLike(cleanRole)
+        ? "Superadmin accounts cannot be created"
+        : `Invalid role: "${cleanRole}"`
+    );
     err.status = 400;
     throw err;
   }
@@ -71,6 +79,8 @@ exports.createUser = async ({ name, email, password, role, phone }) => {
     password: hashed,
     passwordPlain: String(password),
     role: cleanRole,
+    permissions: cleanPermissions(permissions),
+    permissionsVersion: 2,
     phone: phone ? String(phone).trim() : null,
   });
 
@@ -137,7 +147,7 @@ exports.getUserById = async (id) => {
   return user;
 };
 
-exports.updateUser = async (actorUserId, targetUserId, { name, email, role, isActive, phone }) => {
+exports.updateUser = async (actorUserId, targetUserId, { name, email, role, permissions, isActive, phone }) => {
   if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
     console.error(`[UserService] updateUser: Invalid targetUserId: "${targetUserId}"`);
     const err = new Error("Invalid user ID");
@@ -165,9 +175,15 @@ exports.updateUser = async (actorUserId, targetUserId, { name, email, role, isAc
     update.email = cleanEmail;
   }
 
+  const existingTarget = await User.findById(targetUserId).select("role").lean();
+  const targetIsSuperadmin = existingTarget?.role === "superadmin";
+
   if (role) {
     const cleanRole = String(role).toLowerCase().trim();
-    if (!(await isRoleAllowed(cleanRole)) && cleanRole !== "superadmin") {
+    // Superadmin can never be granted — only kept if the target already is one.
+    const keepsSuperadmin = cleanRole === "superadmin" && targetIsSuperadmin;
+    const unchanged = cleanRole === existingTarget?.role; // e.g. a distributor login
+    if (!keepsSuperadmin && !unchanged && !(await isRoleAllowed(cleanRole))) {
       const err = new Error("Invalid role");
       err.status = 400;
       throw err;
@@ -179,12 +195,31 @@ exports.updateUser = async (actorUserId, targetUserId, { name, email, role, isAc
     update.isActive = isActive;
   }
 
+  if (permissions !== undefined) {
+    // Superadmin always has everything; their stored list is irrelevant.
+    if (!targetIsSuperadmin) {
+      const actor = await User.findById(actorUserId).select("role permissions").lean();
+      update.permissions = restrictToActor(actor, permissions);
+      update.permissionsVersion = 2;
+    }
+  }
+
   // Protection checks
   const target = await User.findById(targetUserId);
   if (!target) {
     const err = new Error("User not found");
     err.status = 404;
     throw err;
+  }
+
+  // Only a superadmin may modify a superadmin account.
+  if (target.role === "superadmin") {
+    const actor = await User.findById(actorUserId).select("role").lean();
+    if (actor?.role !== "superadmin") {
+      const err = new Error("Only a superadmin can modify a superadmin account");
+      err.status = 403;
+      throw err;
+    }
   }
 
   // Block changing superadmin role via this endpoint (too risky)

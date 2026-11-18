@@ -1138,11 +1138,10 @@ const ProductMaster: React.FC<ProductMasterProps> = ({
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                        Online MRP <span className="text-rose-500">*</span>
+                        Online MRP
                       </label>
                       <input
                         type="number"
-                        required
                         placeholder="e.g. 1999"
                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all font-bold text-indigo-700"
                         value={formData.onlineMrp || ""}

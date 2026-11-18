@@ -20,11 +20,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({
   const [activeTab, setActiveTab] = useState<"profile" | "password">("profile");
   const { confirm, dialog: sessionDialog } = useConfirm();
 
-  const canManageSessions = [
-    UserRole.ADMIN,
-    UserRole.SUPERADMIN,
-    UserRole.DISTRIBUTOR,
-  ].includes(user.role);
+  // Any signed-in user can sign out of their own other devices.
+  const canManageSessions = true;
 
   const askToLogoutAllDevices = async (changeType: "email" | "password") => {
     if (!canManageSessions) return;

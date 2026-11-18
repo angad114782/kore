@@ -12,7 +12,11 @@ const {
 -------------------------------------------------- */
 exports.createUser = async (req, res, next) => {
   try {
-    const user = await usersService.createUser(req.body);
+    const { restrictToActor } = require("../config/permissions");
+    const user = await usersService.createUser({
+      ...req.body,
+      permissions: restrictToActor(req.user, req.body.permissions),
+    });
 
     const activityLog = require("../services/activityLog.service");
     activityLog.createLog({
@@ -145,16 +149,22 @@ exports.logoutAllSessions = async (req, res, next) => {
 -------------------------------------------------- */
 exports.adminResetPassword = async (req, res, next) => {
   try {
+    // Access is decided by the route's permission check (users.create).
     const actorRole = req.user?.role;
-    if (!["superadmin", "admin"].includes(actorRole)) {
-      return fail(res, { status: 403, message: "Not authorized to reset passwords" });
-    }
 
     const targetUserId = req.params.id;
     const { newPassword } = req.body;
 
     if (!newPassword) {
       return fail(res, { status: 400, message: "newPassword is required" });
+    }
+
+    if (actorRole !== "superadmin") {
+      const User = require("../models/User");
+      const target = await User.findById(targetUserId).select("role").lean();
+      if (target?.role === "superadmin") {
+        return fail(res, { status: 403, message: "Only a superadmin can reset a superadmin password" });
+      }
     }
 
     await usersService.adminResetPassword(targetUserId, newPassword);
@@ -202,6 +212,8 @@ exports.updateUser = async (req, res, next) => {
     });
 
     emitUserUpdated(targetUserId);
+    // Tell the affected user's open session so new access applies without re-login.
+    emitUserProfileUpdated(targetUserId, { permissions: user.permissions || [], role: user.role });
     return ok(res, { message: "User updated successfully", data: user });
   } catch (err) {
     next(err);

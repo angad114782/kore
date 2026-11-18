@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -351,993 +351,197 @@
   }
   .rule-text strong { font-size: 0.9rem; color: #1e293b; }
   .rule-text p { font-size: 0.82rem; color: #64748b; margin-top: 3px; }
-</style>
-</head>
-<body>
 
-<!-- ═══════════════════ PAGE 1 — COVER ═══════════════════ -->
+  .perm-table td:first-child{font-weight:600;color:#334155}
+</style>
+<body>
 <div class="page">
   <div class="cover">
     <div>
-      <div class="cover-logo">
-        <div class="cover-logo-icon">👟</div>
-        <div class="cover-logo-text">Kore <span>Kollective</span></div>
-      </div>
-
-      <div class="cover-title">
-        User Guide &amp;<br/>Role Handbook
-      </div>
-      <div class="cover-subtitle">
-        Yeh guide aapko batati hai ki Kore Kollective portal kya hai, kaun log isko use kar sakte hain, unka kya kaam hai, aur portal ko kadam-ba-kadam kaise use karein.
-      </div>
-
+      <div class="cover-logo"><div class="cover-logo-icon">👟</div><div class="cover-logo-text">Kore <span>Kollective</span></div></div>
+      <div class="cover-title">User Guide</div>
+      <div class="cover-subtitle">An overview of the Kore Kollective portal: who uses it, what each role can do, and how to carry out everyday tasks.</div>
       <div class="cover-roles">
-        <span class="role-pill pill-sa">🛡️ Super Admin</span>
-        <span class="role-pill pill-ad">👑 Admin</span>
-        <span class="role-pill pill-mg">🗂️ Manager</span>
-        <span class="role-pill pill-sv">🔍 Supervisor</span>
-        <span class="role-pill pill-ac">💰 Accountant</span>
-        <span class="role-pill pill-dt">🏪 Distributor</span>
+        <span class="role-pill pill-sa">🛡️ Super Admin</span><span class="role-pill pill-ad">👑 Admin</span><span class="role-pill pill-mg">🗂️ Manager</span><span class="role-pill pill-sv">🔍 Supervisor</span><span class="role-pill pill-ac">💰 Accountant</span><span class="role-pill pill-dt">🏪 Distributor</span>
       </div>
     </div>
-
     <div class="cover-meta">
-      <div class="cover-meta-item">
-        <strong>Version</strong>1.0
-      </div>
-      <div class="cover-meta-item">
-        <strong>Language</strong>Hindi + English
-      </div>
-      <div class="cover-meta-item">
-        <strong>Company</strong>Kore Kollective
-      </div>
-      <div class="cover-meta-item">
-        <strong>Date</strong>June 2026
-      </div>
+      <div class="cover-meta-item"><strong>Version</strong>2.0</div>
+      <div class="cover-meta-item"><strong>Company</strong>Kore Kollective</div>
+      <div class="cover-meta-item"><strong>Date</strong>November 2026</div>
     </div>
   </div>
-
-  <div class="page-footer">
-    <span>Kore Kollective — Confidential</span>
-    <span>Page 1</span>
-  </div>
+  <div class="page-footer"><span>Kore Kollective — Confidential</span><span>Page 1</span></div>
 </div>
-
-<!-- ═══════════════════ PAGE 2 — SYSTEM OVERVIEW ═══════════════════ -->
-<div class="page page-break">
-  <div class="section-header">
-    <h2>🏢 Yeh Portal Kya Hai?</h2>
-    <p>Ek aam bhasha mein samajhna</p>
-  </div>
-  <div class="content">
-
-    <div class="info-box info-blue">
-      <div class="icon">💡</div>
-      <div>
-        <h4>Seedha baat</h4>
-        <p>Kore Kollective ek <strong>jootaa vitran (footwear distribution) ka digital office</strong> hai. Jaise aap ek dukaan mein sab kuch — maal, order, hisaab — register mein likhte hain, waise hi yahan sab kuch computer par hota hai. Koi bhi cheez paper pe nahi — sab online, sab safe.</p>
-      </div>
-    </div>
-
-    <div style="margin-top: 24px; margin-bottom: 8px; font-weight: 800; font-size: 1rem; color: #1e293b;">Kore Kollective ka Kaam ka Chakra</div>
-
-    <!-- Flow -->
-    <div class="flow">
-      <div class="flow-step">
-        <div class="flow-box" style="background:#ede9fe;color:#6d28d9;border:2px solid #c4b5fd;">🏭<br/>Vendor se<br/>Maal Kharidna</div>
-        <div class="flow-desc">PO → GRN</div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-box" style="background:#dbeafe;color:#1d4ed8;border:2px solid #93c5fd;">📦<br/>Stock<br/>Warehouse</div>
-        <div class="flow-desc">Inventory</div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-box" style="background:#f0fdf4;color:#166534;border:2px solid #86efac;">🏪<br/>Distributor<br/>Order Kare</div>
-        <div class="flow-desc">Cart → Checkout</div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-box" style="background:#fff7ed;color:#c2410c;border:2px solid #fdba74;">🚚<br/>Maal<br/>Dispatch</div>
-        <div class="flow-desc">OFD → Received</div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-box" style="background:#fef3c7;color:#92400e;border:2px solid #fcd34d;">💵<br/>Payment<br/>Receive</div>
-        <div class="flow-desc">Hisaab saaf</div>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div style="font-weight: 800; font-size: 1rem; color: #1e293b; margin-bottom: 12px;">Portal ke Main Sections</div>
-
-    <div class="grid-3">
-      <div class="module-card">
-        <div class="mod-icon">🛒</div>
-        <h4>Purchases</h4>
-        <ul>
-          <li>Purchase Order (PO)</li>
-          <li>GRN — Maal aana</li>
-          <li>Vendors manage</li>
-          <li>Bills</li>
-        </ul>
-      </div>
-      <div class="module-card">
-        <div class="mod-icon">📦</div>
-        <h4>Inventory</h4>
-        <ul>
-          <li>Catalogue — product list</li>
-          <li>Master Stock</li>
-          <li>Inward / Outward</li>
-        </ul>
-      </div>
-      <div class="module-card">
-        <div class="mod-icon">📋</div>
-        <h4>Sales</h4>
-        <ul>
-          <li>Orders manage</li>
-          <li>Returns handle</li>
-          <li>Payment status</li>
-        </ul>
-      </div>
-      <div class="module-card">
-        <div class="mod-icon">👥</div>
-        <h4>Partners</h4>
-        <ul>
-          <li>Distributors</li>
-          <li>Credit limits</li>
-          <li>Discount %</li>
-        </ul>
-      </div>
-      <div class="module-card">
-        <div class="mod-icon">📊</div>
-        <h4>Reports</h4>
-        <ul>
-          <li>Stock Report</li>
-          <li>Dispatch Report</li>
-          <li>Return Report</li>
-        </ul>
-      </div>
-      <div class="module-card">
-        <div class="mod-icon">🏪</div>
-        <h4>Distributor</h4>
-        <ul>
-          <li>Shop — products browse</li>
-          <li>Cart + Checkout</li>
-          <li>My Orders</li>
-          <li>Wishlist</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="info-box info-green">
-      <div class="icon">📱</div>
-      <div>
-        <h4>Real-Time Notifications</h4>
-        <p>Jab bhi koi order update hoga, GRN submit hogi, ya return aayega — sabko <strong>turant notification milti hai</strong> portal par hi. Koi refresh karne ki zaroorat nahi.</p>
-      </div>
-    </div>
-
-  </div>
-  <div class="page-footer">
-    <span>Kore Kollective — Confidential</span>
-    <span>Page 2</span>
-  </div>
+<div class="page">
+<div class="section-header"><h2>About the Portal</h2><p>What Kore Kollective does and how the work flows</p></div>
+<div class="content">
+<div class="info-box info-blue"><div class="icon">💡</div><div><h4>Overview</h4><p>Kore Kollective is a footwear distribution portal. It manages purchasing from vendors, warehouse stock, distributor orders, dispatch, returns and payments in one system, so that every team works from the same up-to-date records.</p></div></div>
+<h4 style="margin:22px 0 4px;color:#1e293b">The Business Cycle</h4>
+<div class="flow">
+ <div class="flow-step"><div class="flow-box flow-booked">Purchase Order</div><div class="flow-desc">Goods ordered from vendor</div></div>
+ <div class="flow-step"><div class="flow-box flow-pfd">GRN</div><div class="flow-desc">Goods received and stock updated</div></div>
+ <div class="flow-step"><div class="flow-box flow-rfd">Distributor Order</div><div class="flow-desc">Placed from the catalogue</div></div>
+ <div class="flow-step"><div class="flow-box flow-ofd">Dispatch</div><div class="flow-desc">Shipped and in transit</div></div>
+ <div class="flow-step"><div class="flow-box flow-received">Delivery &amp; Payment</div><div class="flow-desc">Received and settled</div></div>
 </div>
-
-<!-- ═══════════════════ PAGE 3 — LOGIN + ROLE OVERVIEW ═══════════════════ -->
-<div class="page page-break">
-  <div class="section-header">
-    <h2>🔑 Portal Mein Kaise Login Karein?</h2>
-    <p>Har kisi ke liye alag login ID aur password hota hai</p>
-  </div>
-  <div class="content">
-
-    <div class="steps">
-      <div class="step">
-        <div class="step-num" style="background:#4f46e5;">1</div>
-        <div class="step-body">
-          <strong>Browser mein portal ka link kholein</strong>
-          <span>Chrome, Firefox, ya koi bhi browser chalein</span>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-num" style="background:#4f46e5;">2</div>
-        <div class="step-body">
-          <strong>Email ID aur Password dalein</strong>
-          <span>Aapka email aur password admin ne diya hoga</span>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-num" style="background:#4f46e5;">3</div>
-        <div class="step-body">
-          <strong>"Login" button dabayein</strong>
-          <span>Aap seedha apne role ke hisaab se Dashboard par pahunch jaayenge</span>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-num" style="background:#4f46e5;">4</div>
-        <div class="step-body">
-          <strong>Logout karna na bhoolein</strong>
-          <span>Sidebar ke neeche Logout button hai — kaam khatam hone par zaroor click karein</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-    <div style="font-weight: 800; font-size: 1rem; color: #1e293b; margin-bottom: 16px;">6 Tarah ke Users — Ek Nazar Mein</div>
-
-    <div style="display: flex; flex-direction: column; gap: 10px;">
-
-      <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:12px;background:var(--superadmin-light);border:1.5px solid var(--superadmin);">
-        <div style="font-size:1.6rem;">🛡️</div>
-        <div style="flex:1;">
-          <div style="font-weight:800;color:var(--superadmin);font-size:0.95rem;">SUPER ADMIN</div>
-          <div style="font-size:0.82rem;color:#4c1d95;margin-top:2px;">Sabse bada adhikar — sab kuch dekh sakta hai, sab kuch kar sakta hai. Users bana sakta hai, delete kar sakta hai.</div>
-        </div>
-        <div style="background:var(--superadmin);color:white;border-radius:8px;padding:4px 12px;font-size:0.75rem;font-weight:700;white-space:nowrap;">Full Access</div>
-      </div>
-
-      <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:12px;background:var(--admin-light);border:1.5px solid var(--admin);">
-        <div style="font-size:1.6rem;">👑</div>
-        <div style="flex:1;">
-          <div style="font-weight:800;color:var(--admin);font-size:0.95rem;">ADMIN</div>
-          <div style="font-size:0.82rem;color:#1e3a8a;margin-top:2px;">Pura business manage karta hai — catalog, PO, GRN, orders, distributors sab. Sirf users nahi bana sakta.</div>
-        </div>
-        <div style="background:var(--admin);color:white;border-radius:8px;padding:4px 12px;font-size:0.75rem;font-weight:700;white-space:nowrap;">High Access</div>
-      </div>
-
-      <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:12px;background:var(--manager-light);border:1.5px solid var(--manager);">
-        <div style="font-size:1.6rem;">🗂️</div>
-        <div style="flex:1;">
-          <div style="font-weight:800;color:var(--manager);font-size:0.95rem;">MANAGER</div>
-          <div style="font-size:0.82rem;color:#134e4a;margin-top:2px;">Din-bhar ka operations manage karta hai — orders, stock, GRN sab dekhta hai. Users aur Activity Log nahi dekh sakta.</div>
-        </div>
-        <div style="background:var(--manager);color:white;border-radius:8px;padding:4px 12px;font-size:0.75rem;font-weight:700;white-space:nowrap;">Medium-High</div>
-      </div>
-
-      <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:12px;background:var(--supervisor-light);border:1.5px solid var(--supervisor);">
-        <div style="font-size:1.6rem;">🔍</div>
-        <div style="flex:1;">
-          <div style="font-weight:800;color:var(--supervisor);font-size:0.95rem;">SUPERVISOR</div>
-          <div style="font-size:0.82rem;color:#78350f;margin-top:2px;">Field/warehouse level monitoring — stock dekh sakta hai, orders dekh sakta hai. Manager jitna kaam.</div>
-        </div>
-        <div style="background:var(--supervisor);color:white;border-radius:8px;padding:4px 12px;font-size:0.75rem;font-weight:700;white-space:nowrap;">Medium</div>
-      </div>
-
-      <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:12px;background:var(--accountant-light);border:1.5px solid var(--accountant);">
-        <div style="font-size:1.6rem;">💰</div>
-        <div style="flex:1;">
-          <div style="font-weight:800;color:var(--accountant);font-size:0.95rem;">ACCOUNTANT</div>
-          <div style="font-size:0.82rem;color:#7f1d1d;margin-top:2px;">Bills, payments, overdue orders — hisaab-kitaab ka kaam. Same access as Manager/Supervisor.</div>
-        </div>
-        <div style="background:var(--accountant);color:white;border-radius:8px;padding:4px 12px;font-size:0.75rem;font-weight:700;white-space:nowrap;">Medium</div>
-      </div>
-
-      <div style="display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:12px;background:var(--distributor-light);border:1.5px solid var(--distributor);">
-        <div style="font-size:1.6rem;">🏪</div>
-        <div style="flex:1;">
-          <div style="font-weight:800;color:var(--distributor);font-size:0.95rem;">DISTRIBUTOR</div>
-          <div style="font-size:0.82rem;color:#164e63;margin-top:2px;">Sirf apne kaam ka portal — products dekho, cart mein daalo, order karo, apne orders track karo. Koi admin cheez nahi dikhti.</div>
-        </div>
-        <div style="background:var(--distributor);color:white;border-radius:8px;padding:4px 12px;font-size:0.75rem;font-weight:700;white-space:nowrap;">Limited</div>
-      </div>
-
-    </div>
-
-  </div>
-  <div class="page-footer">
-    <span>Kore Kollective — Confidential</span>
-    <span>Page 3</span>
-  </div>
+<h4 style="margin:22px 0 4px;color:#1e293b">Main Sections</h4>
+<div class="grid-3">
+ <div class="module-card"><div class="mod-icon">🛒</div><h4>Purchases</h4><ul><li>Purchase Orders (PO)</li><li>Goods Receipt Note (GRN)</li><li>Vendors</li></ul></div>
+ <div class="module-card"><div class="mod-icon">📦</div><h4>Inventory</h4><ul><li>Catalogue</li><li>Master Stock</li></ul></div>
+ <div class="module-card"><div class="mod-icon">📋</div><h4>Sales</h4><ul><li>Distributors</li><li>Orders</li><li>Returns</li></ul></div>
+ <div class="module-card"><div class="mod-icon">📊</div><h4>Reports</h4><ul><li>Stock Report</li><li>Dispatch Report</li><li>Return Report</li></ul></div>
+ <div class="module-card"><div class="mod-icon">💰</div><h4>Accounts</h4><ul><li>Vendor Bills</li><li>Overdue Payments</li></ul></div>
+ <div class="module-card"><div class="mod-icon">🏪</div><h4>Distributor Portal</h4><ul><li>Catalogue</li><li>My Cart</li><li>Order History</li></ul></div>
 </div>
-
-<!-- ═══════════════════ PAGE 4 — SUPER ADMIN ═══════════════════ -->
-<div class="page page-break">
-  <div class="section-header">
-    <h2 style="color:var(--superadmin);">🛡️ Super Admin — Pura Adhikar</h2>
-    <p>Sabse bada role — koi bhi kaam rok nahi sakta</p>
-  </div>
-  <div class="content">
-
-    <div class="role-card card-sa">
-      <div class="role-card-header">
-        <div class="role-icon">🛡️</div>
-        <div>
-          <h3>Super Admin</h3>
-          <p>Kore Kollective ka maalik / top manager. Sab kuch dekh aur kar sakta hai.</p>
-        </div>
-      </div>
-      <div class="role-card-body">
-
-        <div style="font-weight:700;font-size:0.88rem;color:#1e293b;margin-bottom:10px;">✅ Kya kya kar sakta hai</div>
-        <table class="perm-table">
-          <tr><th>Section</th><th>Kya kar sakta hai</th><th>Access</th></tr>
-          <tr><td>Dashboard</td><td>Saare orders, inventory, India map statistics</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Catalogue</td><td>Products add, edit, delete; variants manage</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Purchase Order (PO)</td><td>PO banana, dekhna, edit karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>GRN</td><td>Maal received entry karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Bills</td><td>Bill approve / reject karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Vendors</td><td>Vendor add, edit, delete</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Master Stock</td><td>Stock inward/outward manually karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Orders</td><td>Saare distributors ke orders — status change karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Returns</td><td>Return process karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Distributors</td><td>Distributor add, edit; credit limit, discount set karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>👑 Users</td><td>Naye users banana, password reset, role change</td><td><span class="badge-yes">✓ Sirf Super Admin</span></td></tr>
-          <tr><td>👑 Activity Log</td><td>Dekho kisne kya kiya — poora audit trail</td><td><span class="badge-yes">✓ Sirf SA + Admin</span></td></tr>
-          <tr><td>Reports</td><td>Stock, Dispatch, Return — teeno reports</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Profile</td><td>Apni profile edit karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-        </table>
-
-        <div class="info-box info-orange" style="margin-top:18px;">
-          <div class="icon">⚠️</div>
-          <div>
-            <h4>Dhyaan rakhein</h4>
-            <p>Super Admin ke paas <strong>Users tab</strong> hoti hai jahan se naye employees ke accounts banaye jaate hain. Yeh kaam sirf Super Admin hi kar sakta hai — koi aur nahi.</p>
-          </div>
-        </div>
-
-        <div style="font-weight:700;font-size:0.88rem;color:#1e293b;margin:18px 0 10px;">📋 Kaam ka Tarika (Step-by-step)</div>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num" style="background:var(--superadmin);">1</div>
-            <div class="step-body"><strong>Login karein → Dashboard dekhein</strong><span>Orders ki sankhya, pending deliveries, overdue payments sab dikhenge</span></div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--superadmin);">2</div>
-            <div class="step-body"><strong>Naya employee aaya? Users → "Add User" karein</strong><span>Naam, email, password, role — sab bharein</span></div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--superadmin);">3</div>
-            <div class="step-body"><strong>Activity Log se kisi bhi kaam ki jaanch karein</strong><span>Kisne order banaya, kisne status badla — sab record mein hai</span></div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--superadmin);">4</div>
-            <div class="step-body"><strong>Distributor ka credit limit ya discount badhana ho toh Distributors tab</strong><span>Select karein distributor → Edit → Credit Limit change karein</span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-  <div class="page-footer">
-    <span>Kore Kollective — Confidential</span>
-    <span>Page 4</span>
-  </div>
+<div class="info-box info-green"><div class="icon">🔔</div><div><h4>Live Notifications</h4><p>The portal updates in real time. When an order is placed, an order status changes, or a GRN is submitted, the relevant users are notified without needing to refresh the page.</p></div></div>
 </div>
-
-<!-- ═══════════════════ PAGE 5 — ADMIN + MANAGER ═══════════════════ -->
-<div class="page page-break">
-  <div class="section-header">
-    <h2>👑 Admin &amp; 🗂️ Manager</h2>
-    <p>Day-to-day business operations chalane wale roles</p>
-  </div>
-  <div class="content">
-
-    <!-- ADMIN -->
-    <div class="role-card card-ad">
-      <div class="role-card-header">
-        <div class="role-icon">👑</div>
-        <div>
-          <h3>Admin</h3>
-          <p>Pura business manage karta hai — Super Admin jaisa, bas Users tab nahi.</p>
-        </div>
-      </div>
-      <div class="role-card-body">
-        <div style="font-weight:700;font-size:0.85rem;color:#1e293b;margin-bottom:8px;">Kya kar sakta hai / nahi kar sakta</div>
-        <table class="perm-table">
-          <tr><th>Feature</th><th>Access</th></tr>
-          <tr><td>Catalogue, PO, GRN, Bills, Vendors, Stock</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Orders process karna (status change)</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Distributors manage + credit/discount</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Activity Log dekhna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Reports (Stock / Dispatch / Return)</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Users banana / delete karna</td><td><span class="badge-no">✗ Nahi — sirf Super Admin</span></td></tr>
-        </table>
-
-        <div style="font-weight:700;font-size:0.85rem;color:#1e293b;margin:14px 0 8px;">🔑 Admin ka Roz ka Kaam</div>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num" style="background:var(--admin);font-size:0.7rem;">PO</div>
-            <div class="step-body"><strong>Vendor se maal order karo</strong><span>PO tab → New PO → Vendor chunein → Items add karein → Save</span></div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--admin);font-size:0.7rem;">GRN</div>
-            <div class="step-body"><strong>Maal aane par GRN banao</strong><span>GRN tab → New GRN → PO no. bharo → Received qty bharo → Submit</span></div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--admin);font-size:0.7rem;">ORD</div>
-            <div class="step-body"><strong>Distributor orders process karo</strong><span>Orders tab → order select → status BOOKED→PFD→RFD→OFD set karo</span></div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--admin);font-size:0.7rem;">Bill</div>
-            <div class="step-body"><strong>Vendor ka bill approve karo</strong><span>Bills tab → pending bills dekhein → Approve ya Reject</span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- MANAGER -->
-    <div class="role-card card-mg">
-      <div class="role-card-header">
-        <div class="role-icon">🗂️</div>
-        <div>
-          <h3>Manager</h3>
-          <p>Roz ka operation manage karta hai — Admin jaisa hi access, sirf Users aur Activity Log nahi.</p>
-        </div>
-      </div>
-      <div class="role-card-body">
-        <table class="perm-table">
-          <tr><th>Feature</th><th>Access</th></tr>
-          <tr><td>Catalogue, PO, GRN, Vendors, Stock, Orders, Returns</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Distributors dekhna + manage</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Reports</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Users banana</td><td><span class="badge-no">✗ Nahi</span></td></tr>
-          <tr><td>Activity Log</td><td><span class="badge-no">✗ Nahi</span></td></tr>
-        </table>
-
-        <div class="info-box info-green" style="margin-top:12px;">
-          <div class="icon">✅</div>
-          <div>
-            <h4>Manager ka Mukhya Kaam</h4>
-            <p>Stock manage karna, orders timely dispatch karana, returns handle karna, aur distributors se coordination banana.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-  <div class="page-footer">
-    <span>Kore Kollective — Confidential</span>
-    <span>Page 5</span>
-  </div>
+  <div class="page-footer"><span>Kore Kollective — Confidential</span><span>Page 2</span></div>
 </div>
-
-<!-- ═══════════════════ PAGE 6 — SUPERVISOR + ACCOUNTANT ═══════════════════ -->
-<div class="page page-break">
-  <div class="section-header">
-    <h2>🔍 Supervisor &amp; 💰 Accountant</h2>
-    <p>Field monitoring aur hisaab-kitaab ke roles</p>
-  </div>
-  <div class="content">
-
-    <!-- SUPERVISOR -->
-    <div class="role-card card-sv">
-      <div class="role-card-header">
-        <div class="role-icon">🔍</div>
-        <div>
-          <h3>Supervisor</h3>
-          <p>Warehouse ya field mein kaam karne wala — stock aur orders par nazar rakhta hai.</p>
-        </div>
-      </div>
-      <div class="role-card-body">
-        <table class="perm-table">
-          <tr><th>Feature</th><th>Access</th></tr>
-          <tr><td>Dashboard — sab orders, stats dekhna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Catalogue dekhna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>GRN enter karna (maal receive)</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Master Stock dekhna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Orders dekhna + status change</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Returns process karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>PO banana / Vendor manage</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Users banana / Activity Log</td><td><span class="badge-no">✗ Nahi</span></td></tr>
-        </table>
-
-        <div style="font-weight:700;font-size:0.85rem;color:#1e293b;margin:14px 0 8px;">📋 Supervisor ka Roz ka Kaam</div>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num" style="background:var(--supervisor);">1</div>
-            <div class="step-body"><strong>Subah Dashboard kholein</strong><span>Pending orders dekho, kya dispatch hona hai aaj</span></div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--supervisor);">2</div>
-            <div class="step-body"><strong>Maal aane par GRN fill karein</strong><span>GRN tab → PO number se match karein → quantity check karein → Submit</span></div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--supervisor);">3</div>
-            <div class="step-body"><strong>Outward maal hone par Order status update karein</strong><span>Orders → OFD mark karein → invoice upload karein</span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ACCOUNTANT -->
-    <div class="role-card card-ac">
-      <div class="role-card-header">
-        <div class="role-icon">💰</div>
-        <div>
-          <h3>Accountant</h3>
-          <p>Paise ka hisaab — bills, payments, overdue orders manage karta hai.</p>
-        </div>
-      </div>
-      <div class="role-card-body">
-        <table class="perm-table">
-          <tr><th>Feature</th><th>Access</th></tr>
-          <tr><td>Dashboard — Overdue Payments section</td><td><span class="badge-yes">✓ Haan (Zaruri)</span></td></tr>
-          <tr><td>Bills tab — Approve / Reject vendor bills</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Orders — Payment received mark karna</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Reports — Stock, Dispatch, Return</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Catalogue, PO, GRN, Vendors</td><td><span class="badge-yes">✓ Haan</span></td></tr>
-          <tr><td>Users, Activity Log banana</td><td><span class="badge-no">✗ Nahi</span></td></tr>
-        </table>
-
-        <div class="info-box info-red" style="margin-top:14px;">
-          <div class="icon">🚨</div>
-          <div>
-            <h4>Overdue Payment Alert</h4>
-            <p>Dashboard par ek <strong>red aur yellow warning section</strong> dikhta hai — jis distributor ne delivery ke baad bhi payment nahi ki woh list mein aa jaate hain.</p>
-            <p style="margin-top:6px;"><strong>60+ din = 🟡 Yellow Warning &nbsp;|&nbsp; 80+ din = 🔴 Red Alert</strong></p>
-            <p style="margin-top:6px;">Payment aane par Orders tab mein jaake "Mark as Paid" karein.</p>
-          </div>
-        </div>
-
-        <div style="font-weight:700;font-size:0.85rem;color:#1e293b;margin:14px 0 8px;">📋 Accountant ka Roz ka Kaam</div>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num" style="background:var(--accountant);">1</div>
-            <div class="step-body"><strong>Dashboard → Overdue Payments check karein</strong><span>Kitne distributors ka payment pending hai, kitne din se</span></div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--accountant);">2</div>
-            <div class="step-body"><strong>Bills tab → Vendor bills approve ya reject karein</strong><span>Har PO ka bill verify karein — amount, GST sab match kare</span></div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--accountant);">3</div>
-            <div class="step-body"><strong>Payment aane par "Mark as Paid" karein</strong><span>Orders → order dhundho → Mark Paid → note likho</span></div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--accountant);">4</div>
-            <div class="step-body"><strong>Reports se mahine ki report nikalein</strong><span>Stock Report / Dispatch Report → date filter → Export</span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-  <div class="page-footer">
-    <span>Kore Kollective — Confidential</span>
-    <span>Page 6</span>
-  </div>
+<div class="page">
+<div class="section-header"><h2>Getting Started</h2><p>Signing in and understanding the six roles</p></div>
+<div class="content">
+<div class="steps"><div class="step"><div class="step-num" style="background:#4f46e5">1</div><div class="step-body"><strong>Open the portal</strong><span>Use the portal link in any web browser.</span></div></div>
+<div class="step"><div class="step-num" style="background:#4f46e5">2</div><div class="step-body"><strong>Enter your credentials</strong><span>Use the email address and password provided to you by the Super Admin.</span></div></div>
+<div class="step"><div class="step-num" style="background:#4f46e5">3</div><div class="step-body"><strong>Select Login</strong><span>You will be taken to the dashboard for your role.</span></div></div>
+<div class="step"><div class="step-num" style="background:#4f46e5">4</div><div class="step-body"><strong>Log out when finished</strong><span>Use the Logout button at the bottom of the left menu.</span></div></div>
 </div>
-
-<!-- ═══════════════════ PAGE 7 — DISTRIBUTOR ═══════════════════ -->
-<div class="page page-break">
-  <div class="section-header">
-    <h2 style="color:var(--distributor);">🏪 Distributor — Shopping aur Orders</h2>
-    <p>Jo maal kharidta hai — uska alag aur simple portal</p>
-  </div>
-  <div class="content">
-
-    <div class="role-card card-dt">
-      <div class="role-card-header">
-        <div class="role-icon">🏪</div>
-        <div>
-          <h3>Distributor</h3>
-          <p>Jootai kharidne wala retailer — apna dedicated shopping portal milta hai. Koi admin cheez nahi dikhti.</p>
-        </div>
-      </div>
-      <div class="role-card-body">
-
-        <div class="grid-2" style="margin-bottom:16px;">
-          <div class="info-box info-blue" style="margin:0;">
-            <div>
-              <h4>✅ Distributor KYA dekh sakta hai</h4>
-              <p>Dashboard, Wishlist, Catalogue (Shop), Cart, My Orders, Profile</p>
-            </div>
-          </div>
-          <div class="info-box info-red" style="margin:0;">
-            <div>
-              <h4>❌ Distributor KYA nahi dekh sakta</h4>
-              <p>PO, GRN, Bills, Vendors, Users, Reports, Other distributors ke orders</p>
-            </div>
-          </div>
-        </div>
-
-        <div style="font-weight:700;font-size:0.88rem;color:#1e293b;margin-bottom:12px;">🛍️ Kadam-ba-Kadam — Order Kaise Karein</div>
-
-        <div class="steps">
-          <div class="step">
-            <div class="step-num" style="background:var(--distributor);">1</div>
-            <div class="step-body">
-              <strong>Login karein → Dashboard dekhein</strong>
-              <span>Aapke apne orders, credit balance, aur cart ki jaankari milegi</span>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--distributor);">2</div>
-            <div class="step-body">
-              <strong>Catalogue (Shop) tab mein products dekhein</strong>
-              <span>Sirf AVAILABLE products dikhenge — jo abhi order ho sakte hain</span>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--distributor);">3</div>
-            <div class="step-body">
-              <strong>Product chunein → Size aur quantity dalein</strong>
-              <span>⚠️ Yaad rakhein: <strong>1 carton = 24 pairs</strong>. Sirf 24 ke multiple mein order hoga (24, 48, 72...)</span>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--distributor);">4</div>
-            <div class="step-body">
-              <strong>"Add to Cart" dabayein</strong>
-              <span>Product cart mein chala jayega — ek se zyada products add kar sakte hain</span>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--distributor);">5</div>
-            <div class="step-body">
-              <strong>Cart tab → "Checkout" button dabayein</strong>
-              <span>System aapka credit limit check karega — agar limit mein hai to order hoga</span>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num" style="background:var(--distributor);">6</div>
-            <div class="step-body">
-              <strong>My Orders mein order track karein</strong>
-              <span>BOOKED → PFD → RFD → OFD → RECEIVED — har step par notification milegi</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="divider"></div>
-
-        <div style="font-weight:700;font-size:0.88rem;color:#1e293b;margin-bottom:10px;">⭐ Wishlist Kya Hai?</div>
-        <div class="info-box info-blue" style="margin:0 0 16px 0;">
-          <div class="icon">⭐</div>
-          <div>
-            <h4>Future ke products — Wishlist mein save karein</h4>
-            <p>Kuch products abhi available nahi hote — unhe <strong>WISHLIST stage</strong> mein rakha jaata hai. Inhe aap Wishlist tab mein dekh sakte hain aur cart mein daal sakte hain, lekin order sirf AVAILABLE products ka hi BOOKED hoga.</p>
-          </div>
-        </div>
-
-        <div style="font-weight:700;font-size:0.88rem;color:#1e293b;margin-bottom:10px;">💳 Credit Limit Kya Hoti Hai?</div>
-        <div class="rule-card">
-          <div class="rule-num">💳</div>
-          <div class="rule-text">
-            <strong>Credit Limit = Kitne rupaye tak order kar sakte hain</strong>
-            <p>Admin ne aapke liye ek limit set ki hai. Agar order ka total us limit se zyada hua — order nahi hoga aur message aayega. Pehle payment karo — limit phir se available hogi.</p>
-          </div>
-        </div>
-
-        <div style="font-weight:700;font-size:0.88rem;color:#1e293b;margin:14px 0 10px;">📦 Order Status — Kya Matlab?</div>
-
-        <div class="flow" style="gap:4px;">
-          <div class="flow-step">
-            <div class="flow-box flow-booked">📝<br/>BOOKED</div>
-            <div class="flow-desc">Order liya gaya, process hoga</div>
-          </div>
-          <div class="flow-step">
-            <div class="flow-box flow-pfd">⚙️<br/>PFD</div>
-            <div class="flow-desc">Taiyaari ho rahi hai</div>
-          </div>
-          <div class="flow-step">
-            <div class="flow-box flow-rfd">📫<br/>RFD</div>
-            <div class="flow-desc">Maal ready hai</div>
-          </div>
-          <div class="flow-step">
-            <div class="flow-box flow-ofd">🚚<br/>OFD</div>
-            <div class="flow-desc">Maal raste mein hai</div>
-          </div>
-          <div class="flow-step">
-            <div class="flow-box flow-received">✅<br/>RECEIVED</div>
-            <div class="flow-desc">Maal mil gaya!</div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-
-  </div>
-  <div class="page-footer">
-    <span>Kore Kollective — Confidential</span>
-    <span>Page 7</span>
-  </div>
+<h4 style="margin:22px 0 4px;color:#1e293b">Roles at a Glance</h4><div class="grid-2"><div class="module-card"><div class="mod-icon">🛡️</div><h4>Super Admin <span class="highlight-blue">Full access</span></h4><ul style="list-style:none;padding:0"><li>Full control of the portal, including user accounts, notifications and integrations.</li></ul></div><div class="module-card"><div class="mod-icon">👑</div><h4>Admin <span class="highlight-blue">High access</span></h4><ul style="list-style:none;padding:0"><li>Runs the business: purchasing, orders, bills, payments and distributors. Cannot create user accounts.</li></ul></div><div class="module-card"><div class="mod-icon">🗂️</div><h4>Manager <span class="highlight-blue">Operations</span></h4><ul style="list-style:none;padding:0"><li>Works across purchasing, stock, sales and distributors. Views purchase orders, orders and returns; cannot approve or change them.</li></ul></div><div class="module-card"><div class="mod-icon">🔍</div><h4>Supervisor <span class="highlight-blue">Operations</span></h4><ul style="list-style:none;padding:0"><li>Works at warehouse level: receives goods through GRN and monitors stock and orders.</li></ul></div><div class="module-card"><div class="mod-icon">💰</div><h4>Accountant <span class="highlight-blue">Finance</span></h4><ul style="list-style:none;padding:0"><li>Works in Accounts: vendor bills and overdue payments. Also views orders and reports.</li></ul></div><div class="module-card"><div class="mod-icon">🏪</div><h4>Distributor <span class="highlight-blue">Customer</span></h4><ul style="list-style:none;padding:0"><li>Browses the catalogue, places orders and tracks them. Sees only their own data.</li></ul></div></div>
 </div>
-
-<!-- ═══════════════════ PAGE 8 — FULL PERMISSION MATRIX ═══════════════════ -->
-<div class="page page-break">
-  <div class="section-header">
-    <h2>📊 Poora Permission Matrix — Ek Nazan Mein</h2>
-    <p>Kisका kya access hai — ek table mein sab kuch</p>
-  </div>
-  <div class="content">
-
-    <!-- Color legend -->
-    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
-      <span style="font-size:0.8rem;font-weight:700;color:#374151;">Color Legend:</span>
-      <span style="display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;">
-        <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--superadmin)"></span>Super Admin
-      </span>
-      <span style="display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;">
-        <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--admin)"></span>Admin
-      </span>
-      <span style="display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;">
-        <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--manager)"></span>Manager
-      </span>
-      <span style="display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;">
-        <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--supervisor)"></span>Supervisor
-      </span>
-      <span style="display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;">
-        <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--accountant)"></span>Accountant
-      </span>
-      <span style="display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;">
-        <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:var(--distributor)"></span>Distributor
-      </span>
-    </div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
-      <span style="font-size:0.78rem;font-weight:600;">🟢 = Full Access &nbsp;&nbsp; 🟡 = Partial / Read Only &nbsp;&nbsp; ⚪ = No Access</span>
-    </div>
-
-    <div class="matrix-wrap">
-      <table class="matrix-table">
-        <thead>
-          <tr>
-            <th style="text-align:left;min-width:160px;">Feature / Section</th>
-            <th class="th-sa">🛡️<br/>Super<br/>Admin</th>
-            <th class="th-ad">👑<br/>Admin</th>
-            <th class="th-mg">🗂️<br/>Manager</th>
-            <th class="th-sv">🔍<br/>Super<br/>visor</th>
-            <th class="th-ac">💰<br/>Accoun<br/>tant</th>
-            <th class="th-dt">🏪<br/>Distri<br/>butor</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td class="feature-col">📊 Dashboard (Admin)</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr><td class="feature-col">🏪 Dashboard (Distributor)</td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-yes"></span></td></tr>
-          <tr style="background:#fafafa;"><td colspan="7" style="padding:6px 12px;font-size:0.72rem;font-weight:700;color:#94a3b8;letter-spacing:1px;">PURCHASES</td></tr>
-          <tr><td class="feature-col">📄 Purchase Order (PO)</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr><td class="feature-col">🚚 GRN (Maal receive)</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr><td class="feature-col">🏭 Vendors Manage</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr><td class="feature-col">🧾 Bills Approve/Reject</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr style="background:#fafafa;"><td colspan="7" style="padding:6px 12px;font-size:0.72rem;font-weight:700;color:#94a3b8;letter-spacing:1px;">INVENTORY</td></tr>
-          <tr><td class="feature-col">📚 Catalogue (View+Edit)</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr><td class="feature-col">🗄️ Master Stock Manage</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr style="background:#fafafa;"><td colspan="7" style="padding:6px 12px;font-size:0.72rem;font-weight:700;color:#94a3b8;letter-spacing:1px;">SALES</td></tr>
-          <tr><td class="feature-col">📋 All Orders (Admin view)</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr><td class="feature-col">🔄 Order Status Change</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr><td class="feature-col">↩️ Returns Process</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr><td class="feature-col">💵 Payment Mark as Paid</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr style="background:#fafafa;"><td colspan="7" style="padding:6px 12px;font-size:0.72rem;font-weight:700;color:#94a3b8;letter-spacing:1px;">PARTNERS &amp; ADMIN</td></tr>
-          <tr><td class="feature-col">👥 Distributors Manage</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr><td class="feature-col">🔑 Users Banana / Delete</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr><td class="feature-col">🕵️ Activity Log Dekhna</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr style="background:#fafafa;"><td colspan="7" style="padding:6px 12px;font-size:0.72rem;font-weight:700;color:#94a3b8;letter-spacing:1px;">REPORTS</td></tr>
-          <tr><td class="feature-col">📈 Stock Report</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr><td class="feature-col">🚛 Dispatch Report</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr><td class="feature-col">↩️ Return Report</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
-          <tr style="background:#fafafa;"><td colspan="7" style="padding:6px 12px;font-size:0.72rem;font-weight:700;color:#94a3b8;letter-spacing:1px;">DISTRIBUTOR ONLY</td></tr>
-          <tr><td class="feature-col">🛍️ Shop (Browse Products)</td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-yes"></span></td></tr>
-          <tr><td class="feature-col">🛒 Cart + Checkout</td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-yes"></span></td></tr>
-          <tr><td class="feature-col">⭐ Wishlist</td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-yes"></span></td></tr>
-          <tr><td class="feature-col">📦 My Orders Track</td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-yes"></span></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-  <div class="page-footer">
-    <span>Kore Kollective — Confidential</span>
-    <span>Page 8</span>
-  </div>
+  <div class="page-footer"><span>Kore Kollective — Confidential</span><span>Page 3</span></div>
 </div>
-
-<!-- ═══════════════════ PAGE 9 — BUSINESS RULES + TIPS ═══════════════════ -->
-<div class="page page-break">
-  <div class="section-header">
-    <h2>📌 Zaroori Niyam aur Tips</h2>
-    <p>Yeh niyam portal mein automatically laagu hote hain</p>
-  </div>
-  <div class="content">
-
-    <div class="rule-card">
-      <div class="rule-num">1</div>
-      <div class="rule-text">
-        <strong>1 Carton = 24 Pairs — Sirf 24 ke Multiple mein Order Hoga</strong>
-        <p>Agar aap 23 pairs cart mein daalte hain — order nahi hoga. 24, 48, 72, 96... — aise hi hona chahiye. Yeh rule automatic check hota hai.</p>
-      </div>
-    </div>
-
-    <div class="rule-card">
-      <div class="rule-num">2</div>
-      <div class="rule-text">
-        <strong>Credit Limit — Order karne se pehle balance check hota hai</strong>
-        <p>Har distributor ka ek maximum credit limit hoti hai. Agar aapka order total us limit se zyada hua — system automatic block kar deta hai. Payment karo, limit phir free hogi.</p>
-      </div>
-    </div>
-
-    <div class="rule-card">
-      <div class="rule-num">3</div>
-      <div class="rule-text">
-        <strong>AVAILABLE vs WISHLIST — Product ka Stage</strong>
-        <p><strong>AVAILABLE:</strong> Product abhi order kar sakte hain (Shop mein dikhta hai) &nbsp;|&nbsp; <strong>WISHLIST:</strong> Abhi nahi aaya, baad mein aayega (Wishlist mein save karo). Expectation date dikhti hai.</p>
-      </div>
-    </div>
-
-    <div class="rule-card">
-      <div class="rule-num">4</div>
-      <div class="rule-text">
-        <strong>Discount Percentage — Distributor-wise Alag</strong>
-        <p>Har distributor ka alag discount % hota hai jo admin ne set kiya hai. Checkout par automatically apply hota hai — manually calculate karne ki zaroorat nahi.</p>
-      </div>
-    </div>
-
-    <div class="rule-card">
-      <div class="rule-num">5</div>
-      <div class="rule-text">
-        <strong>GRN se Stock Update Hoti Hai</strong>
-        <p>Jab tak GRN submit nahi hoga — stock portal mein nahi badhega. Maal aa gaya to pehle GRN banaao, tabhi stock catalog mein dikhega.</p>
-      </div>
-    </div>
-
-    <div class="rule-card">
-      <div class="rule-num">6</div>
-      <div class="rule-text">
-        <strong>Overdue Payment Alert — 60 aur 80 Din</strong>
-        <p>Delivery ke baad bhi payment nahi ayi to:  <strong style="color:#b45309;">60+ din = Yellow warning</strong> &nbsp;|&nbsp; <strong style="color:#991b1b;">80+ din = Red alert</strong> — Dashboard par dono admins ko dikhega.</p>
-      </div>
-    </div>
-
-    <div class="rule-card">
-      <div class="rule-num">7</div>
-      <div class="rule-text">
-        <strong>Real-Time Notifications — Refresh ki Zaroorat Nahi</strong>
-        <p>Kisi ne bhi order kiya, status change kiya, GRN submit ki — sab logon ko turant notification milti hai portal par. Browser open rahe, sab auto update hota hai.</p>
-      </div>
-    </div>
-
-    <div class="rule-card">
-      <div class="rule-num">8</div>
-      <div class="rule-text">
-        <strong>Partial Fulfillment — Order ka Kuch Hissa Pehle Milega</strong>
-        <p>Agar stock ka kuch hissa abhi available hai — to pehla batch dispatch hoga (PARTIAL status). Baaki baad mein aayega. Har batch ki alag history hoti hai.</p>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div style="font-weight:800;font-size:1rem;color:#1e293b;margin-bottom:12px;">🆘 Problem Aaye To Kya Karein?</div>
-
-    <div class="grid-2">
-      <div class="info-box info-orange" style="margin:0;">
-        <div class="icon">🔐</div>
-        <div>
-          <h4>Password bhool gaye?</h4>
-          <p>Super Admin se contact karein — woh password reset kar denge Users tab se.</p>
-        </div>
-      </div>
-      <div class="info-box info-blue" style="margin:0;">
-        <div class="icon">💳</div>
-        <div>
-          <h4>Credit limit khatam ho gayi?</h4>
-          <p>Admin se credit limit badhwane ke liye ya pehle outstanding payment karo.</p>
-        </div>
-      </div>
-      <div class="info-box info-green" style="margin:0;">
-        <div class="icon">📦</div>
-        <div>
-          <h4>Order status nahi badal raha?</h4>
-          <p>Admin / Supervisor se contact karein — woh manually status update karenge.</p>
-        </div>
-      </div>
-      <div class="info-box info-red" style="margin:0;">
-        <div class="icon">❌</div>
-        <div>
-          <h4>Cart mein add nahi ho raha?</h4>
-          <p>Check karein: quantity 24 ka multiple hai? Product AVAILABLE stage mein hai? Credit limit baaki hai?</p>
-        </div>
-      </div>
-    </div>
-
-  </div>
-  <div class="page-footer">
-    <span>Kore Kollective — Confidential</span>
-    <span>Page 9</span>
-  </div>
+<div class="page">
+<div class="section-header"><h2>Super Admin and Admin</h2><p>Roles with full operational authority</p></div>
+<div class="content">
+<div class="role-card card-sa"><div class="role-card-header"><div class="role-icon">🛡️</div><div><h3>Super Admin</h3><p>Full access to every part of the portal</p></div></div><div class="role-card-body"><table class="perm-table"><thead><tr><th>Area</th><th>Access</th></tr></thead><tbody>
+<tr><td>Dashboard, Catalogue, Master Stock</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Purchase Orders — create, edit, delete</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>GRN and Vendors</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Vendor Bills — approve or reject</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Orders — confirm, dispatch and update status</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Returns — process</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Payments — mark an order as paid</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Distributors — add, edit, set credit limit, discount and payment terms</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Reports — Stock, Dispatch, Return</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Activity Log and Terms &amp; Policies</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Users — create accounts, reset passwords, change roles</td><td><span class="badge-partial">Super Admin only</span></td></tr>
+<tr><td>Notifications and Integrations settings</td><td><span class="badge-partial">Super Admin only</span></td></tr>
+</tbody></table>
+</div></div>
+<div class="role-card card-ad"><div class="role-card-header"><div class="role-icon">👑</div><div><h3>Admin</h3><p>Full operational access, except the Super Admin settings above</p></div></div><div class="role-card-body"><p style="font-size:.85rem;color:#475569">Admin has the same access as the Super Admin, except for <strong>Users</strong>, <strong>Notifications</strong> and <strong>Integrations</strong>.</p></div></div>
+<h4 style="margin:6px 0 4px;color:#1e293b">Typical Tasks</h4><div class="steps"><div class="step"><div class="step-num" style="background:#1d4ed8">1</div><div class="step-body"><strong>Order goods from a vendor</strong><span>Purchases → PO → create a new PO, select the vendor, add items and save as Draft or send it.</span></div></div>
+<div class="step"><div class="step-num" style="background:#1d4ed8">2</div><div class="step-body"><strong>Receive goods</strong><span>Purchases → GRN → select the PO and scan each carton. Stock is updated when the GRN is submitted.</span></div></div>
+<div class="step"><div class="step-num" style="background:#1d4ed8">3</div><div class="step-body"><strong>Process a distributor order</strong><span>Sales → Orders → open the order, confirm it, then dispatch it with the carton scan and transport details.</span></div></div>
+<div class="step"><div class="step-num" style="background:#1d4ed8">4</div><div class="step-body"><strong>Approve a vendor bill</strong><span>Accounts → Bills → open the bill and approve or reject it.</span></div></div>
+<div class="step"><div class="step-num" style="background:#1d4ed8">5</div><div class="step-body"><strong>Record a payment</strong><span>Accounts → Overdue Payments, or Sales → Orders → mark the order as paid.</span></div></div>
+<div class="step"><div class="step-num" style="background:#1d4ed8">6</div><div class="step-body"><strong>Create a user account</strong><span>Users → add the name, email, password and role.</span></div></div>
 </div>
-
-<!-- ═══════════════════ PAGE 10 — QUICK REFERENCE CARD ═══════════════════ -->
-<div class="page page-break">
-  <div class="section-header">
-    <h2>⚡ Quick Reference — Jaldi Dhundho</h2>
-    <p>Roz kaam aane wali cheezein ek jagah</p>
-  </div>
-  <div class="content">
-
-    <div class="grid-2">
-
-      <div>
-        <div style="font-weight:800;font-size:0.9rem;color:var(--superadmin);margin-bottom:8px;">🛡️ Super Admin — Khaas Kaam</div>
-        <div style="background:var(--superadmin-light);border-radius:10px;padding:14px;border:1px solid #c4b5fd;">
-          <ul style="padding-left:16px;font-size:0.82rem;color:#4c1d95;">
-            <li style="margin-bottom:5px;">New employee account banana → <strong>Users tab</strong></li>
-            <li style="margin-bottom:5px;">Kisi ka role change karna → <strong>Users tab → Edit</strong></li>
-            <li style="margin-bottom:5px;">Audit trail dekhna → <strong>Activity Log</strong></li>
-            <li style="margin-bottom:5px;">Distributor credit limit set karna → <strong>Distributors → Edit</strong></li>
-          </ul>
-        </div>
-      </div>
-
-      <div>
-        <div style="font-weight:800;font-size:0.9rem;color:var(--admin);margin-bottom:8px;">👑 Admin — Roz ka Kaam</div>
-        <div style="background:var(--admin-light);border-radius:10px;padding:14px;border:1px solid #93c5fd;">
-          <ul style="padding-left:16px;font-size:0.82rem;color:#1e3a8a;">
-            <li style="margin-bottom:5px;">Naya product add karo → <strong>Catalogue</strong></li>
-            <li style="margin-bottom:5px;">Vendor se order karo → <strong>PO tab</strong></li>
-            <li style="margin-bottom:5px;">Maal receive karo → <strong>GRN tab</strong></li>
-            <li style="margin-bottom:5px;">Order dispatch karo → <strong>Orders → OFD</strong></li>
-          </ul>
-        </div>
-      </div>
-
-      <div>
-        <div style="font-weight:800;font-size:0.9rem;color:var(--accountant);margin-bottom:8px;">💰 Accountant — Hisaab Kaam</div>
-        <div style="background:var(--accountant-light);border-radius:10px;padding:14px;border:1px solid #fca5a5;">
-          <ul style="padding-left:16px;font-size:0.82rem;color:#7f1d1d;">
-            <li style="margin-bottom:5px;">Overdue check karo → <strong>Dashboard bottom</strong></li>
-            <li style="margin-bottom:5px;">Bill approve karo → <strong>Bills tab</strong></li>
-            <li style="margin-bottom:5px;">Payment receive karo → <strong>Orders → Mark Paid</strong></li>
-            <li style="margin-bottom:5px;">Month report → <strong>Reports tab</strong></li>
-          </ul>
-        </div>
-      </div>
-
-      <div>
-        <div style="font-weight:800;font-size:0.9rem;color:var(--distributor);margin-bottom:8px;">🏪 Distributor — Order Karo</div>
-        <div style="background:var(--distributor-light);border-radius:10px;padding:14px;border:1px solid #67e8f9;">
-          <ul style="padding-left:16px;font-size:0.82rem;color:#164e63;">
-            <li style="margin-bottom:5px;">Products dekho → <strong>Catalogue / Shop tab</strong></li>
-            <li style="margin-bottom:5px;">Cart mein daalo → <strong>Add to Cart (24 pairs min)</strong></li>
-            <li style="margin-bottom:5px;">Order karo → <strong>Cart → Checkout</strong></li>
-            <li style="margin-bottom:5px;">Order track karo → <strong>My Orders</strong></li>
-          </ul>
-        </div>
-      </div>
-
-    </div>
-
-    <div class="divider"></div>
-
-    <div style="font-weight:800;font-size:0.9rem;color:#1e293b;margin-bottom:12px;">🔢 Important Numbers Yaad Rakhein</div>
-
-    <div style="display:flex;gap:14px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:140px;background:#f0fdf4;border:2px solid #86efac;border-radius:12px;padding:16px;text-align:center;">
-        <div style="font-size:2rem;font-weight:900;color:#166534;">24</div>
-        <div style="font-size:0.78rem;color:#166534;font-weight:600;">Pairs per Carton<br/>(minimum order unit)</div>
-      </div>
-      <div style="flex:1;min-width:140px;background:#fef3c7;border:2px solid #fcd34d;border-radius:12px;padding:16px;text-align:center;">
-        <div style="font-size:2rem;font-weight:900;color:#92400e;">60</div>
-        <div style="font-size:0.78rem;color:#92400e;font-weight:600;">Days = Yellow Warning<br/>(Overdue Payment)</div>
-      </div>
-      <div style="flex:1;min-width:140px;background:#fee2e2;border:2px solid #fca5a5;border-radius:12px;padding:16px;text-align:center;">
-        <div style="font-size:2rem;font-weight:900;color:#991b1b;">80</div>
-        <div style="font-size:0.78rem;color:#991b1b;font-weight:600;">Days = Red Alert<br/>(Critical Overdue)</div>
-      </div>
-      <div style="flex:1;min-width:140px;background:#ede9fe;border:2px solid #c4b5fd;border-radius:12px;padding:16px;text-align:center;">
-        <div style="font-size:2rem;font-weight:900;color:#6d28d9;">5</div>
-        <div style="font-size:0.78rem;color:#6d28d9;font-weight:600;">Order Status Steps<br/>BOOKED→RECEIVED</div>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <!-- Footer note -->
-    <div style="text-align:center;padding:16px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;">
-      <div style="font-size:1.1rem;font-weight:800;color:#1e293b;margin-bottom:4px;">👟 Kore Kollective</div>
-      <div style="font-size:0.8rem;color:#64748b;">Footwear Distribution Management Portal</div>
-      <div style="font-size:0.75rem;color:#94a3b8;margin-top:8px;">Yeh document confidential hai. Sirf authorized users ke liye.</div>
-    </div>
-
-  </div>
-  <div class="page-footer">
-    <span>Kore Kollective — Confidential</span>
-    <span>Page 10</span>
-  </div>
 </div>
-
-<!-- ─── PRINT BUTTON ─── -->
-<button class="print-btn no-print" onclick="window.print()">
-  🖨️ PDF Save / Print Karein
-</button>
-
+  <div class="page-footer"><span>Kore Kollective — Confidential</span><span>Page 4</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Manager, Supervisor and Accountant</h2><p>Roles that support daily operations and finance</p></div>
+<div class="content">
+<div class="role-card card-mg"><div class="role-card-header"><div class="role-icon">🗂️</div><div><h3>Manager</h3><p>Operations oversight</p></div></div><div class="role-card-body"><table class="perm-table"><thead><tr><th>Area</th><th>Access</th></tr></thead><tbody>
+<tr><td>Dashboard</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Purchase Orders, Orders, Returns</td><td><span class="badge-partial">View only</span></td></tr>
+<tr><td>GRN, Vendors, Catalogue, Master Stock</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Distributors</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Vendor Bills</td><td><span class="badge-partial">View only</span></td></tr>
+<tr><td>Reports</td><td><span class="badge-no">No</span></td></tr>
+<tr><td>Users and Activity Log</td><td><span class="badge-no">No</span></td></tr>
+</tbody></table>
+</div></div>
+<div class="role-card card-sv"><div class="role-card-header"><div class="role-icon">🔍</div><div><h3>Supervisor</h3><p>Warehouse and stock monitoring</p></div></div><div class="role-card-body"><table class="perm-table"><thead><tr><th>Area</th><th>Access</th></tr></thead><tbody>
+<tr><td>Dashboard</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>GRN — receive goods</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Catalogue and Master Stock</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Purchase Orders, Orders, Returns</td><td><span class="badge-partial">View only</span></td></tr>
+<tr><td>Vendors and Distributors</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Reports</td><td><span class="badge-no">No</span></td></tr>
+<tr><td>Users and Activity Log</td><td><span class="badge-no">No</span></td></tr>
+</tbody></table>
+</div></div>
+<div class="role-card card-ac"><div class="role-card-header"><div class="role-icon">💰</div><div><h3>Accountant</h3><p>Finance and payments</p></div></div><div class="role-card-body"><table class="perm-table"><thead><tr><th>Area</th><th>Access</th></tr></thead><tbody>
+<tr><td>Dashboard</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Accounts — Bills and Overdue Payments</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Vendor Bills — approve or reject</td><td><span class="badge-no">No</span></td></tr>
+<tr><td>Orders and Distributors</td><td><span class="badge-partial">View only</span></td></tr>
+<tr><td>Reports — Stock, Dispatch, Return</td><td><span class="badge-yes">Yes</span></td></tr>
+<tr><td>Purchases and Inventory menus</td><td><span class="badge-no">No</span></td></tr>
+<tr><td>Users and Activity Log</td><td><span class="badge-no">No</span></td></tr>
+</tbody></table>
+</div></div>
+<div class="info-box info-orange"><div class="icon">⏰</div><div><h4>Overdue Payments</h4><p>Each distributor has agreed payment terms (30 days by default). An order becomes overdue when payment has not been received within those terms after delivery. Overdue orders appear in yellow; those more than 30 days past due appear in red.</p></div></div>
+</div>
+  <div class="page-footer"><span>Kore Kollective — Confidential</span><span>Page 5</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Distributor</h2><p>Placing and tracking orders</p></div>
+<div class="content">
+<div class="info-box info-blue"><div class="icon">🏪</div><div><h4>Your Portal</h4><p>Distributors see a dedicated portal with the Dashboard, Catalogue, My Cart, Order History and Profile. Purchasing, vendor and accounting areas are not shown.</p></div></div>
+<h4 style="margin:18px 0 4px;color:#1e293b">How to Place an Order</h4><div class="steps"><div class="step"><div class="step-num" style="background:#0e7490">1</div><div class="step-body"><strong>Open the Catalogue</strong><span>Browse the products currently available.</span></div></div>
+<div class="step"><div class="step-num" style="background:#0e7490">2</div><div class="step-body"><strong>Select a product and enter the quantity</strong><span>Orders are placed in cartons. One carton contains 24 pairs in a fixed size assortment.</span></div></div>
+<div class="step"><div class="step-num" style="background:#0e7490">3</div><div class="step-body"><strong>Select Add to Cart</strong><span>You can add several products to the same order.</span></div></div>
+<div class="step"><div class="step-num" style="background:#0e7490">4</div><div class="step-body"><strong>Open My Cart and review</strong><span>Check quantities, choose the applicable GST rate and review the total. Your agreed discount is applied automatically.</span></div></div>
+<div class="step"><div class="step-num" style="background:#0e7490">5</div><div class="step-body"><strong>Place the order</strong><span>Orders are checked against your available credit before they are accepted.</span></div></div>
+<div class="step"><div class="step-num" style="background:#0e7490">6</div><div class="step-body"><strong>Track the order</strong><span>Open Order History to follow progress and download documents.</span></div></div>
+</div>
+<h4 style="margin:18px 0 4px;color:#1e293b">Order Status</h4><div class="flow"><div class="flow-step"><div class="flow-box flow-booked">Pending</div><div class="flow-desc">Order received</div></div><div class="flow-step"><div class="flow-box flow-pfd">Dispatched</div><div class="flow-desc">Goods shipped</div></div><div class="flow-step"><div class="flow-box flow-rfd">In Transit</div><div class="flow-desc">On the way</div></div><div class="flow-step"><div class="flow-box flow-received">Delivered</div><div class="flow-desc">Goods received</div></div></div>
+<div class="grid-2"><div class="module-card"><h4>Pre-Orders</h4><ul><li>Products marked “Available in 30 Days” can be pre-booked.</li><li>Pre-orders are not checked against your credit limit.</li><li>Status shows as Pre-Booked, then Confirmed.</li></ul></div><div class="module-card"><h4>Changing an Order</h4><ul><li>An order can be edited while it is Pending or Pre-Booked.</li><li>It can be cancelled until it is dispatched.</li><li>On delivery, enter the receiver’s name and mobile number and attach the receiving note.</li></ul></div></div>
+<div class="grid-2"><div class="module-card"><h4>Credit Limit</h4><ul><li>The credit limit is the maximum order value allowed at one time.</li><li>If an order exceeds your available credit, it is not accepted.</li><li>Credit becomes available again once payments are received.</li></ul></div><div class="module-card"><h4>Documents</h4><ul><li>Proforma invoice (PDF or Excel)</li><li>Tax invoice</li><li>E-way bill and transport bill</li></ul></div></div>
+</div>
+  <div class="page-footer"><span>Kore Kollective — Confidential</span><span>Page 6</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Access Summary</h2><p>What each role can do at a glance</p></div>
+<div class="content">
+<p style="font-size:.82rem;color:#64748b">🟢 Full access &nbsp;&nbsp; 🟡 Own records only &nbsp;&nbsp; ⚪ No access</p><div class="matrix-wrap"><table class="matrix-table"><thead><tr><th class="feature-col" style="text-align:left">Feature</th><th class="th-sa">Super Admin</th><th class="th-ad">Admin</th><th class="th-mg">Manager</th><th class="th-sv">Supervisor</th><th class="th-ac">Accountant</th><th class="th-dt">Distributor</th></tr></thead><tbody>
+<tr><td class="feature-col">Dashboard</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td></tr>
+<tr><td colspan="7" style="background:#f1f5f9;font-weight:800;font-size:.68rem;letter-spacing:.5px;color:#475569">PURCHASES</td></tr>
+<tr><td class="feature-col">Purchase Orders — create / edit</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td class="feature-col">Purchase Orders — view</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td class="feature-col">GRN</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td class="feature-col">Vendors</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td colspan="7" style="background:#f1f5f9;font-weight:800;font-size:.68rem;letter-spacing:.5px;color:#475569">INVENTORY</td></tr>
+<tr><td class="feature-col">Catalogue</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td class="feature-col">Master Stock</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td colspan="7" style="background:#f1f5f9;font-weight:800;font-size:.68rem;letter-spacing:.5px;color:#475569">SALES</td></tr>
+<tr><td class="feature-col">Distributors</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td class="feature-col">Orders — view</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-partial"></span></td></tr>
+<tr><td class="feature-col">Orders — update status</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td class="feature-col">Returns — view</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td class="feature-col">Returns — process</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td class="feature-col">Mark payment received</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td colspan="7" style="background:#f1f5f9;font-weight:800;font-size:.68rem;letter-spacing:.5px;color:#475569">ACCOUNTS</td></tr>
+<tr><td class="feature-col">Accounts — view bills and overdue</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td class="feature-col">Bills — approve / reject</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td colspan="7" style="background:#f1f5f9;font-weight:800;font-size:.68rem;letter-spacing:.5px;color:#475569">REPORTS</td></tr>
+<tr><td class="feature-col">Stock, Dispatch and Return Reports</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td colspan="7" style="background:#f1f5f9;font-weight:800;font-size:.68rem;letter-spacing:.5px;color:#475569">ADMINISTRATION</td></tr>
+<tr><td class="feature-col">Activity Log</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td class="feature-col">Terms &amp; Policies</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td class="feature-col">Users</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td class="feature-col">Notifications and Integrations</td><td class="center-col"><span class="dot-yes"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td></tr>
+<tr><td colspan="7" style="background:#f1f5f9;font-weight:800;font-size:.68rem;letter-spacing:.5px;color:#475569">DISTRIBUTOR PORTAL</td></tr>
+<tr><td class="feature-col">Catalogue, Cart and Order History</td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-no"></span></td><td class="center-col"><span class="dot-yes"></span></td></tr>
+</tbody></table></div>
+</div>
+  <div class="page-footer"><span>Kore Kollective — Confidential</span><span>Page 7</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Important Rules</h2><p>Conditions the portal applies automatically</p></div>
+<div class="content">
+<div class="rule-card"><div class="rule-num">1</div><div class="rule-text"><strong>One carton equals 24 pairs</strong><p>Distributor orders are placed in whole cartons. Each carton holds a fixed assortment of sizes.</p></div></div>
+<div class="rule-card"><div class="rule-num">2</div><div class="rule-text"><strong>Credit limit is checked on every order</strong><p>An order that exceeds the distributor’s available credit is not accepted. Pre-orders are exempt.</p></div></div>
+<div class="rule-card"><div class="rule-num">3</div><div class="rule-text"><strong>Stock is updated through GRN</strong><p>Received goods are added to stock only when the GRN has been submitted.</p></div></div>
+<div class="rule-card"><div class="rule-num">4</div><div class="rule-text"><strong>Discount and GST are applied automatically</strong><p>Each distributor’s discount is set by the Admin and applied at checkout. GST is selected in the cart.</p></div></div>
+<div class="rule-card"><div class="rule-num">5</div><div class="rule-text"><strong>Payment terms decide when a payment is overdue</strong><p>Terms are set for each distributor. The Accounts section lists every order that has passed its due date.</p></div></div>
+<div class="rule-card"><div class="rule-num">6</div><div class="rule-text"><strong>Pre-orders</strong><p>Products not yet in stock are shown as “Available in 30 Days” and can be pre-booked before they arrive.</p></div></div>
+<div class="rule-card"><div class="rule-num">7</div><div class="rule-text"><strong>Every action is recorded</strong><p>The Activity Log keeps a record of who did what and when. It is available to the Super Admin and Admin.</p></div></div>
+</div>
+  <div class="page-footer"><span>Kore Kollective — Confidential</span><span>Page 8</span></div>
+</div>
+<button class="print-btn no-print" onclick="window.print()">🖨️ Save as PDF / Print</button>
 </body>
 </html>

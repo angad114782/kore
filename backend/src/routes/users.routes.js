@@ -2,6 +2,7 @@ const router = require("express").Router();
 
 const auth = require("../middlewares/auth.middleware");
 const role = require("../middlewares/role.middleware");
+const permission = require("../middlewares/permission.middleware");
 
 const usersController = require("../controllers/users.controller");
 
@@ -19,16 +20,16 @@ router.post("/me/logout-all", auth, usersController.logoutAllSessions);
 -------------------------------------------------- */
 
 // Only Superadmin can create users
-router.post("/", auth, role(["superadmin"]), usersController.createUser);
+router.post("/", auth, permission("users.create"), usersController.createUser);
 
 // Superadmin/Admin can view users
-router.get("/", auth, role(["superadmin", "admin"]), usersController.listUsers);
+router.get("/", auth, permission("users.create", "users.edit", "users.delete", "users.reset_password", "users.roles", "notifications.manage"), usersController.listUsers);
 
 // Superadmin can update user
 router.patch(
   "/:id",
   auth,
-  role(["superadmin"]),
+  permission("users.edit"),
   usersController.updateUser
 );
 
@@ -36,7 +37,7 @@ router.patch(
 router.delete(
   "/:id",
   auth,
-  role(["superadmin"]),
+  permission("users.delete"),
   usersController.deleteUser
 );
 
@@ -44,7 +45,7 @@ router.delete(
 router.patch(
   "/:id/reset-password",
   auth,
-  role(["superadmin", "admin"]),
+  permission("users.reset_password"),
   usersController.adminResetPassword
 );
 

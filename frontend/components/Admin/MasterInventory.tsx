@@ -420,6 +420,7 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({
         const idxOutward = colIdx("outward cartons");
         const idxReason = colIdx("reason");
         const idxNote = colIdx("note");
+        const idxCurrent = colIdx("current stock (ctn)");
 
         if (idxSku === -1 || idxInward === -1 || idxOutward === -1) {
           toast.error("CSV is missing required columns — use the downloaded template.");
@@ -427,12 +428,25 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({
         }
 
         const rows: { sku: string; variant?: string; type: "INWARD" | "OUTWARD" | "BOTH" | "NONE"; cartons: number; reason?: string; note?: string }[] = [];
-        lines.slice(1).forEach((line) => {
+        const rowErrors: string[] = [];
+        lines.slice(1).forEach((line, idx) => {
           const cells = parseStockCsvRow(line);
           const sku = (cells[idxSku] || "").trim();
           const inward = Number(cells[idxInward]) || 0;
           const outward = Number(cells[idxOutward]) || 0;
           if (inward <= 0 && outward <= 0) return;
+          const rowNo = idx + 2; // +1 header, +1 for 1-based row numbers
+          const label = sku || `row ${rowNo}`;
+          if (inward > 0 && outward > 0) {
+            rowErrors.push(`Row ${rowNo} (${label}): fill Inward OR Outward, not both`);
+          } else if (outward > 0 && idxCurrent > -1) {
+            const current = Number(cells[idxCurrent]) || 0;
+            if (current <= 0) {
+              rowErrors.push(`Row ${rowNo} (${label}): Out of Stock — Outward not possible`);
+            } else if (outward > current) {
+              rowErrors.push(`Row ${rowNo} (${label}): Outward ${outward} is more than current stock ${current}`);
+            }
+          }
           rows.push({
             sku,
             variant: idxVariant > -1 ? (cells[idxVariant] || "").trim() || undefined : undefined,
@@ -445,6 +459,16 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({
 
         if (rows.length === 0) {
           toast.error("No data rows to import.");
+          return;
+        }
+
+        if (rowErrors.length > 0) {
+          const shown = rowErrors.slice(0, 5).join("\n");
+          const more = rowErrors.length > 5 ? `\n…and ${rowErrors.length - 5} more` : "";
+          toast.error(`${rowErrors.length} row(s) need correction. Nothing was uploaded.`, {
+            description: shown + more,
+            duration: 12000,
+          });
           return;
         }
 
@@ -1085,7 +1109,11 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({
             // Low-stock alerting only makes sense for real, sellable stock —
             // a Pre-Order-only article legitimately has 0 live stock by
             // design, that's not a "low stock" problem.
-            const isLowStock = stockTab !== "PREORDER" && articleLivePairs < lowStockThreshold * 24;
+            const isOutOfStock = stockTab !== "PREORDER" && articleLivePairs <= 0;
+            const isLowStock =
+              stockTab !== "PREORDER" &&
+              !isOutOfStock &&
+              articleLivePairs < lowStockThreshold * 24;
 
             return (
               <div
@@ -1103,7 +1131,7 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({
                       alt=""
                       className="w-14 h-14 rounded-xl object-cover border border-slate-100"
                     />
-                    {isLowStock && (
+                    {(isLowStock || isOutOfStock) && (
                       <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-white animate-pulse shadow-sm"></div>
                     )}
                   </div>
@@ -1113,6 +1141,11 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({
                       <h4 className="font-bold text-slate-900 text-sm truncate">
                         {article.name}
                       </h4>
+                      {isOutOfStock && (
+                        <span className="px-1.5 py-0.5 bg-slate-800 text-white rounded text-[9px] font-black uppercase tracking-tighter flex items-center gap-1">
+                          <AlertTriangle size={8} /> Out of Stock
+                        </span>
+                      )}
                       {isLowStock && (
                         <span className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded text-[9px] font-black uppercase tracking-tighter flex items-center gap-1">
                           <AlertTriangle size={8} /> Low Stock
@@ -1376,15 +1409,23 @@ const MasterInventory: React.FC<MasterInventoryProps> = ({
                                     </div>
                                   </td>
                                   <td className="px-6 py-3 text-center">
-                                    <span className="text-sm font-black text-emerald-600">
-                                      {liveCtns}
-                                    </span>
-                                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
-                                      Cartons
-                                    </p>
-                                    <p className="text-[8px] text-slate-300">
-                                      {livePairs} prs
-                                    </p>
+                                    {stockTab !== "PREORDER" && livePairs <= 0 ? (
+                                      <span className="inline-block px-2 py-0.5 rounded bg-slate-800 text-white text-[9px] font-black uppercase tracking-tight">
+                                        Out of Stock
+                                      </span>
+                                    ) : (
+                                      <>
+                                        <span className="text-sm font-black text-emerald-600">
+                                          {liveCtns}
+                                        </span>
+                                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
+                                          Cartons
+                                        </p>
+                                        <p className="text-[8px] text-slate-300">
+                                          {livePairs} prs
+                                        </p>
+                                      </>
+                                    )}
                                   </td>
                                   <td className="px-6 py-3 text-center">
                                     <span className="text-sm font-black text-amber-600">

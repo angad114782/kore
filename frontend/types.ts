@@ -14,6 +14,8 @@ export interface User {
   name: string;
   role: UserRole;
   isActive: boolean;
+  /** Pages / actions this staff user may use (set per user by the Super Admin). */
+  permissions?: string[];
   location?: string;
   companyName?: string;
   phone?: string;

@@ -28,6 +28,8 @@ interface AdminDashboardProps {
   loadingOrders?: boolean;
   lastUpdated?: Date;
   onSeeAllOverdue?: () => void;
+  /** Show the overdue-payments widget (needs the "Overdue Payments" permission). */
+  showOverdue?: boolean;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
@@ -469,6 +471,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   loadingOrders,
   lastUpdated,
   onSeeAllOverdue,
+  showOverdue = true,
 }) => {
   const [dateFilter, setDateFilter]   = useState<DateFilter>('all');
   const [customStart, setCustomStart] = useState('');
@@ -695,11 +698,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         {/* Overdue Payments */}
-        <OverduePayments
-          isAdmin={true}
-          onSeeAll={onSeeAllOverdue}
-          showAll={false}
-        />
+        {showOverdue && (
+          <OverduePayments
+            isAdmin={true}
+            onSeeAll={onSeeAllOverdue}
+            showAll={false}
+          />
+        )}
 
       </div>
 

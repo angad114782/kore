@@ -4,7 +4,7 @@ const app = require("./app");
 const connectDB = require("./config/db");
 const socketUtils = require("./socket");
 
-connectDB();
+connectDB().then(() => require("./services/permissionBackfill")());
 
 const server = http.createServer(app);
 socketUtils.init(server);

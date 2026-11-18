@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kore Kollective — Operations Manual</title>
+<style>
+  /* ─── RESET & BASE ─── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 13px; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #f0f4f8;
+    color: #1a202c;
+    line-height: 1.6;
+  }
+
+  /* ─── PRINT ─── */
+  @media print {
+    body { background: white; font-size: 11px; }
+    .page { box-shadow: none; margin: 0; border-radius: 0; page-break-after: always; }
+    .no-print { display: none; }
+    .page-break { page-break-before: always; }
+    @page { margin: 12mm 14mm; size: A4; }
+  }
+
+  /* ─── LAYOUT ─── */
+  .page {
+    background: white;
+    max-width: 860px;
+    margin: 24px auto;
+    border-radius: 16px;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.10);
+    overflow: hidden;
+  }
+
+  /* ─── ROLE COLORS ─── */
+  :root {
+    --superadmin: #6d28d9;   --superadmin-light: #ede9fe;  --superadmin-mid: #8b5cf6;
+    --admin:      #1d4ed8;   --admin-light:      #dbeafe;  --admin-mid:      #3b82f6;
+    --manager:    #0f766e;   --manager-light:    #ccfbf1;  --manager-mid:    #14b8a6;
+    --supervisor: #b45309;   --supervisor-light: #fef3c7;  --supervisor-mid: #f59e0b;
+    --accountant: #b91c1c;   --accountant-light: #fee2e2;  --accountant-mid: #ef4444;
+    --distributor:#0e7490;   --distributor-light:#cffafe;  --distributor-mid:#06b6d4;
+  }
+
+  /* ─── COVER PAGE ─── */
+  .cover {
+    background: linear-gradient(135deg, #1e1b4b 0%, #3730a3 50%, #4f46e5 100%);
+    color: white;
+    padding: 64px 56px 56px;
+    min-height: 560px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 320px; height: 320px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 50%;
+  }
+  .cover::after {
+    content: '';
+    position: absolute;
+    bottom: -60px; left: -60px;
+    width: 240px; height: 240px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 50%;
+  }
+  .cover-logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 48px;
+  }
+  .cover-logo-icon {
+    width: 52px; height: 52px;
+    background: rgba(255,255,255,0.15);
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+  }
+  .cover-logo-text { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.5px; }
+  .cover-logo-text span { color: #a5b4fc; }
+  .cover-title { font-size: 2.8rem; font-weight: 900; line-height: 1.15; margin-bottom: 16px; }
+  .cover-subtitle { font-size: 1.1rem; color: #c7d2fe; max-width: 480px; line-height: 1.7; }
+  .cover-meta {
+    display: flex; gap: 32px; margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(255,255,255,0.15);
+  }
+  .cover-meta-item { font-size: 0.85rem; color: #a5b4fc; }
+  .cover-meta-item strong { display: block; color: white; font-size: 1rem; }
+
+  /* ─── ROLE BADGE ROW ON COVER ─── */
+  .cover-roles {
+    display: flex; flex-wrap: wrap; gap: 10px; margin-top: 36px;
+  }
+  .role-pill {
+    padding: 6px 16px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .pill-sa  { background: var(--superadmin-mid); color: white; }
+  .pill-ad  { background: var(--admin-mid);      color: white; }
+  .pill-mg  { background: var(--manager-mid);    color: white; }
+  .pill-sv  { background: var(--supervisor-mid); color: white; }
+  .pill-ac  { background: var(--accountant-mid); color: white; }
+  .pill-dt  { background: var(--distributor-mid);color: white; }
+
+  /* ─── SECTION HEADER ─── */
+  .section-header {
+    padding: 32px 48px 20px;
+    border-bottom: 2px solid #f1f5f9;
+  }
+  .section-header h2 {
+    font-size: 1.5rem; font-weight: 800; color: #1e293b;
+  }
+  .section-header p { color: #64748b; margin-top: 4px; font-size: 0.9rem; }
+
+  /* ─── CONTENT AREA ─── */
+  .content { padding: 28px 48px 40px; }
+
+  /* ─── ROLE CARD ─── */
+  .role-card {
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 28px;
+    border: 1.5px solid;
+  }
+  .role-card-header {
+    padding: 18px 24px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .role-icon {
+    width: 44px; height: 44px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; background: rgba(255,255,255,0.25);
+  }
+  .role-card-header h3 { font-size: 1.15rem; font-weight: 800; }
+  .role-card-header p { font-size: 0.82rem; opacity: 0.85; margin-top: 2px; }
+  .role-card-body { padding: 20px 24px; background: white; }
+
+  /* Superadmin */
+  .card-sa { border-color: var(--superadmin); }
+  .card-sa .role-card-header { background: linear-gradient(135deg, var(--superadmin), var(--superadmin-mid)); color: white; }
+  /* Admin */
+  .card-ad { border-color: var(--admin); }
+  .card-ad .role-card-header { background: linear-gradient(135deg, var(--admin), var(--admin-mid)); color: white; }
+  /* Manager */
+  .card-mg { border-color: var(--manager); }
+  .card-mg .role-card-header { background: linear-gradient(135deg, var(--manager), var(--manager-mid)); color: white; }
+  /* Supervisor */
+  .card-sv { border-color: var(--supervisor); }
+  .card-sv .role-card-header { background: linear-gradient(135deg, var(--supervisor), var(--supervisor-mid)); color: white; }
+  /* Accountant */
+  .card-ac { border-color: var(--accountant); }
+  .card-ac .role-card-header { background: linear-gradient(135deg, var(--accountant), var(--accountant-mid)); color: white; }
+  /* Distributor */
+  .card-dt { border-color: var(--distributor); }
+  .card-dt .role-card-header { background: linear-gradient(135deg, var(--distributor), var(--distributor-mid)); color: white; }
+
+  /* ─── PERMISSION TABLE ─── */
+  .perm-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 14px; }
+  .perm-table th {
+    text-align: left; padding: 8px 12px;
+    background: #f8fafc; color: #475569;
+    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;
+    border-bottom: 2px solid #e2e8f0;
+  }
+  .perm-table td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; }
+  .perm-table tr:last-child td { border-bottom: none; }
+  .perm-table tr:hover td { background: #f8fafc; }
+
+  .badge-yes {
+    background: #dcfce7; color: #166534;
+    padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+  }
+  .badge-no  {
+    background: #fee2e2; color: #991b1b;
+    padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+  }
+  .badge-partial {
+    background: #fef3c7; color: #92400e;
+    padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+  }
+
+  /* ─── STEP BOX ─── */
+  .steps { margin-top: 16px; }
+  .step {
+    display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start;
+  }
+  .step-num {
+    min-width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem; font-weight: 800; color: white; flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .step-body { flex: 1; }
+  .step-body strong { display: block; font-size: 0.9rem; color: #1e293b; }
+  .step-body span { font-size: 0.82rem; color: #64748b; }
+
+  /* ─── FLOW DIAGRAM ─── */
+  .flow {
+    display: flex; align-items: stretch;
+    gap: 0; overflow-x: auto; margin: 20px 0;
+    padding-bottom: 8px;
+  }
+  .flow-step {
+    flex: 1; min-width: 90px;
+    display: flex; flex-direction: column; align-items: center;
+    position: relative;
+  }
+  .flow-step:not(:last-child)::after {
+    content: '→';
+    position: absolute;
+    right: -10px; top: 18px;
+    font-size: 1.1rem; color: #94a3b8; z-index: 2;
+  }
+  .flow-box {
+    padding: 10px 8px;
+    border-radius: 10px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.78rem;
+    width: 90%;
+    line-height: 1.3;
+  }
+  .flow-desc { font-size: 0.7rem; color: #64748b; margin-top: 6px; text-align: center; }
+
+  .flow-booked   { background: #dbeafe; color: #1d4ed8; border: 2px solid #93c5fd; }
+  .flow-pfd      { background: #f3e8ff; color: #7c3aed; border: 2px solid #c4b5fd; }
+  .flow-rfd      { background: #fef3c7; color: #b45309; border: 2px solid #fcd34d; }
+  .flow-ofd      { background: #ffedd5; color: #c2410c; border: 2px solid #fdba74; }
+  .flow-received { background: #dcfce7; color: #166534; border: 2px solid #86efac; }
+
+  /* ─── INFO BOX ─── */
+  .info-box {
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin: 16px 0;
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .info-box .icon { font-size: 1.3rem; flex-shrink: 0; margin-top: 1px; }
+  .info-box h4 { font-size: 0.88rem; font-weight: 700; margin-bottom: 4px; }
+  .info-box p { font-size: 0.82rem; }
+
+  .info-blue   { background: #dbeafe; border-left: 4px solid #3b82f6; color: #1e3a8a; }
+  .info-green  { background: #dcfce7; border-left: 4px solid #22c55e; color: #14532d; }
+  .info-orange { background: #fef3c7; border-left: 4px solid #f59e0b; color: #78350f; }
+  .info-red    { background: #fee2e2; border-left: 4px solid #ef4444; color: #7f1d1d; }
+
+  /* ─── GRID ─── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 16px; }
+
+  /* ─── MODULE CARD ─── */
+  .module-card {
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .module-card h4 { font-size: 0.88rem; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
+  .module-card ul { padding-left: 16px; }
+  .module-card li { font-size: 0.8rem; color: #475569; margin-bottom: 4px; }
+  .module-card .mod-icon { font-size: 1.5rem; margin-bottom: 8px; }
+
+  /* ─── PAGE NUMBER ─── */
+  .page-footer {
+    padding: 16px 48px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .page-footer span { font-size: 0.75rem; color: #94a3b8; }
+
+  /* ─── PRINT BUTTON ─── */
+  .print-btn {
+    position: fixed; bottom: 24px; right: 24px;
+    background: #4f46e5; color: white;
+    border: none; border-radius: 12px;
+    padding: 14px 28px; font-size: 0.95rem; font-weight: 700;
+    cursor: pointer; box-shadow: 0 4px 20px rgba(79,70,229,0.4);
+    z-index: 1000;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .print-btn:hover { background: #4338ca; transform: translateY(-1px); }
+
+  /* ─── DIVIDER ─── */
+  .divider { height: 1px; background: #f1f5f9; margin: 20px 0; }
+
+  /* ─── BIG PERMISSION MATRIX ─── */
+  .matrix-wrap { overflow-x: auto; margin-top: 16px; }
+  .matrix-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+  .matrix-table th {
+    padding: 10px 12px; text-align: center;
+    border-bottom: 2px solid #e2e8f0;
+    white-space: nowrap; font-size: 0.73rem;
+  }
+  .matrix-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
+  .matrix-table .feature-col { font-weight: 600; color: #374151; text-align: left; }
+  .matrix-table .th-sa  { color: var(--superadmin); }
+  .matrix-table .th-ad  { color: var(--admin); }
+  .matrix-table .th-mg  { color: var(--manager); }
+  .matrix-table .th-sv  { color: var(--supervisor); }
+  .matrix-table .th-ac  { color: var(--accountant); }
+  .matrix-table .th-dt  { color: var(--distributor); }
+  .matrix-table .dot-yes     { display:inline-block;width:18px;height:18px;border-radius:50%;background:#22c55e;margin:auto; }
+  .matrix-table .dot-no      { display:inline-block;width:18px;height:18px;border-radius:50%;background:#e5e7eb;margin:auto; }
+  .matrix-table .dot-partial { display:inline-block;width:18px;height:18px;border-radius:50%;background:#f59e0b;margin:auto; }
+  .matrix-table .center-col  { text-align: center; }
+  .matrix-table tr:hover td  { background: #f8fafc; }
+
+  /* ─── HIGHLIGHT ─── */
+  .highlight {
+    display: inline-block;
+    background: #fef3c7; color: #92400e;
+    border-radius: 6px; padding: 2px 8px;
+    font-weight: 700; font-size: 0.82rem;
+  }
+  .highlight-blue {
+    display: inline-block;
+    background: #dbeafe; color: #1d4ed8;
+    border-radius: 6px; padding: 2px 8px;
+    font-weight: 700; font-size: 0.82rem;
+  }
+
+  /* ─── RULE CARD ─── */
+  .rule-card {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    display: flex; gap: 14px; align-items: center;
+  }
+  .rule-num {
+    min-width: 36px; height: 36px; border-radius: 10px;
+    background: #4f46e5; color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 1rem; flex-shrink: 0;
+  }
+  .rule-text strong { font-size: 0.9rem; color: #1e293b; }
+  .rule-text p { font-size: 0.82rem; color: #64748b; margin-top: 3px; }
+
+  .perm-table td:first-child{font-weight:600;color:#334155}
+
+  .tbl{width:100%;border-collapse:collapse;font-size:.82rem;margin:10px 0}
+  .tbl th{text-align:left;padding:8px 12px;background:#f8fafc;color:#475569;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #e2e8f0}
+  .tbl td{padding:8px 12px;border-bottom:1px solid #f1f5f9;vertical-align:top;color:#334155}
+  .tbl td:first-child{font-weight:700;color:#1e293b;white-space:nowrap}
+  .req{background:#fee2e2;color:#991b1b;padding:2px 9px;border-radius:999px;font-size:.7rem;font-weight:700}
+  .opt{background:#e2e8f0;color:#475569;padding:2px 9px;border-radius:999px;font-size:.7rem;font-weight:700}
+  h3.sub{font-size:1rem;font-weight:800;color:#1e293b;margin:22px 0 4px}
+  p.txt{font-size:.85rem;color:#475569;margin:6px 0}
+  code{background:#f1f5f9;border-radius:5px;padding:1px 6px;font-size:.78rem;color:#334155}
+  .path{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:8px;padding:3px 10px;font-size:.78rem;font-weight:700;margin-bottom:6px}
+</style>
+<body>
+<div class="page"><div class="cover"><div>
+<div class="cover-logo"><div class="cover-logo-icon">👟</div><div class="cover-logo-text">Kore <span>Kollective</span></div></div>
+<div class="cover-title">Operations Manual</div>
+<div class="cover-subtitle">A step-by-step guide for the Super Admin: setting up the catalogue, managing stock, vendors, purchase orders and goods receipt, and processing distributor orders.</div>
+</div>
+<div class="cover-meta"><div class="cover-meta-item"><strong>Version</strong>1.0</div><div class="cover-meta-item"><strong>Audience</strong>Super Admin</div><div class="cover-meta-item"><strong>Date</strong>November 2026</div></div>
+</div>
+  <div class="page-footer"><span>Kore Kollective — Operations Manual</span><span>Page 1</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Order of Work</h2><p>The sequence in which the portal should be set up and used</p></div>
+<div class="content">
+<div class="info-box info-blue"><div class="icon">💡</div><div><h4>Why the order matters</h4><p>Each step depends on the one before it. A product must exist in the Catalogue before it can be purchased; it must be purchased and received before it has stock; and it must have stock before a distributor can order it.</p></div></div>
+<div class="flow">
+<div class="flow-step"><div class="flow-box flow-booked">1. Catalogue</div><div class="flow-desc">Create articles</div></div>
+<div class="flow-step"><div class="flow-box flow-pfd">2. Vendor</div><div class="flow-desc">Add supplier</div></div>
+<div class="flow-step"><div class="flow-box flow-rfd">3. Purchase Order</div><div class="flow-desc">Order goods</div></div>
+<div class="flow-step"><div class="flow-box flow-ofd">4. Approval</div><div class="flow-desc">Approve bill</div></div>
+<div class="flow-step"><div class="flow-box flow-received">5. GRN</div><div class="flow-desc">Receive goods</div></div>
+</div>
+<div class="flow">
+<div class="flow-step"><div class="flow-box flow-booked">6. Master Stock</div><div class="flow-desc">Stock is live</div></div>
+<div class="flow-step"><div class="flow-box flow-pfd">7. Distributor Order</div><div class="flow-desc">Placed by distributor</div></div>
+<div class="flow-step"><div class="flow-box flow-rfd">8. Dispatch</div><div class="flow-desc">Book, scan, transport</div></div>
+<div class="flow-step"><div class="flow-box flow-ofd">9. Delivery</div><div class="flow-desc">Receipt confirmed</div></div>
+<div class="flow-step"><div class="flow-box flow-received">10. Payment</div><div class="flow-desc">Mark as paid</div></div>
+</div>
+<h3 class="sub">Before You Begin</h3>
+<table class="tbl"><thead><tr><th>Item</th><th>Where it is set</th></tr></thead><tbody>
+<tr><td>Company users</td><td>Users</td></tr>
+<tr><td>Category, Brand, Manufacturer, Unit</td><td>Created directly inside the article form or the spreadsheet import</td></tr>
+<tr><td>Vendors</td><td>Purchases → Vendors</td></tr>
+<tr><td>Distributors with credit limit, discount and payment terms</td><td>Sales → Distributors</td></tr>
+<tr><td>Terms &amp; Policies</td><td>Terms &amp; Policies</td></tr>
+</tbody></table>
+<h3 class="sub">Two Rules Used Throughout</h3>
+<p class="txt"><strong>One carton = 24 pairs.</strong> Every quantity in the portal is counted in cartons, and each carton holds a fixed set of sizes that always totals 24 pairs.</p>
+<p class="txt"><strong>Carton SKU.</strong> Every colour and size-range combination has one Carton SKU. The portal creates the SKU for each individual size from it. SKUs are what is scanned during goods receipt, so they must be accurate and unique.</p>
+</div>
+  <div class="page-footer"><span>Kore Kollective — Operations Manual</span><span>Page 2</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Catalogue — Method 1: Add a Master Article</h2><p>Creating one article manually, with all its colours and sizes</p></div>
+<div class="content">
+<div class="path">Inventory → Catalogue → Add New Master</div>
+<div class="info-box info-blue"><div class="icon">📘</div><div><h4>What is a Master Article?</h4><p>A Master Article is one product (for example “Urban Runner”). It contains variants: one for every colour and size range. Stock, price and images are managed at variant level.</p></div></div>
+<h3 class="sub">Step 1 — Core Information</h3><table class="tbl"><thead><tr><th>Field</th><th>Status</th><th>What to enter</th></tr></thead><tbody><tr><td>Article Name</td><td><span class="req">Required</span></td><td>The product name. The first letter is capitalised automatically.</td></tr><tr><td>Sole Color</td><td><span class="opt">Optional</span></td><td>Colour of the sole.</td></tr><tr><td>MRP (₹)</td><td><span class="req">Required</span></td><td>Maximum retail price per pair.</td></tr><tr><td>Gender Audience</td><td><span class="req">Required</span></td><td>Men, Women or Kids.</td></tr></tbody></table>
+<h3 class="sub">Step 2 — Colours and Size Ranges</h3><div class="steps"><div class="step"><div class="step-num" style="background:#4f46e5">1</div><div class="step-body"><strong>Add colours</strong><span>Type a colour and press Enter or select Add. Repeat for every colour.</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">2</div><div class="step-body"><strong>Add size ranges</strong><span>Type a range such as 5-7 and press Enter. Kids ranges may cross over, for example 11-03.</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">3</div><div class="step-body"><strong>Review the variant list</strong><span>The portal creates one row for every colour and size-range combination.</span></div></div></div>
+<h3 class="sub">Step 3 — Category and Manufacturing</h3><table class="tbl"><thead><tr><th>Field</th><th>Status</th><th>What to enter</th></tr></thead><tbody><tr><td>Category</td><td><span class="req">Required</span></td><td>Select from the list. A new category can be added from the same box.</td></tr><tr><td>Brand</td><td><span class="req">Required</span></td><td>Brands are shown for the selected category, so choose the category first. A new brand can be added from the same box.</td></tr><tr><td>Manufacturer</td><td><span class="req">Required</span></td><td>Select or add.</td></tr><tr><td>Base Unit</td><td><span class="req">Required</span></td><td>Select or add (for example, Pair).</td></tr></tbody></table>
+<h3 class="sub">Step 4 — Listing Status</h3><p class="txt"><strong>Active / Available:</strong> the article appears in the distributor catalogue and can be ordered once stock exists.<br/><strong>Coming Soon (Pre-Order):</strong> the article is shown as “Available in 30 Days” and can be pre-booked. An Expected Availability date is required.</p></div>
+  <div class="page-footer"><span>Kore Kollective — Operations Manual</span><span>Page 3</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Catalogue — Variant Details and Images</h2><p>Completing each colour before saving</p></div>
+<div class="content">
+<h3 class="sub">Step 5 — Fill in the Variant Table</h3><p class="txt">Each colour has its own section. For every row (colour + size range), complete the following:</p><table class="tbl"><thead><tr><th>Field</th><th>Status</th><th>What to enter</th></tr></thead><tbody><tr><td>Item Variation Name</td><td><span class="opt">Optional</span></td><td>Filled in automatically. It may be edited.</td></tr><tr><td>Carton SKU</td><td><span class="req">Required</span></td><td>Unique code for this colour and size range, for example <code>ECH-BLK-M-5-8</code>.</td></tr><tr><td>Cost Price (₹)</td><td><span class="opt">Optional</span></td><td>Purchase cost per pair.</td></tr><tr><td>MRP (₹)</td><td><span class="opt">Optional</span></td><td>Variant-level MRP per pair.</td></tr><tr><td>HSN Code</td><td><span class="opt">Optional</span></td><td>Tax classification code.</td></tr><tr><td>Size quantities</td><td><span class="req">Required</span></td><td>Pairs of each size inside one carton. The total must be 24 (or a multiple of 24). The row shows “Must be ÷24” if it is not.</td></tr></tbody></table>
+<div class="info-box info-green"><div class="icon">⚡</div><div><h4>Time-savers</h4><p>Use <strong>Copy All</strong> under Cost Price or MRP to apply one value to every row of the colour. Use <strong>Apply</strong> for HSN code and for a size quantity to copy it to the other rows.</p></div></div>
+<h3 class="sub">Step 6 — Add Images</h3><div class="steps"><div class="step"><div class="step-num" style="background:#4f46e5">1</div><div class="step-body"><strong>Locate “Media for [colour]”</strong><span>Every colour has its own image area.</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">2</div><div class="step-body"><strong>Select Add Images</strong><span>Choose one or more image files from your computer. Several can be chosen at once.</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">3</div><div class="step-body"><strong>Choose the cover image</strong><span>The first image is the cover shown in the catalogue. To change it, select <strong>Set as cover</strong> on another image or drag the images into the order required.</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">4</div><div class="step-body"><strong>Remove an image if needed</strong><span>Use the remove icon on the image.</span></div></div></div>
+<div class="info-box info-orange"><div class="icon">🖼️</div><div><h4>Image guidance</h4><p>Use clear product photographs, one set per colour. Images are compressed automatically when saved, so very large files do not need to be resized first.</p></div></div>
+<h3 class="sub">Step 7 — Save</h3><p class="txt">Select the save button at the bottom of the form. The portal checks the form before saving. Typical messages and their meaning:</p><table class="tbl"><thead><tr><th>Message</th><th>Action</th></tr></thead><tbody>
+<tr><td>Please fill all required fields</td><td>Complete the article name, category, brand, manufacturer and unit.</td></tr>
+<tr><td>Total quantity must be a multiple of 24</td><td>Correct the size quantities of the variant named in the message.</td></tr>
+<tr><td>Carton SKU is required</td><td>Enter the Carton SKU for the variant named in the message.</td></tr>
+</tbody></table></div>
+  <div class="page-footer"><span>Kore Kollective — Operations Manual</span><span>Page 4</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Catalogue — Method 2: Spreadsheet Import</h2><p>Creating many articles at once from a spreadsheet file</p></div>
+<div class="content">
+<div class="path">Inventory → Catalogue → Import CSV</div>
+<div class="steps"><div class="step"><div class="step-num" style="background:#4f46e5">1</div><div class="step-body"><strong>Prepare the spreadsheet</strong><span>Use Excel. Enter the column names exactly as listed below in the first row, and one row per colour and size range.</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">2</div><div class="step-body"><strong>Save as CSV</strong><span>In Excel choose File → Save As → CSV (Comma delimited).</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">3</div><div class="step-body"><strong>Open the import window</strong><span>Select Import CSV. Select <strong>Download Sample CSV</strong> to see the correct layout.</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">4</div><div class="step-body"><strong>Upload the file</strong><span>Choose the CSV file, or paste its text into the box, then select <strong>Parse &amp; Continue</strong>.</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">5</div><div class="step-body"><strong>Review the preview</strong><span>The portal lists every article found and highlights any conflicts. For each conflict, choose to import or skip.</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">6</div><div class="step-body"><strong>Import</strong><span>Confirm. The portal reports how many items were imported or skipped.</span></div></div></div>
+<h3 class="sub">Columns Required in Every File</h3><table class="tbl"><thead><tr><th>Column</th><th>Status</th><th>What to enter</th></tr></thead><tbody>
+<tr><td>name</td><td><span class="req">Required</span></td><td>Article name. Rows with the same name become one article with several colours.</td></tr>
+<tr><td>color</td><td><span class="req">Required</span></td><td>Colour of the variant.</td></tr>
+<tr><td>sku</td><td><span class="req">Required</span></td><td>Carton SKU, for example <code>ECH-BLK-M-5-8</code>. The SKU for each size is created from it.</td></tr>
+<tr><td>size</td><td><span class="req">Required</span></td><td>Size range, for example <code>5-8</code>.</td></tr>
+<tr><td>tag</td><td><span class="req">Required</span></td><td><code>online</code> or <code>offline</code>.</td></tr>
+<tr><td>gender</td><td><span class="req">Required</span></td><td><code>MEN</code>, <code>WOMEN</code> or <code>KIDS</code>.</td></tr>
+<tr><td>listing_status</td><td><span class="req">Required</span></td><td><code>available</code> or <code>wishlist</code> (pre-order).</td></tr>
+<tr><td>size_5, size_6 …</td><td><span class="req">Required</span></td><td>One column per size. Enter the pairs of that size in one carton. The row must total 24.</td></tr>
+</tbody></table><h3 class="sub">Columns That May Be Left Out</h3><table class="tbl"><thead><tr><th>Column</th><th>Status</th><th>What to enter</th></tr></thead><tbody>
+<tr><td>online_mrp / offline_mrp</td><td><span class="opt">Optional</span></td><td>MRP per pair. Fill the one that matches the row’s tag; otherwise the MRP is zero.</td></tr>
+<tr><td>cost_price, hsn</td><td><span class="opt">Optional</span></td><td>Cost per pair and HSN code.</td></tr>
+<tr><td>category, brand, manufacturer, unit</td><td><span class="opt">Optional</span></td><td>Recommended for new articles. Any that do not exist are created automatically.</td></tr>
+<tr><td>image</td><td><span class="opt">Optional</span></td><td>Web link to the colour’s image. One image per colour.</td></tr>
+<tr><td>sole_color</td><td><span class="opt">Optional</span></td><td>Sole colour.</td></tr>
+<tr><td>expected_date</td><td><span class="opt">Optional</span></td><td>Expected availability date for <code>wishlist</code> rows. Formats such as 01/07/2026 or 2026-07-01 are accepted.</td></tr>
+</tbody></table><div class="info-box info-orange"><div class="icon">⚠️</div><div><h4>Please note</h4><p>Importing creates the articles with <strong>zero stock</strong>. Stock is added later through GRN. Variants that already exist (same colour, size range and carton set) are skipped, not duplicated. For kids sizes that cross over, use columns <code>size_11, size_12, size_13, size_01, size_02, size_03</code> with the range <code>11-03</code>.</p></div></div>
+</div>
+  <div class="page-footer"><span>Kore Kollective — Operations Manual</span><span>Page 5</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Catalogue — Method 3: Edit an Existing Article</h2><p>Adding colours, sizes or images to an article that already exists</p></div>
+<div class="content">
+<div class="path">Inventory → Catalogue → open the article → Edit</div>
+<div class="steps"><div class="step"><div class="step-num" style="background:#0f766e">1</div><div class="step-body"><strong>Find the article</strong><span>Use the search box (article name or SKU), the gender buttons or the sort list. Use the Available Catalogue or Pre-Order tab.</span></div></div><div class="step"><div class="step-num" style="background:#0f766e">2</div><div class="step-body"><strong>Expand the article and select Edit</strong><span>The same form opens with the existing details filled in.</span></div></div><div class="step"><div class="step-num" style="background:#0f766e">3</div><div class="step-body"><strong>Add a colour</strong><span>Type the new colour in Product Colors and press Enter. New rows appear for the new colour.</span></div></div><div class="step"><div class="step-num" style="background:#0f766e">4</div><div class="step-body"><strong>Add a size range</strong><span>Type the range and press Enter. To add a range for one colour only, use the box inside that colour’s section.</span></div></div><div class="step"><div class="step-num" style="background:#0f766e">5</div><div class="step-body"><strong>Complete the new rows</strong><span>Enter the Carton SKU and size quantities exactly as in Method 1.</span></div></div><div class="step"><div class="step-num" style="background:#0f766e">6</div><div class="step-body"><strong>Add or change images</strong><span>Use Add Images inside the colour’s section. Existing images can be removed or re-ordered.</span></div></div><div class="step"><div class="step-num" style="background:#0f766e">7</div><div class="step-body"><strong>Save</strong><span>The new variants are added without affecting existing ones.</span></div></div></div>
+<h3 class="sub">Other Catalogue Actions</h3><table class="tbl"><thead><tr><th>Action</th><th>How</th></tr></thead><tbody>
+<tr><td>View a variant</td><td>Select the variant to open its details page: SKUs, images and live stock by size.</td></tr>
+<tr><td>Move a Pre-Order article to Available</td><td>Edit the article and change the Listing Status. An article can move from Pre-Order to Available, but not back.</td></tr>
+<tr><td>Delete an article</td><td>Use the delete option on the article and confirm.</td></tr>
+</tbody></table><div class="info-box info-green"><div class="icon">✅</div><div><h4>Checklist before moving on</h4><p>Every colour has a Carton SKU on each size range · every row totals 24 pairs · each colour has a cover image · the listing status is correct.</p></div></div>
+</div>
+  <div class="page-footer"><span>Kore Kollective — Operations Manual</span><span>Page 6</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Master Stock</h2><p>Viewing, adding and removing stock, and keeping it tallied</p></div>
+<div class="content">
+<div class="path">Inventory → Master Stock</div>
+<p class="txt">Master Stock shows the physical stock of every article in cartons. It has two tabs.</p><table class="tbl"><thead><tr><th>Tab</th><th>Purpose</th><th>Cards at the top</th></tr></thead><tbody>
+<tr><td>RFD</td><td>Real stock that is in the warehouse and can be sold.</td><td>Available · Booked (reserved for orders) · PO Pending (ordered, not yet received)</td></tr>
+<tr><td>Pre-Order</td><td>Planned quantities for articles that have not yet arrived.</td><td>Total · Planned (a PO has been raised) · Booked (reserved by distributors)</td></tr>
+</tbody></table><p class="txt">Use the search box to find an article. Expand it to see each variant with its cartons. The <strong>Alert</strong> box sets the low-stock level in cartons; articles below it are marked <strong>Low Stock</strong>.</p><h3 class="sub">How Stock Moves</h3><table class="tbl"><thead><tr><th>Stock increases when</th><th>Stock decreases when</th></tr></thead><tbody>
+<tr><td>A GRN is submitted<br/>Stock Inward is recorded<br/>A distributor return is processed</td><td>Cartons are scanned for dispatch to a distributor<br/>Stock Outward is recorded</td></tr>
+</tbody></table><h3 class="sub">Recording a Manual Stock Movement</h3><div class="steps"><div class="step"><div class="step-num" style="background:#b45309">1</div><div class="step-body"><strong>Select Stock Movement</strong><span>Choose <strong>Inward</strong> (add stock) or <strong>Outward</strong> (remove stock).</span></div></div><div class="step"><div class="step-num" style="background:#b45309">2</div><div class="step-body"><strong>Choose the article and variant</strong><span>Search the article, then select the colour and size range.</span></div></div><div class="step"><div class="step-num" style="background:#b45309">3</div><div class="step-body"><strong>Enter cartons and reason</strong><span>Inward reasons: Purchase / GRN, Returned Stock, Stock Transfer In, Manual Correction, Other. Outward reasons: Damage / Defect, Sample Issue, Lost / Missing, Stock Transfer Out, Manual Correction, Other. Add a note if helpful.</span></div></div><div class="step"><div class="step-num" style="background:#b45309">4</div><div class="step-body"><strong>Review and confirm</strong><span>Check the “After Movement” quantity, then confirm. For an inward of physical cartons, the portal produces carton labels to print and stick on each carton.</span></div></div></div>
+<div class="info-box info-orange"><div class="icon">📌</div><div><h4>Pre-Order tab</h4><p>An inward recorded on the Pre-Order tab is a planned quantity only. It is not sellable until goods are received through a GRN.</p></div></div>
+</div>
+  <div class="page-footer"><span>Kore Kollective — Operations Manual</span><span>Page 7</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Keeping Stock Tallied</h2><p>A simple routine to make sure the portal matches the warehouse</p></div>
+<div class="content">
+<p class="txt">The portal updates stock automatically from GRN, dispatch and returns. To confirm that the system and the warehouse agree, carry out the following check regularly.</p><div class="steps"><div class="step"><div class="step-num" style="background:#4f46e5">1</div><div class="step-body"><strong>Count the cartons</strong><span>Count the physical cartons of a colour or article in the warehouse.</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">2</div><div class="step-body"><strong>Compare with the portal</strong><span>Open Master Stock → RFD and compare with the <strong>Available</strong> figure. Remember that <strong>Booked</strong> cartons are reserved for orders that have not yet been dispatched.</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">3</div><div class="step-body"><strong>Find the cause of any difference</strong><span>Check the Stock Report, recent GRNs, dispatches and returns for the article, and the Activity Log for manual changes.</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">4</div><div class="step-body"><strong>Correct the difference</strong><span>Record a Stock Movement for the difference with the reason <strong>Manual Correction</strong> (or Damage / Defect, Lost / Missing as appropriate) and add a note.</span></div></div><div class="step"><div class="step-num" style="background:#4f46e5">5</div><div class="step-body"><strong>Confirm</strong><span>The “After Movement” figure should now equal the physical count.</span></div></div></div>
+<div class="info-box info-blue"><div class="icon">🔍</div><div><h4>Good practice</h4><p>Always enter a note with a manual correction. Every stock movement is recorded in the Activity Log with the user and time, so differences can be explained later. Avoid correcting stock by any other means.</p></div></div>
+<h3 class="sub">Reports for Review</h3><table class="tbl"><thead><tr><th>Report</th><th>Use</th></tr></thead><tbody>
+<tr><td>Stock Report</td><td>Current stock position, with export.</td></tr>
+<tr><td>Dispatch Report</td><td>Cartons sent to distributors.</td></tr>
+<tr><td>Return Report</td><td>Cartons returned by distributors.</td></tr>
+</tbody></table></div>
+  <div class="page-footer"><span>Kore Kollective — Operations Manual</span><span>Page 8</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Vendors</h2><p>Adding and maintaining suppliers</p></div>
+<div class="content">
+<div class="path">Purchases → Vendors → New Vendor</div>
+<p class="txt">The vendor form has three tabs: <strong>Other Details</strong>, <strong>Address</strong> and <strong>Bank Details</strong>.</p><h3 class="sub">Basic Details</h3><table class="tbl"><thead><tr><th>Field</th><th>Status</th><th>What to enter</th></tr></thead><tbody><tr><td>Display Name</td><td><span class="req">Required</span></td><td>The name shown everywhere in the portal. It is filled from the Company Name if left blank.</td></tr><tr><td>First / Last Name, Company Name</td><td><span class="opt">Optional</span></td><td>Contact person and company.</td></tr><tr><td>Vendor Code</td><td><span class="opt">Optional</span></td><td>A short internal code.</td></tr><tr><td>Email, Work Phone, Mobile</td><td><span class="opt">Optional</span></td><td>Contact details.</td></tr></tbody></table>
+<h3 class="sub">Other Details Tab</h3><table class="tbl"><thead><tr><th>Field</th><th>Status</th><th>What to enter</th></tr></thead><tbody><tr><td>GST Number</td><td><span class="opt">Optional</span></td><td>Enter the number and select verify. The company address is filled in automatically when the number is valid.</td></tr><tr><td>CIN, PAN</td><td><span class="opt">Optional</span></td><td>Enter in capital letters.</td></tr><tr><td>Currency</td><td><span class="opt">Optional</span></td><td>INR by default.</td></tr><tr><td>Payment Terms</td><td><span class="opt">Optional</span></td><td>Due on Receipt, Due end of the month, or Due end of next month.</td></tr><tr><td>GST Rate / TDS Rate</td><td><span class="opt">Optional</span></td><td>Select from the list, or add a new rate.</td></tr></tbody></table>
+<h3 class="sub">Address and Bank Tabs</h3><table class="tbl"><thead><tr><th>Field</th><th>Status</th><th>What to enter</th></tr></thead><tbody><tr><td>Billing Address</td><td><span class="opt">Optional</span></td><td>Street, city, state, PIN code and phone.</td></tr><tr><td>Shipping Address</td><td><span class="opt">Optional</span></td><td>Use <strong>Copy billing address</strong> if the same.</td></tr><tr><td>Bank Details</td><td><span class="opt">Optional</span></td><td>Account holder, bank name, account number (entered twice to confirm) and IFSC. IFSC is required for each bank added.</td></tr></tbody></table>
+<p class="txt">Select <strong>Save</strong> to create the vendor. In the vendor list, the switch makes a vendor active or inactive, and the delete icon removes a vendor.</p><div class="info-box info-green"><div class="icon">✅</div><div><h4>Tip</h4><p>Complete the address and payment terms before raising the first purchase order. They are carried onto the PO automatically.</p></div></div>
+</div>
+  <div class="page-footer"><span>Kore Kollective — Operations Manual</span><span>Page 9</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Purchase Orders</h2><p>Ordering goods from a vendor and getting the order approved</p></div>
+<div class="content">
+<div class="path">Purchases → PO → Create PO</div>
+<div class="steps"><div class="step"><div class="step-num" style="background:#1d4ed8">1</div><div class="step-body"><strong>Select the vendor</strong><span>Search and select. The vendor’s billing and shipping addresses appear below.</span></div></div><div class="step"><div class="step-num" style="background:#1d4ed8">2</div><div class="step-body"><strong>Complete the header</strong><span><strong>Reference#</strong> (optional), <strong>Date</strong>, <strong>Delivery Date</strong>, <strong>Payment Terms</strong> and <strong>Shipment Preference</strong>. The <strong>Purchase Order#</strong> is assigned automatically when the PO is approved.</span></div></div><div class="step"><div class="step-num" style="background:#1d4ed8">3</div><div class="step-body"><strong>Add items</strong><span>Select <strong>Select Items</strong>, search, tick the required variants and select Done. Pre-Order items carry a “Pre-Order” label.</span></div></div><div class="step"><div class="step-num" style="background:#1d4ed8">4</div><div class="step-body"><strong>Enter quantities</strong><span>Open the quantity grid for an item. Enter the size quantities for one carton (they must total 24), confirm the SKU for each size, and set the number of cartons.</span></div></div><div class="step"><div class="step-num" style="background:#1d4ed8">5</div><div class="step-body"><strong>Check prices and tax</strong><span>Enter or confirm the MRP per pair, cost per pair, HSN code and GST %. Line totals and the order totals are calculated automatically.</span></div></div><div class="step"><div class="step-num" style="background:#1d4ed8">6</div><div class="step-body"><strong>Add a discount, notes and terms</strong><span>Optional. Notes and Terms &amp; Conditions are printed on the PO.</span></div></div><div class="step"><div class="step-num" style="background:#1d4ed8">7</div><div class="step-body"><strong>Save</strong><span><strong>Save as Draft</strong> keeps it for later editing. <strong>Save and Send</strong> submits it for approval.</span></div></div></div>
+<h3 class="sub">Approval</h3><div class="steps"><div class="step"><div class="step-num" style="background:#0e7490">1</div><div class="step-body"><strong>Open the bill</strong><span>Accounts → Bills. A PO that has been sent appears here with the status Pending.</span></div></div><div class="step"><div class="step-num" style="background:#0e7490">2</div><div class="step-body"><strong>Review</strong><span>Check vendor, items, quantities, prices and totals. The bill can be downloaded as PDF or Excel.</span></div></div><div class="step"><div class="step-num" style="background:#0e7490">3</div><div class="step-body"><strong>Approve or reject</strong><span>Choose the action and enter the remarks. Approval allocates the PO number.</span></div></div></div>
+<div class="info-box info-orange"><div class="icon">🔒</div><div><h4>After approval</h4><p>An approved PO can no longer be edited. A rejected PO returns to the PO list with the remark; correct it and send it again. It will then be marked <strong>Revised</strong>.</p></div></div>
+<p class="txt">The PO list shows the PO Status, Bill Status and Approval Remark for every order. A PO can be searched by number or vendor and downloaded as PDF.</p></div>
+  <div class="page-footer"><span>Kore Kollective — Operations Manual</span><span>Page 10</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Goods Receipt Note (GRN)</h2><p>Receiving goods against an approved purchase order</p></div>
+<div class="content">
+<div class="path">Purchases → GRN → Create GRN</div>
+<div class="steps"><div class="step"><div class="step-num" style="background:#0f766e">1</div><div class="step-body"><strong>Select the Purchase Order</strong><span>Search and select the PO. Its summary — vendor, dates, quantity and items — is displayed. If one shipment covers more than one PO, use <strong>Link another PO</strong>.</span></div></div><div class="step"><div class="step-num" style="background:#0f766e">2</div><div class="step-body"><strong>Fill in the receipt details</strong><span><strong>GRN Date</strong>, <strong>Received By</strong>, <strong>Mobile No</strong> and <strong>Warehouse / Location</strong> are required.</span></div></div><div class="step"><div class="step-num" style="background:#0f766e">3</div><div class="step-body"><strong>Add document references</strong><span>Optional: invoice numbers, challan numbers (type each and press Enter), e-way bill number, vehicle number and remarks.</span></div></div><div class="step"><div class="step-num" style="background:#0f766e">4</div><div class="step-body"><strong>Choose an item</strong><span>Select an item in the left panel. Its cartons are shown as numbered chips.</span></div></div><div class="step"><div class="step-num" style="background:#0f766e">5</div><div class="step-body"><strong>Scan each carton</strong><span>Scan or type the size SKU and press Enter. Each scan adds one pair. A size cannot exceed its quantity in the carton. A carton is complete at 24 pairs.</span></div></div><div class="step"><div class="step-num" style="background:#0f766e">6</div><div class="step-body"><strong>Confirm the carton label</strong><span>When a carton reaches 24 pairs, scan its printed carton label to confirm it. The chip turns green.</span></div></div><div class="step"><div class="step-num" style="background:#0f766e">7</div><div class="step-body"><strong>Repeat for all cartons and items</strong><span>The progress bar shows the cartons completed.</span></div></div><div class="step"><div class="step-num" style="background:#0f766e">8</div><div class="step-body"><strong>Submit GRN</strong><span>The button is available when the receipt details are complete and every started carton is full and confirmed.</span></div></div></div>
+<h3 class="sub">Chip Colours</h3><table class="tbl"><thead><tr><th>Colour</th><th>Meaning</th></tr></thead><tbody>
+<tr><td>Blue</td><td>Carton currently being scanned</td></tr><tr><td>Amber</td><td>Partly scanned</td></tr><tr><td>Orange</td><td>Fully scanned, waiting for the label to be confirmed</td></tr><tr><td>Green</td><td>Carton confirmed</td></tr>
+</tbody></table><div class="info-box info-green"><div class="icon">✅</div><div><h4>Result</h4><p>When the GRN is submitted, the cartons are added to Master Stock and become available for sale. A carton that has already been received cannot be received again. If a carton was scanned wrongly, use <strong>Reset carton</strong> before submitting.</p></div></div>
+<p class="txt">The <strong>History</strong> tab lists every GRN. It can be filtered by PO reference, opened for detail and exported to Excel.</p></div>
+  <div class="page-footer"><span>Kore Kollective — Operations Manual</span><span>Page 11</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Distributor Orders and Dispatch</h2><p>From the moment an order is placed until it is delivered</p></div>
+<div class="content">
+<div class="path">Sales → Orders</div>
+<p class="txt">The Orders page shows summary cards (Total CTN, Pending, Dispatched, In Transit, Delivered). Select a card to filter the list, and open an order to work on it.</p><div class="steps"><div class="step"><div class="step-num" style="background:#b45309">1</div><div class="step-body"><strong>Book the order</strong><span>Open a Pending order and select <strong>Book Order</strong>. Optionally enter the expected dispatch date, a priority and an internal note. The order moves to Booked.</span></div></div><div class="step"><div class="step-num" style="background:#b45309">2</div><div class="step-body"><strong>Scan cartons</strong><span>Open the <strong>Scan Cartons</strong> tab. Scan each carton’s code as it is packed. Stock reduces as cartons are scanned for dispatch.</span></div></div><div class="step"><div class="step-num" style="background:#b45309">3</div><div class="step-body"><strong>Enter transport details</strong><span>In the transport tab, select the scanned cartons and enter the <strong>Vehicle No</strong> and <strong>Transporter Name</strong> (required). Optionally add the LR number, e-way bill number, driver name and mobile, gross weight and the Tax Invoice, E-Way Bill and Transport Bill documents. Submit to mark the cartons <strong>In Transit</strong>.</span></div></div><div class="step"><div class="step-num" style="background:#b45309">4</div><div class="step-body"><strong>Confirm receipt</strong><span>When the goods arrive, open <strong>Confirm Receipt</strong>, select the cartons and enter the <strong>Receiver Name</strong> and <strong>Mobile Number</strong>. A receiving note may be attached. The cartons are marked <strong>Delivered</strong>.</span></div></div></div>
+<div class="info-box info-blue"><div class="icon">📦</div><div><h4>Partial dispatch</h4><p>An order can be dispatched in batches. Each batch has its own transport details, invoice and receipt, and the order shows <strong>Partial Delivered</strong> until all cartons are delivered.</p></div></div>
+<h3 class="sub">Pre-Orders and Cancellation</h3><p class="txt">Pre-orders appear as <strong>Pre-Booked</strong> and are then <strong>Confirmed</strong>. Orders may be edited while Pending or Pre-Booked and cancelled until they are dispatched.</p><h3 class="sub">Documents</h3><p class="txt">From an order, a Proforma Invoice can be downloaded as PDF or Excel. Uploaded documents can be previewed by selecting them.</p></div>
+  <div class="page-footer"><span>Kore Kollective — Operations Manual</span><span>Page 12</span></div>
+</div>
+<div class="page">
+<div class="section-header"><h2>Returns, Payments and Distributors</h2><p>The remaining day-to-day tasks</p></div>
+<div class="content">
+<h3 class="sub">Returns</h3><div class="path">Sales → Returns → New</div>
+<div class="steps"><div class="step"><div class="step-num" style="background:#b91c1c">1</div><div class="step-body"><strong>Select the order</strong><span>Search by order number or distributor. Only eligible orders are listed.</span></div></div><div class="step"><div class="step-num" style="background:#b91c1c">2</div><div class="step-body"><strong>Choose a batch (optional)</strong><span>Limit the return to one dispatch batch if required.</span></div></div><div class="step"><div class="step-num" style="background:#b91c1c">3</div><div class="step-body"><strong>Enter the cartons returned</strong><span>Enter the count for each item. It cannot exceed the cartons delivered.</span></div></div><div class="step"><div class="step-num" style="background:#b91c1c">4</div><div class="step-body"><strong>Enter the return reason</strong><span>Required.</span></div></div><div class="step"><div class="step-num" style="background:#b91c1c">5</div><div class="step-body"><strong>Submit</strong><span>The returned cartons are added back to stock. The <strong>History</strong> tab lists earlier returns.</span></div></div></div>
+<h3 class="sub">Payments</h3><div class="path">Accounts → Overdue Payments</div>
+<div class="steps"><div class="step"><div class="step-num" style="background:#166534">1</div><div class="step-body"><strong>Review overdue orders</strong><span>Orders are listed with the days overdue and the amount. Yellow is overdue; red is more than 30 days overdue.</span></div></div><div class="step"><div class="step-num" style="background:#166534">2</div><div class="step-body"><strong>Select Mark Paid</strong><span>Enter a note and confirm when payment is received.</span></div></div></div>
+<h3 class="sub">Distributors</h3><div class="path">Sales → Distributors</div>
+<p class="txt">Add a distributor with their business and contact details, addresses and GST. Set the <strong>Payment Terms</strong> (default 30 days), <strong>Discount %</strong> and <strong>Credit Limit</strong>. Changes to these are recorded in the Activity Log. The distributor can be switched active or inactive.</p><h3 class="sub">Administration (Super Admin Only)</h3><table class="tbl"><thead><tr><th>Section</th><th>Use</th></tr></thead><tbody>
+<tr><td>Users</td><td>Create user accounts, reset passwords and assign roles.</td></tr>
+<tr><td>Activity Log</td><td>Review who did what and when.</td></tr>
+<tr><td>Terms &amp; Policies</td><td>Edit the terms shown to distributors.</td></tr>
+<tr><td>Notifications</td><td>Choose which events send notifications, and to which roles.</td></tr>
+<tr><td>Integrations</td><td>Manage connected services.</td></tr>
+</tbody></table></div>
+  <div class="page-footer"><span>Kore Kollective — Operations Manual</span><span>Page 13</span></div>
+</div>
+<button class="print-btn no-print" onclick="window.print()">🖨️ Save as PDF / Print</button>
+</body>
+</html>

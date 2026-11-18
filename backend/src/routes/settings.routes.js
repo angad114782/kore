@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const auth = require("../middlewares/auth.middleware");
 const role = require("../middlewares/role.middleware");
+const permission = require("../middlewares/permission.middleware");
 const Settings = require("../models/Settings");
 
 const ALLOWED_KEYS = ["terms_and_conditions", "disclaimer", "privacy_policy"];
@@ -12,7 +13,7 @@ router.get("/:key", auth, async (req, res) => {
     const { key } = req.params;
     if (ADMIN_ONLY_KEYS.includes(key)) {
       const userRole = req.user?.role?.toLowerCase();
-      if (!["admin", "superadmin"].includes(userRole))
+      if (userRole !== "superadmin" && !(req.user?.permissions || []).includes("integrations.manage"))
         return res.status(403).json({ success: false, message: "Forbidden" });
       const doc = await Settings.findOne({ key }).lean();
       const raw = doc?.value || "";
@@ -29,7 +30,7 @@ router.get("/:key", auth, async (req, res) => {
 });
 
 // Admin only — save/update settings
-router.put("/:key", auth, role(["admin", "superadmin"]), async (req, res) => {
+router.put("/:key", auth, permission("terms.manage", "integrations.manage"), async (req, res) => {
   try {
     const { key } = req.params;
     const { value } = req.body;

@@ -6,6 +6,8 @@ export const userService = {
     email: string;
     password: string;
     role: string;
+    phone?: string;
+    permissions?: string[];
   }) => {
     const response = await apiFetch("/users", {
       method: "POST",
@@ -38,6 +40,8 @@ export const userService = {
       name: string;
       email: string;
       role: string;
+      phone: string | null;
+      permissions: string[];
       isActive: boolean;
     }>,
   ) => {
@@ -115,5 +119,24 @@ export const roleService = {
   },
   remove: async (name: string): Promise<void> => {
     await apiFetch(`/roles/${name}`, { method: "DELETE" });
+  },
+};
+
+export interface PermissionModule {
+  id: string;
+  label: string;
+  page: string | null;
+  actions: { key: string; label: string }[];
+}
+export interface PermissionCatalog {
+  pages: { key: string; label: string }[];
+  modules: PermissionModule[];
+}
+
+export const permissionService = {
+  // Pages and add-on permissions that can be assigned — defined on the server, not here.
+  list: async (): Promise<PermissionCatalog> => {
+    const res = await apiFetch("/roles/permissions");
+    return res.data || { pages: [], modules: [] };
   },
 };

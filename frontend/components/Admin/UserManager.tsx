@@ -18,9 +18,10 @@ import {
   KeyRound,
   Eye,
   EyeOff,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { userService, roleService } from "../../services/userService";
+import { userService, roleService, permissionService, type PermissionCatalog, type PermissionModule } from "../../services/userService";
 import { User, UserRole } from "../../types";
 import Switch from "../ui/Switch";
 import Pagination from "../ui/Pagination";
@@ -45,8 +46,10 @@ const RoleSelect: React.FC<{
   onChange: (val: string) => void;
   roles: RoleOption[];
   onRoleCreated: (r: RoleOption) => void;
+  onRoleDeleted: (name: string) => void;
   disabled?: boolean;
-}> = ({ value, onChange, roles, onRoleCreated, disabled }) => {
+}> = ({ value, onChange, roles, onRoleCreated, onRoleDeleted, disabled }) => {
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newLabel, setNewLabel] = useState("");
@@ -95,6 +98,18 @@ const RoleSelect: React.FC<{
     } finally { setCreating(false); }
   };
 
+  const handleDelete = async (r: RoleOption) => {
+    if (!window.confirm(`Delete role "${r.label}"? This cannot be undone.`)) return;
+    try {
+      setDeleting(r.name);
+      await roleService.remove(r.name);
+      onRoleDeleted(r.name);
+      toast.success(`Role "${r.label}" deleted`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to delete role");
+    } finally { setDeleting(null); }
+  };
+
   return (
     <>
       <button ref={btnRef} type="button" disabled={disabled} onClick={openDrop}
@@ -115,18 +130,27 @@ const RoleSelect: React.FC<{
         >
           <div className="max-h-48 overflow-y-auto">
             {roles.length === 0 && (
-              <div className="px-4 py-3 text-xs text-slate-400 text-center">Loading roles...</div>
+              <div className="px-4 py-3 text-xs text-slate-400 text-center">No roles yet — add one below</div>
             )}
             {roles.map(r => (
-              <button key={r.name} type="button"
-                onClick={() => { onChange(r.name); setOpen(false); }}
-                className={`w-full flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors ${value === r.name ? 'bg-indigo-50/70' : ''}`}>
-                <span className="flex items-center gap-2">
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${colorFor(r.name)}`}>{r.label}</span>
-                  {!r.base && <span className="text-[9px] text-slate-400 font-semibold italic">custom</span>}
-                </span>
-                {value === r.name && <Check size={13} className="text-indigo-600 shrink-0" />}
-              </button>
+              <div key={r.name}
+                className={`flex items-center hover:bg-slate-50 transition-colors ${value === r.name ? 'bg-indigo-50/70' : ''}`}>
+                <button type="button"
+                  onClick={() => { onChange(r.name); setOpen(false); }}
+                  className="flex-1 flex items-center justify-between px-4 py-2.5 text-left">
+                  <span className="flex items-center gap-2">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${colorFor(r.name)}`}>{r.label}</span>
+                  </span>
+                  {value === r.name && <Check size={13} className="text-indigo-600 shrink-0" />}
+                </button>
+                  <button type="button" title={`Delete role "${r.label}"`}
+                    disabled={deleting === r.name}
+                    onClick={() => handleDelete(r)}
+                    className="p-2 mr-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-40 shrink-0">
+                    {deleting === r.name ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                  </button>
+
+              </div>
             ))}
           </div>
 
@@ -168,10 +192,17 @@ const UserManager: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = usePageSize("userManager", 20);
   const [roles, setRoles] = useState<RoleOption[]>([]);
+  const [permCatalog, setPermCatalog] = useState<PermissionCatalog>({ pages: [], modules: [] });
+  useEffect(() => {
+    permissionService.list().then(setPermCatalog).catch(() => {});
+  }, []);
   useEffect(() => { setPage(1); }, [search]);
 
   useEffect(() => {
-    roleService.list().then(setRoles).catch(() => {});
+    roleService
+      .list()
+      .then(list => setRoles(list.filter(r => r.name.replace(/[_-]+/g, "") !== "superadmin")))
+      .catch(() => {});
   }, []);
   // --- Draft Persistence ---
   const savedUserDraftStr = localStorage.getItem("kore_user_draft");
@@ -202,8 +233,9 @@ const UserManager: React.FC = () => {
       name: "",
       email: "",
       password: "",
-      role: "manager",
+      role: "",
       phone: "",
+      permissions: ["dashboard"] as string[],
     }
   );
 
@@ -221,6 +253,31 @@ const UserManager: React.FC = () => {
       localStorage.removeItem("kore_user_draft");
     }
   }, [showModal, editingUser, formData]);
+
+  // ── Permission helpers (pages = checkboxes, module actions = checkboxes) ──
+  const togglePerm = (key: string, on: boolean) => {
+    const cur: string[] = formData.permissions || [];
+    let next = on ? [...cur, key] : cur.filter(k => k !== key);
+    if (on) {
+      // an action needs its page
+      permCatalog.modules.forEach(m => {
+        if (m.page && m.actions.some(a => a.key === key)) next.push(m.page);
+      });
+    } else {
+      // switching a page off also switches off that module's actions
+      permCatalog.modules.forEach(m => {
+        if (m.page === key) next = next.filter(k => !m.actions.some(a => a.key === k));
+      });
+    }
+    setFormData({ ...formData, permissions: Array.from(new Set(next)) });
+  };
+  const setModuleAll = (m: PermissionModule, on: boolean) => {
+    const cur: string[] = formData.permissions || [];
+    const keys = m.actions.map(a => a.key);
+    let next = on ? [...cur, ...keys] : cur.filter(k => !keys.includes(k));
+    if (on && m.page) next.push(m.page);
+    setFormData({ ...formData, permissions: Array.from(new Set(next)) });
+  };
 
   const roleBadgeClass = (r: string) => colorFor(r);
   const roleLabel = (r: string) => roles.find(x => x.name === r)?.label || r;
@@ -252,7 +309,7 @@ const UserManager: React.FC = () => {
 
   const handleOpenAdd = () => {
     setEditingUser(null);
-    setFormData({ name: "", email: "", password: "", role: "manager", phone: "" });
+    setFormData({ name: "", email: "", password: "", role: "", phone: "", permissions: ["dashboard"] });
     setShowModal(true);
   };
 
@@ -264,12 +321,17 @@ const UserManager: React.FC = () => {
       password: "",
       role: user.role,
       phone: (user as any).phone || "",
+      permissions: user.permissions || [],
     });
     setShowModal(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.role) {
+      toast.error("Please select a role (or add a new one)");
+      return;
+    }
     setIsSubmitting(true);
 
     const submitPromise = async () => {
@@ -285,6 +347,7 @@ const UserManager: React.FC = () => {
           email: formData.email,
           role: formData.role,
           phone: (formData as any).phone || null,
+          permissions: formData.permissions || [],
         };
         await userService.updateUser(userId, updateData);
       } else {
@@ -292,7 +355,7 @@ const UserManager: React.FC = () => {
         await userService.createUser(formData);
       }
       setShowModal(false);
-      setFormData({ name: "", email: "", password: "", role: "manager", phone: "" });
+      setFormData({ name: "", email: "", password: "", role: "", phone: "", permissions: ["dashboard"] });
       fetchUsers();
     };
 
@@ -678,7 +741,7 @@ const UserManager: React.FC = () => {
       {/* User Modal (Add/Edit) */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+          <div className="bg-white w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
               <div>
                 <h3 className="text-xl font-bold text-slate-900">
@@ -698,7 +761,8 @@ const UserManager: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1.5">
                   Full Name
@@ -768,6 +832,10 @@ const UserManager: React.FC = () => {
                   onChange={val => setFormData({ ...formData, role: val })}
                   roles={roles}
                   onRoleCreated={r => setRoles(prev => [...prev, r])}
+                  onRoleDeleted={name => {
+                    setRoles(prev => prev.filter(r => r.name !== name));
+                    if (formData.role === name) setFormData({ ...formData, role: "" });
+                  }}
                   disabled={isSubmitting}
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
@@ -791,6 +859,81 @@ const UserManager: React.FC = () => {
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">WhatsApp notifications ke liye use hoga</p>
+              </div>
+              </div>
+
+              {/* Pages this login can see — one checkbox per page */}
+              <div className="border-t border-dashed border-slate-200 pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-bold text-slate-800">Pages this login can see</h4>
+                  <div className="flex gap-3 text-[11px] font-bold">
+                    <button type="button" className="text-indigo-600 hover:underline"
+                      onClick={() => setFormData({
+                        ...formData,
+                        permissions: Array.from(new Set([...(formData.permissions || []), ...permCatalog.pages.map(p => p.key)])),
+                      })}>
+                      Select all
+                    </button>
+                    <button type="button" className="text-slate-500 hover:underline"
+                      onClick={() => setFormData({
+                        ...formData,
+                        permissions: (formData.permissions || []).filter((k: string) => !permCatalog.pages.some(p => p.key === k)),
+                      })}>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                {permCatalog.pages.length === 0 && (
+                  <p className="text-xs text-slate-400">Loading pages...</p>
+                )}
+                <div className="flex flex-wrap gap-x-6 gap-y-2.5">
+                  {permCatalog.pages.map(pg => (
+                    <label key={pg.key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                      <input type="checkbox" disabled={isSubmitting} className="w-4 h-4 accent-indigo-600"
+                        checked={(formData.permissions || []).includes(pg.key)}
+                        onChange={e => togglePerm(pg.key, e.target.checked)} />
+                      {pg.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action permissions — checkboxes per module */}
+              <div className="border-t border-dashed border-slate-200 pt-4">
+                <h4 className="text-sm font-bold text-slate-800 mb-1">Module access &amp; add-on permissions</h4>
+                <p className="text-[11px] text-slate-400 mb-3">
+                  Tick exactly what this user may do. Nothing is allowed unless it is ticked. Ticking an action also switches on its page.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {permCatalog.modules.map(m => {
+                    const sel: string[] = formData.permissions || [];
+                    const allOn = m.actions.every(a => sel.includes(a.key));
+                    return (
+                      <div key={m.id} className="border border-slate-200 rounded-xl p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-slate-700">{m.label}</span>
+                          {m.actions.length > 1 && (
+                            <button type="button" disabled={isSubmitting}
+                              className="text-[10px] font-bold text-indigo-600 hover:underline"
+                              onClick={() => setModuleAll(m, !allOn)}>
+                              {allOn ? "Clear all" : "Select all"}
+                            </button>
+                          )}
+                        </div>
+                        <div className="space-y-1.5">
+                          {m.actions.map(a => (
+                            <label key={a.key} className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+                              <input type="checkbox" disabled={isSubmitting} className="mt-0.5 w-4 h-4 accent-indigo-600"
+                                checked={sel.includes(a.key)}
+                                onChange={e => togglePerm(a.key, e.target.checked)} />
+                              <span>{a.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="pt-4 flex gap-3">

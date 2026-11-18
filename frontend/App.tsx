@@ -1,3 +1,4 @@
+import { can, canOpenTab, firstAllowedTab } from "./utils/permissions";
 import React, { useState, useEffect, useMemo } from "react";
 import { useSocket } from "./context/SocketContext";
 import SocketStatusBadge from "./components/ui/SocketStatusBadge";
@@ -1243,6 +1244,14 @@ const App: React.FC = () => {
     });
   };
 
+  // If the open page is not one this user has been given access to (for example
+  // a saved tab from before their access was changed), move them to one they can use.
+  useEffect(() => {
+    if (user && !canOpenTab(user, activeTab)) {
+      setActiveTab(firstAllowedTab(user));
+    }
+  }, [user, activeTab]);
+
   if (isLoadingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -1255,6 +1264,7 @@ const App: React.FC = () => {
     return <Auth onLogin={handleLogin} />;
   }
 
+  const routeTab = canOpenTab(user, activeTab) ? activeTab : "__no_access__";
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 relative overflow-x-hidden">
       {/* ✅ Sidebar extracted */}
@@ -1288,7 +1298,13 @@ const App: React.FC = () => {
         </header>
 
         {/* Content Router */}
-        {activeTab === "dashboard" &&
+        {!canOpenTab(user, activeTab) && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center text-slate-500">
+            <p className="text-lg font-bold text-slate-800 mb-1">No access</p>
+            <p className="text-sm">You have not been given access to this page. Please contact your administrator.</p>
+          </div>
+        )}
+        {routeTab === "dashboard" &&
           (user.role !== UserRole.DISTRIBUTOR ? (
             <div className="space-y-6">
               <AdminDashboard
@@ -1299,6 +1315,7 @@ const App: React.FC = () => {
                 loadingOrders={loadingOrders}
                 lastUpdated={lastUpdated}
                 onSeeAllOverdue={() => handleTabChange("overdue_payments")}
+                showOverdue={can(user, "overdue.view")}
               />
             </div>
           ) : (
@@ -1316,7 +1333,7 @@ const App: React.FC = () => {
             />
           ))}
 
-        {activeTab === "catalogue" &&
+        {routeTab === "catalogue" &&
           user.role !== UserRole.DISTRIBUTOR &&
           (showMasterForm ? (
             <ProductMaster
@@ -1352,7 +1369,7 @@ const App: React.FC = () => {
             />
           ))}
 
-        {activeTab === "variant_details" &&
+        {routeTab === "variant_details" &&
           viewingVariant &&
           user.role !== UserRole.DISTRIBUTOR &&
           (() => {
@@ -1394,19 +1411,19 @@ const App: React.FC = () => {
               />
             );
           })()}
-        {user.role !== UserRole.DISTRIBUTOR && (
-          <div style={{ display: activeTab === "po" ? undefined : "none" }}>
+        {canOpenTab(user, "po") && user.role !== UserRole.DISTRIBUTOR && (
+          <div style={{ display: routeTab === "po" ? undefined : "none" }}>
             <POPage articles={articles} onSyncSuccess={fetchArticles} />
           </div>
         )}
-        {activeTab === "grn" && user.role !== UserRole.DISTRIBUTOR && <GRN />}
-        {activeTab === "vendor_invoice" && user.role !== UserRole.DISTRIBUTOR && (
+        {routeTab === "grn" && user.role !== UserRole.DISTRIBUTOR && <GRN />}
+        {routeTab === "vendor_invoice" && user.role !== UserRole.DISTRIBUTOR && (
           <VendorBillInvoice articles={articles} />
         )}
-        {activeTab === "distributor_invoice" && user.role !== UserRole.DISTRIBUTOR && (
+        {routeTab === "distributor_invoice" && user.role !== UserRole.DISTRIBUTOR && (
           <DistributorInvoice onOpenOrder={handleOpenOrderFromInvoice} />
         )}
-        {activeTab === "invoice_breakdown" && user.role !== UserRole.DISTRIBUTOR && (
+        {routeTab === "invoice_breakdown" && user.role !== UserRole.DISTRIBUTOR && (
           invoiceBreakdownOrder ? (
             <DispatchOrderBreakdown
               order={invoiceBreakdownOrder}
@@ -1426,19 +1443,19 @@ const App: React.FC = () => {
         )}
 
         {/* Legacy — old "Accounts" nav target, kept for any bookmarked links */}
-        {activeTab === "accounts" && user.role !== UserRole.DISTRIBUTOR && (
+        {routeTab === "accounts" && user.role !== UserRole.DISTRIBUTOR && (
           <AccountantPage articles={articles} initialTab="bills" />
         )}
-        {activeTab === "bills" && user.role !== UserRole.DISTRIBUTOR && (
+        {routeTab === "bills" && user.role !== UserRole.DISTRIBUTOR && (
           <AccountantPage articles={articles} initialTab="bills" />
         )}
-        {activeTab === "vendors" && user.role !== UserRole.DISTRIBUTOR && (
+        {routeTab === "vendors" && user.role !== UserRole.DISTRIBUTOR && (
           <VendorManager />
         )}
-        {activeTab === "users" && user.role === UserRole.SUPERADMIN && (
+        {routeTab === "users" && user.role !== UserRole.DISTRIBUTOR && (
           <UserManager />
         )}
-        {activeTab === "master_inventory" &&
+        {routeTab === "master_inventory" &&
           user.role !== UserRole.DISTRIBUTOR && (
             <MasterInventory
               inventory={inventory}
@@ -1449,7 +1466,7 @@ const App: React.FC = () => {
             />
           )}
 
-        {activeTab === "booking_inventory" &&
+        {routeTab === "booking_inventory" &&
           user.role !== UserRole.DISTRIBUTOR && (
             <BookingInventory
               inventory={inventory}
@@ -1458,7 +1475,7 @@ const App: React.FC = () => {
             />
           )}
 
-        {activeTab === "orders" &&
+        {routeTab === "orders" &&
           (user.role !== UserRole.DISTRIBUTOR ? (
             <OrderProcessor
               updateStatus={updateOrderStatus}
@@ -1479,7 +1496,7 @@ const App: React.FC = () => {
             />
           ))}
 
-        {activeTab === "dispatch_breakdown" && user.role !== UserRole.DISTRIBUTOR && (
+        {routeTab === "dispatch_breakdown" && user.role !== UserRole.DISTRIBUTOR && (
           dispatchBreakdownOrder ? (
             <DispatchOrderBreakdown
               order={dispatchBreakdownOrder}
@@ -1498,7 +1515,7 @@ const App: React.FC = () => {
           )
         )}
 
-        {activeTab === "returns" && user.role !== UserRole.DISTRIBUTOR && (
+        {routeTab === "returns" && user.role !== UserRole.DISTRIBUTOR && (
           <Returns
             orders={orders}
             articles={articles}
@@ -1507,7 +1524,7 @@ const App: React.FC = () => {
           />
         )}
 
-        {activeTab === "shop" && user.role === UserRole.DISTRIBUTOR && (
+        {routeTab === "shop" && user.role === UserRole.DISTRIBUTOR && (
           <Shop
             articles={articles}
             inventory={inventory}
@@ -1519,11 +1536,11 @@ const App: React.FC = () => {
           />
         )}
 
-        {activeTab === "preorder" && user.role === UserRole.DISTRIBUTOR && (
+        {routeTab === "preorder" && user.role === UserRole.DISTRIBUTOR && (
           <Wishlist articles={articles} onPlacePreOrder={handlePlacePreOrder} />
         )}
 
-        {activeTab === "cart" && user.role === UserRole.DISTRIBUTOR && (
+        {routeTab === "cart" && user.role === UserRole.DISTRIBUTOR && (
           <Cart
             articles={articles}
             cart={cart}
@@ -1536,11 +1553,11 @@ const App: React.FC = () => {
           />
         )}
 
-        {activeTab === "distributors" && user.role !== UserRole.DISTRIBUTOR && (
+        {routeTab === "distributors" && user.role !== UserRole.DISTRIBUTOR && (
           <DistributorManager orders={orders} />
         )}
 
-        {activeTab === "profile" && user && (
+        {routeTab === "profile" && user && (
           <ProfilePage
             user={user}
             onProfileUpdate={(updatedUser) => {
@@ -1550,31 +1567,31 @@ const App: React.FC = () => {
           />
         )}
 
-        {activeTab === "activity_log" && user.role !== UserRole.DISTRIBUTOR && (
+        {routeTab === "activity_log" && user.role !== UserRole.DISTRIBUTOR && (
           <ActivityLogPage />
         )}
 
-        {activeTab === "report_stock" && user.role !== UserRole.DISTRIBUTOR && (
+        {routeTab === "report_stock" && user.role !== UserRole.DISTRIBUTOR && (
           <StockReport />
         )}
-        {activeTab === "report_dispatch" &&
+        {routeTab === "report_dispatch" &&
           user.role !== UserRole.DISTRIBUTOR && <DispatchReport onOpenOrder={handleOpenOrderFromReport} />}
-        {activeTab === "report_return" &&
+        {routeTab === "report_return" &&
           user.role !== UserRole.DISTRIBUTOR && <ReturnReport />}
 
-        {activeTab === "overdue_payments" &&
+        {routeTab === "overdue_payments" &&
           user.role !== UserRole.DISTRIBUTOR && (
             <OverduePayments isAdmin={true} showAll={true} />
           )}
 
-        {activeTab === "terms_page" && user.role !== UserRole.DISTRIBUTOR && (
+        {routeTab === "terms_page" && user.role !== UserRole.DISTRIBUTOR && (
           <TermsPage />
         )}
 
-        {activeTab === "notification_settings" &&
-          user.role === UserRole.SUPERADMIN && <NotificationSettings />}
+        {routeTab === "notification_settings" &&
+          user.role !== UserRole.DISTRIBUTOR && <NotificationSettings />}
 
-        {activeTab === "integrations" && user.role === UserRole.SUPERADMIN && (
+        {routeTab === "integrations" && user.role !== UserRole.DISTRIBUTOR && (
           <IntegrationsPage />
         )}
       </main>

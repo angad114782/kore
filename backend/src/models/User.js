@@ -21,6 +21,12 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
 
+    // Pages / actions this user may use. Chosen when the user is created/edited.
+    // `undefined` (field absent) = legacy user not yet migrated.
+    permissions: { type: [String], default: undefined },
+    // Internal: which permission scheme the stored keys belong to (migration marker).
+    permissionsVersion: { type: Number, default: undefined },
+
     phone: { type: String, default: null, trim: true },
 
     // ✅ link distributor business profile
